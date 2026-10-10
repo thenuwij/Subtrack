@@ -1,7 +1,6 @@
 'use client'
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowRight, Check, Sparkles } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LogoMark } from '@/components/layout/Logo'
@@ -11,21 +10,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { authErrorMessage, passwordProblem } from '@/lib/auth/errors'
 import { endDemo, startDemo } from '@/lib/auth/session'
-
-const POINTS = [
-  {
-    title: 'Found from your receipts',
-    body: 'Connect Gmail and Subtrack works out which charges repeat. Read-only.',
-  },
-  {
-    title: 'One honest number',
-    body: 'What every subscription, bill and membership costs you a month — and a year.',
-  },
-  {
-    title: 'Told when it changes',
-    body: 'Price rises and new charges surface instead of quietly going out.',
-  },
-]
 
 type Mode = 'signin' | 'signup'
 
@@ -144,25 +128,17 @@ export default function LoginPage() {
     }
   }
 
-  const demoCard = (
-    <DemoCard
-      busy={busy}
-      error={demoError}
-      onStart={() => void handleDemo()}
-    />
-  )
-
   return (
-    <main className="grid min-h-screen lg:grid-cols-2">
-      <div className="flex items-center justify-center px-6 py-12">
-        <div className="w-full max-w-sm">
-          <Link href="/" aria-label="Subtrack home" className="inline-flex">
-            <LogoMark className="h-10 w-10" />
-          </Link>
+    <main className="flex min-h-screen flex-col bg-background px-6 py-10 sm:px-12 lg:px-20">
+      <Link href="/" aria-label="Subtrack home" className="inline-flex w-fit">
+        <LogoMark className="h-9 w-9" />
+      </Link>
 
+      <div className="flex flex-1 items-center justify-center py-12">
+        <div className="w-full max-w-sm">
           {checkEmail ? (
             <>
-              <h1 className="mt-8 text-3xl font-semibold tracking-tight text-foreground">
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
                 Confirm your email
               </h1>
               <p className="mt-3 text-sm text-muted-foreground">
@@ -184,32 +160,30 @@ export default function LoginPage() {
             </>
           ) : (
             <>
-              <div className="mt-6 lg:hidden">{demoCard}</div>
-
-              <h1 className="mt-8 text-2xl font-semibold tracking-tight text-foreground">
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
                 {mode === 'signin' ? 'Sign in to Subtrack' : 'Create your account'}
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
                 {mode === 'signin'
-                  ? 'Welcome back. Enter your details to continue.'
-                  : 'Free to use. You can connect Gmail after signing up.'}
+                  ? 'Enter your email and password.'
+                  : 'Free to use. You can connect Gmail later.'}
               </p>
 
               {sessionExpired ? (
-                <p role="status" className="mt-5 rounded-xl border border-amber-500/25 bg-amber-500/5 px-3 py-2.5 text-sm text-foreground">
+                <p role="status" className="mt-6 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2.5 text-sm text-foreground">
                   Your session expired. Sign in again to continue.
                 </p>
               ) : linkInvalid ? (
-                <p role="status" className="mt-5 rounded-xl border border-amber-500/25 bg-amber-500/5 px-3 py-2.5 text-sm text-foreground">
+                <p role="status" className="mt-6 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2.5 text-sm text-foreground">
                   That link has expired or was already used. Sign in, or request a new
                   one from <Link className="underline" href="/forgot-password">forgot password</Link>.
                 </p>
               ) : passwordUpdated ? (
-                <p role="status" className="mt-5 rounded-xl border border-border bg-muted/50 px-3 py-2.5 text-sm text-foreground">
+                <p role="status" className="mt-6 rounded-lg border border-border bg-muted/50 px-3 py-2.5 text-sm text-foreground">
                   Your password was updated. Sign in with it below.
                 </p>
               ) : dataDeleted ? (
-                <p role="status" className="mt-5 rounded-xl border border-border bg-muted/50 px-3 py-2.5 text-sm text-foreground">
+                <p role="status" className="mt-6 rounded-lg border border-border bg-muted/50 px-3 py-2.5 text-sm text-foreground">
                   Your Subtrack app data was deleted and you have been signed out.
                   {gmailRevocationFailed
                     ? ' Google could not be reached to revoke the former Gmail permission, so remove Subtrack from your Google Account permissions as well.'
@@ -228,6 +202,7 @@ export default function LoginPage() {
                     value={email}
                     onChange={e => setEmail(e.target.value)}
                     placeholder="you@example.com"
+                    className="h-10"
                   />
                 </div>
 
@@ -237,7 +212,7 @@ export default function LoginPage() {
                     {mode === 'signin' ? (
                       <Link
                         href="/forgot-password"
-                        className="text-xs text-muted-foreground underline hover:text-foreground"
+                        className="text-xs text-muted-foreground hover:text-foreground hover:underline"
                       >
                         Forgot password?
                       </Link>
@@ -251,6 +226,7 @@ export default function LoginPage() {
                     value={password}
                     onChange={e => setPassword(e.target.value)}
                     placeholder={mode === 'signup' ? 'At least 8 characters' : undefined}
+                    className="h-10"
                   />
                 </div>
 
@@ -261,38 +237,15 @@ export default function LoginPage() {
                 </Button>
               </form>
 
-              <div className="my-5 flex items-center gap-3">
-                <span className="h-px flex-1 bg-border" aria-hidden="true" />
-                <span className="text-xs text-muted-foreground">or</span>
-                <span className="h-px flex-1 bg-border" aria-hidden="true" />
-              </div>
-
-              <button
+              <Button
                 type="button"
+                variant="outline"
                 onClick={handleGoogleLogin}
                 disabled={busy !== null}
-                className="flex w-full items-center justify-center gap-3 rounded-xl border border-border bg-card px-6 py-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted disabled:opacity-60"
+                className="mt-3 h-10 w-full"
               >
-                {busy === 'google' ? (
-                  <>
-                    <span
-                      className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-foreground"
-                      aria-hidden="true"
-                    />
-                    Opening Google…
-                  </>
-                ) : (
-                  <>
-                    <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
-                      <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.6 33.1 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-4z" />
-                      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.1 18.9 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z" />
-                      <path fill="#4CAF50" d="M24 44c5.2 0 9.9-1.9 13.5-5l-6.2-5.2C29.4 35.6 26.8 36 24 36c-5.2 0-9.6-2.9-11.3-7.1l-6.5 5C9.5 39.6 16.2 44 24 44z" />
-                      <path fill="#1976D2" d="M43.6 20H24v8h11.3c-.9 2.4-2.5 4.4-4.6 5.8l6.2 5.2C40.7 35.7 44 30.3 44 24c0-1.3-.1-2.7-.4-4z" />
-                    </svg>
-                    Continue with Google
-                  </>
-                )}
-              </button>
+                {busy === 'google' ? 'Opening Google…' : 'Continue with Google'}
+              </Button>
 
               {error && (
                 <p role="alert" className="mt-3 text-sm text-destructive">
@@ -300,93 +253,41 @@ export default function LoginPage() {
                 </p>
               )}
 
-              <p className="mt-6 text-center text-sm text-muted-foreground">
-                {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
+              <p className="mt-8 text-sm text-muted-foreground">
+                {mode === 'signin' ? 'No account yet? ' : 'Already have an account? '}
                 <button
                   type="button"
                   className="font-medium text-primary hover:underline"
                   onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
                 >
-                  {mode === 'signin' ? 'Sign up' : 'Sign in'}
+                  {mode === 'signin' ? 'Create one' : 'Sign in'}
                 </button>
               </p>
 
-              <p className="mt-6 text-center text-xs leading-5 text-muted-foreground">
-                By continuing you agree to our <Link className="underline hover:text-foreground" href="/terms">terms</Link> and <Link className="underline hover:text-foreground" href="/privacy">privacy policy</Link>.
+              <p className="mt-2 text-sm text-muted-foreground">
+                Just looking?{' '}
+                <button
+                  type="button"
+                  className="font-medium text-foreground hover:underline disabled:opacity-60"
+                  onClick={() => void handleDemo()}
+                  disabled={busy !== null}
+                >
+                  {busy === 'demo' ? 'Setting up the demo…' : 'Try the demo'}
+                </button>
               </p>
+              {demoError && (
+                <p role="alert" className="mt-2 text-sm text-destructive">
+                  {demoError}
+                </p>
+              )}
             </>
           )}
         </div>
       </div>
 
-      <div className="relative hidden items-center overflow-hidden bg-sidebar px-12 lg:flex">
-        <div
-          className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full opacity-[0.18] blur-3xl"
-          style={{ background: 'var(--primary)' }}
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute -bottom-32 -left-16 h-80 w-80 rounded-full opacity-[0.12] blur-3xl"
-          style={{ background: 'var(--category-streaming)' }}
-          aria-hidden="true"
-        />
-
-        <div className="relative z-10 max-w-md">
-          <p className="text-3xl font-semibold tracking-tight text-foreground">
-            Know what your recurring payments really cost
-          </p>
-
-          <ul className="mt-8 space-y-5">
-            {POINTS.map(point => (
-              <li key={point.title} className="flex gap-3">
-                <Check className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
-                <div>
-                  <p className="font-medium text-foreground">{point.title}</p>
-                  <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{point.body}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-
-          <div className="mt-10">{demoCard}</div>
-        </div>
-      </div>
+      <p className="text-center text-xs text-muted-foreground">
+        By continuing you agree to the <Link className="underline hover:text-foreground" href="/terms">terms</Link> and <Link className="underline hover:text-foreground" href="/privacy">privacy policy</Link>.
+      </p>
     </main>
-  )
-}
-
-function DemoCard({
-  busy,
-  error,
-  onStart,
-}: {
-  busy: 'email' | 'google' | 'demo' | null
-  error: string | null
-  onStart: () => void
-}) {
-  return (
-    <div className="rounded-2xl border border-primary/30 bg-primary/10 p-5">
-      <p className="flex items-center gap-2 font-semibold text-foreground">
-        <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-        Just looking?
-      </p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Explore Subtrack with sample data. No sign-up, and it&apos;s cleared after 24 hours.
-      </p>
-      <Button
-        type="button"
-        onClick={onStart}
-        disabled={busy !== null}
-        className="mt-4 h-10 w-full"
-      >
-        {busy === 'demo' ? 'Setting up your demo…' : 'Try the demo'}
-        {busy === 'demo' ? null : <ArrowRight aria-hidden="true" />}
-      </Button>
-      {error && (
-        <p role="alert" className="mt-3 text-sm text-destructive">
-          {error}
-        </p>
-      )}
-    </div>
   )
 }
