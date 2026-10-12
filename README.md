@@ -1,4 +1,4 @@
-# Subtrack
+# Subtrack – Agentic Subscription Tracker
 
 [![Live demo](https://img.shields.io/badge/Live_demo-Explore-0A84FF?style=for-the-badge&logo=vercel&logoColor=white&labelColor=0060DF)](https://subtrack.twij.app/login)
 
@@ -9,7 +9,7 @@
 ![Claude API](https://img.shields.io/badge/Claude_API-20232A?logo=anthropic&logoColor=D97757)
 [![MIT License](https://img.shields.io/badge/License-MIT-20232A?labelColor=555)](LICENSE)
 
-A full-stack portfolio project exploring recurring-payment tracking, Gmail receipt analysis and an AI assistant with approval-based actions.
+A full-stack portfolio project that detects recurring payments from Gmail receipts, tracks costs and upcoming charges, and includes a tool-calling AI assistant that proposes changes for user confirmation.
 
 Built by Thenuja Wijesuriya with Next.js, TypeScript, FastAPI and PostgreSQL. Subtrack is a personal engineering project with no active user base; the hosted version is a demonstration of the implementation, rather than a production service.
 
@@ -27,7 +27,7 @@ The repository includes the web app, API, database migrations and tests so you c
 - **Gmail receipt analysis:** connect a test mailbox with read-only OAuth access, scan receipts and review detected payments before adding them.
 - **Dashboard and insights:** monthly spending, upcoming charges, price changes, duplicate detection and trial tracking.
 - **Reminders:** configure reminders for renewals and trial end dates.
-- **AI assistant:** ask about spending and upcoming payments, explore savings options and research alternatives with sources. Changes are proposed for confirmation before being applied.
+- **Tool-calling AI assistant:** ask about spending and upcoming payments, explore savings options and research alternatives with sources. The model selects tools and uses their results across multiple steps; changes are proposed for confirmation before being applied.
 - **Account controls:** authentication through Supabase, data export and account-data deletion.
 - **Demo mode:** isolated sessions seeded with sample data for exploring the app.
 
@@ -44,7 +44,17 @@ Gmail integration requires your own Google OAuth configuration. AI receipt analy
 | AI | Anthropic Claude API | Receipt extraction and assistant workflows |
 | Email integration | Gmail API, Google OAuth | Read-only receipt access |
 
-The frontend sends authenticated requests to the FastAPI backend. The backend scopes data to the authenticated account and stores it in PostgreSQL. Gmail refresh tokens are encrypted with a Fernet key. Assistant mutations pass through a proposal-and-confirmation flow.
+The frontend sends authenticated requests to the FastAPI backend. The backend scopes data to the authenticated account and stores it in PostgreSQL. Gmail refresh tokens are encrypted with a Fernet key.
+
+### Agent workflow
+
+The assistant is a bounded tool-calling agent. Claude chooses which tools to call and their inputs; the backend executes those calls and returns the results to the model. Claude can then choose further tools or finish its response, within a limit of eight model rounds per request. The tool sequence is selected by the model rather than fixed by the application.
+
+Read tools inspect tracked payments, forecasts, reminders, detections and duplicate suggestions, or research service alternatives with sources. Action tools save pending proposals for adding, editing, removing or merging payments and managing trials, detections and reminders. These proposals do not change tracked payment data until the user presses **Confirm**. The backend rechecks ownership, expiry and relevant record snapshots before applying a change. Confirmation runs separately from the model loop and does not automatically restart it. Removing a tracked payment does not cancel the subscription with its merchant.
+
+Gmail receipt processing runs independently of the assistant: once a scan is started, application code retrieves messages, performs structured extraction and queues findings for review. Billing calculations, charge forecasts, duplicate suggestions and dashboard reminder logic are also available without chat. Trial records automatically receive a dashboard reminder seven days before the trial ends.
+
+The implementation is in [`_stream_reply()`](subtrack-backend/app/routers/agent.py), [`run_tool()`](subtrack-backend/app/agent/tools.py), the [proposal and confirmation handlers](subtrack-backend/app/agent/actions.py), and the [Gmail scan pipeline](subtrack-backend/app/routers/gmail.py).
 
 ```text
 subtrack/
