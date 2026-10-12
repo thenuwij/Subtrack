@@ -1,5 +1,14 @@
 # Subtrack
 
+[![Live demo](https://img.shields.io/badge/Live_demo-Explore-0A84FF?style=for-the-badge&logo=vercel&logoColor=white&labelColor=0060DF)](https://subtrack.twij.app/login)
+
+![Next.js](https://img.shields.io/badge/Next.js-20232A?logo=nextdotjs&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-20232A?logo=typescript&logoColor=3178C6)
+![FastAPI](https://img.shields.io/badge/FastAPI-20232A?logo=fastapi&logoColor=009688)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-20232A?logo=postgresql&logoColor=4169E1)
+![Claude API](https://img.shields.io/badge/Claude_API-20232A?logo=anthropic&logoColor=D97757)
+[![MIT License](https://img.shields.io/badge/License-MIT-20232A?labelColor=555)](LICENSE)
+
 A full-stack portfolio project exploring recurring-payment tracking, Gmail receipt analysis and an AI assistant with approval-based actions.
 
 Built by Thenuja Wijesuriya with Next.js, TypeScript, FastAPI and PostgreSQL. Subtrack is a personal engineering project with no active user base; the hosted version is a demonstration of the implementation, rather than a production service.
