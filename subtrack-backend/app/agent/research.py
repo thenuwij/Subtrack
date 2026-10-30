@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.gmail.redaction import redact
-from app.models import AgentResearchCache, Subscription
+from app.models import AgentResearchCache, Category, Subscription
 from app.services.recurrence import cadence_for, cadence_label
 from app.services.schedules import utc_naive
 from app.services.trials import active_trial
@@ -109,6 +109,9 @@ CURRENCY_MARKETS = {
     "EUR": "Eurozone",
     "JPY": "Japan",
 }
+
+
+OUT_OF_SCOPE_CATEGORIES = {Category.insurance, Category.debt}
 
 
 def _owned_payment(db: Session, user_id: str, identifier: UUID) -> Subscription | None:
@@ -270,6 +273,11 @@ def research_alternatives(
     payment = _owned_payment(db, user_id, data.subscription_id)
     if not payment:
         return {"status": "not_found", "reason": "Recurring payment not found."}
+    if payment.category in OUT_OF_SCOPE_CATEGORIES:
+        return {
+            "status": "out_of_scope",
+            "reason": "Subtrack doesn't research or compare financial products.",
+        }
 
     requested_market = _compact(data.market, 80)
     market = requested_market or CURRENCY_MARKETS.get(

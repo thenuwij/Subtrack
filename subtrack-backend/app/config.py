@@ -69,6 +69,23 @@ def _validate_production_database_url(value: str) -> None:
         )
 
 
+def assert_safe_migration_target(
+    database_url: str,
+    environment: str,
+    allowed_host: str,
+) -> None:
+    """Refuse schema changes outside production unless the host is local or named."""
+    if environment == "production" or database_url.startswith("sqlite"):
+        return
+    hostname = (urlsplit(database_url).hostname or "").lower()
+    if hostname in _LOCAL_HOSTS or (allowed_host and hostname == allowed_host.lower()):
+        return
+    raise RuntimeError(
+        "Refusing to migrate a remote database outside production. "
+        "Set MIGRATION_ALLOWED_HOST to your development database host."
+    )
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", allow_inf_nan=False)
 
@@ -86,6 +103,7 @@ class Settings(BaseSettings):
     # sending real users to a machine that isn't theirs.
     frontend_url: str = ""
     environment: Literal["development", "test", "production"] = "development"
+    migration_allowed_host: str = ""
     anthropic_api_key: str
     database_pool_size: int = Field(default=5, ge=1, le=50)
     database_max_overflow: int = Field(default=5, ge=0, le=50)

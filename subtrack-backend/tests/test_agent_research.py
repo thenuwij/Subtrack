@@ -79,6 +79,16 @@ class AgentResearchTests(unittest.TestCase):
         self.assertEqual(hidden["status"], "not_found")
         other_search.assert_not_called()
 
+    def test_financial_product_categories_are_never_researched(self):
+        for category in (Category.insurance, Category.debt):
+            with self.subTest(category=category):
+                self.payment.category = category
+                self.db.commit()
+                with patch("app.agent.research._run_search") as search:
+                    result = research_alternatives(self.db, "owner", self.payload())
+                self.assertEqual(result["status"], "out_of_scope")
+                search.assert_not_called()
+
     def test_expired_cache_is_refreshed_without_a_duplicate_row(self):
         with patch("app.agent.research._run_search", return_value=self.completed()):
             research_alternatives(self.db, "owner", self.payload())

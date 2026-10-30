@@ -156,7 +156,7 @@ def seed_demo_user(db: Session, user_id: str) -> None:
         ),
         PaymentReminder(
             user_id=user_id, subscription_id=subs["Car insurance"].id, kind="renewal",
-            days_before=30, note="Compare quotes before it renews",
+            days_before=30, note="Check the new price before it renews",
         ),
     ])
 

@@ -14,11 +14,17 @@ from alembic.config import Config
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.config import assert_safe_migration_target, settings  # noqa: E402
 from app.database import Base, engine  # noqa: E402
 import app.models  # noqa: E402,F401  # register every model with Base.metadata
 
 
 def main() -> None:
+    assert_safe_migration_target(
+        settings.database_url,
+        settings.environment,
+        settings.migration_allowed_host,
+    )
     Base.metadata.create_all(bind=engine)
     config = Config(str(BACKEND_ROOT / "alembic.ini"))
     command.upgrade(config, "head")
