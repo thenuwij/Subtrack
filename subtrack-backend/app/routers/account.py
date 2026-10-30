@@ -25,13 +25,20 @@ from app.models import (
     AgentMessage,
     AgentResearchCache,
     AgentThread,
+    BankAccount,
+    BankTransaction,
     DetectedSubscription,
     DuplicateDismissal,
     GmailAccount,
     GmailOAuthState,
+    GmailReceipt,
+    MoneyGoal,
+    MoneyRule,
     PaymentReminder,
+    StatementImport,
     Subscription,
     SubscriptionChange,
+    TransactionLink,
     UserPreference,
 )
 from app.services.gmail_access import revoke_encrypted_refresh_token
@@ -164,6 +171,68 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ),
         ("created_at", "id"),
     ),
+    ExportResource(
+        "bank_accounts",
+        BankAccount,
+        (
+            "id", "name", "institution", "purpose", "currency",
+            "account_last4", "created_at",
+        ),
+        ("created_at", "id"),
+    ),
+    ExportResource(
+        "statement_imports",
+        StatementImport,
+        (
+            "id", "bank_account_id", "first_posted_on", "last_posted_on",
+            "row_count", "inserted_count", "created_at",
+        ),
+        ("created_at", "id"),
+    ),
+    ExportResource(
+        "bank_transactions",
+        BankTransaction,
+        (
+            "id", "bank_account_id", "statement_import_id", "posted_on", "amount",
+            "currency", "description", "balance", "created_at",
+        ),
+        ("created_at", "id"),
+    ),
+    ExportResource(
+        "gmail_receipts",
+        GmailReceipt,
+        (
+            "id", "intermediary", "merchant", "amount", "purchase_total", "currency",
+            "instalment_number", "instalment_count", "received_on", "created_at",
+        ),
+        ("created_at", "id"),
+    ),
+    ExportResource(
+        "transaction_links",
+        TransactionLink,
+        (
+            "id", "link_type", "status", "transaction_id",
+            "counterpart_transaction_id", "gmail_receipt_id", "created_at",
+        ),
+        ("created_at", "id"),
+    ),
+    ExportResource(
+        "money_rules",
+        MoneyRule,
+        (
+            "id", "match_text", "kind", "label", "created_at", "updated_at",
+        ),
+        ("created_at", "id"),
+    ),
+    ExportResource(
+        "money_goals",
+        MoneyGoal,
+        (
+            "id", "bank_account_id", "name", "target_amount", "currency",
+            "target_date", "created_at", "updated_at",
+        ),
+        ("created_at", "id"),
+    ),
 )
 
 
@@ -172,6 +241,13 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
 # one database transaction.
 DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("gmail_oauth_states", GmailOAuthState),
+    ("transaction_links", TransactionLink),
+    ("gmail_receipts", GmailReceipt),
+    ("bank_transactions", BankTransaction),
+    ("statement_imports", StatementImport),
+    ("money_goals", MoneyGoal),
+    ("money_rules", MoneyRule),
+    ("bank_accounts", BankAccount),
     ("assistant_actions", AgentAction),
     ("assistant_messages", AgentMessage),
     ("assistant_threads", AgentThread),
