@@ -6,12 +6,14 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     Enum,
     Float,
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -623,3 +625,175 @@ class DemoSession(Base):
     client_hash = Column(String(64), nullable=False, index=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now(), index=True)
     expires_at = Column(DateTime, nullable=False, index=True)
+
+
+class BankAccount(Base):
+    __tablename__ = "bank_accounts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_bank_accounts_user_name"),
+        CheckConstraint(
+            "purpose IN ('everyday', 'savings', 'other')",
+            name="ck_bank_accounts_purpose",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    institution = Column(String(40), nullable=False, default="commbank")
+    purpose = Column(String(20), nullable=False, default="everyday")
+    currency = Column(String(3), nullable=False, default="AUD")
+    account_last4 = Column(String(4), nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class StatementImport(Base):
+    __tablename__ = "statement_imports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    bank_account_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("bank_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    first_posted_on = Column(Date, nullable=True)
+    last_posted_on = Column(Date, nullable=True)
+    row_count = Column(Integer, nullable=False, default=0)
+    inserted_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class BankTransaction(Base):
+    __tablename__ = "bank_transactions"
+    __table_args__ = (
+        UniqueConstraint(
+            "bank_account_id", "dedupe_hash", name="uq_bank_transactions_account_dedupe"
+        ),
+        Index("ix_bank_transactions_user_posted", "user_id", "posted_on"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False)
+    bank_account_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("bank_accounts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    statement_import_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("statement_imports.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    posted_on = Column(Date, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(3), nullable=False, default="AUD")
+    description = Column(String(500), nullable=False)
+    balance = Column(Numeric(12, 2), nullable=True)
+    dedupe_hash = Column(String(64), nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class GmailReceipt(Base):
+    __tablename__ = "gmail_receipts"
+    __table_args__ = (
+        UniqueConstraint("user_id", "gmail_message_id", name="uq_gmail_receipts_user_message"),
+        Index("ix_gmail_receipts_user_received", "user_id", "received_on"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False)
+    gmail_message_id = Column(String(64), nullable=False)
+    intermediary = Column(String(40), nullable=False)
+    merchant = Column(String(200), nullable=True)
+    amount = Column(Numeric(12, 2), nullable=False)
+    purchase_total = Column(Numeric(12, 2), nullable=True)
+    currency = Column(String(3), nullable=False, default="AUD")
+    instalment_number = Column(Integer, nullable=True)
+    instalment_count = Column(Integer, nullable=True)
+    received_on = Column(Date, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class TransactionLink(Base):
+    __tablename__ = "transaction_links"
+    __table_args__ = (
+        CheckConstraint(
+            "link_type IN ('transfer', 'intermediary')",
+            name="ck_transaction_links_type",
+        ),
+        CheckConstraint(
+            "status IN ('suggested', 'confirmed')",
+            name="ck_transaction_links_status",
+        ),
+        CheckConstraint(
+            "(link_type = 'transfer' AND counterpart_transaction_id IS NOT NULL) "
+            "OR (link_type = 'intermediary' AND gmail_receipt_id IS NOT NULL)",
+            name="ck_transaction_links_target",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    link_type = Column(String(20), nullable=False)
+    status = Column(String(20), nullable=False, default="suggested")
+    transaction_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("bank_transactions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    counterpart_transaction_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("bank_transactions.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    gmail_receipt_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("gmail_receipts.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class MoneyRule(Base):
+    __tablename__ = "money_rules"
+    __table_args__ = (
+        UniqueConstraint("user_id", "match_text", name="uq_money_rules_user_match"),
+        CheckConstraint(
+            "kind IN ('pay', 'other_income', 'bill', 'spending', 'transfer', 'ignore')",
+            name="ck_money_rules_kind",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    match_text = Column(String(200), nullable=False)
+    kind = Column(String(20), nullable=False)
+    label = Column(String(120), nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class MoneyGoal(Base):
+    __tablename__ = "money_goals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    bank_account_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("bank_accounts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    name = Column(String(120), nullable=False)
+    target_amount = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(3), nullable=False, default="AUD")
+    target_date = Column(Date, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
