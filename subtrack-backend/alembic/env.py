@@ -4,8 +4,14 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from app import models  # noqa: F401 — registers every model with Base.metadata
-from app.config import settings
+from app.config import assert_safe_migration_target, settings
 from app.database import Base
+
+assert_safe_migration_target(
+    settings.database_url,
+    settings.environment,
+    settings.migration_allowed_host,
+)
 
 config = context.config
 # ConfigParser treats percent signs as interpolation markers. Escaping here
