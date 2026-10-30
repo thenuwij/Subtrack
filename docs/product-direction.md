@@ -1,6 +1,6 @@
 # Subtrack Product Direction: Pay-Cycle Money Assistant
 
-Status: agreed direction, not yet built (30 Oct 2026). Read this before starting any work on this direction.
+Status: in progress, paused after Phase 1 (30 Oct 2026). Read this before starting any work on this direction.
 
 ## 1. The problem
 
@@ -114,6 +114,16 @@ New work:
 6. **Agent tools,** plus the unknowns → questions → saved rules loop.
 7. **Goals/pots and "committed before next pay".**
 8. **Payday check-in and alerts.**
+
+### Progress (30 Oct 2026)
+
+Done:
+- **Safety and boundary:** migrations refuse remote databases outside production unless the host is in `MIGRATION_ALLOWED_HOST`. Tests are forced onto SQLite. The assistant's advice boundary matches section 2.
+- **Step 1, data model:** seven ledger tables and migration `0015_pay_cycle_ledger`, included in account export and deletion.
+
+Next: **step 2, CommBank CSV import.** Check the parser against the column layout of a real export. Real statements never go in the repo or test fixtures.
+
+Local dev should use a Neon dev branch, not prod.
 
 ## 7. Acceptance test
 
