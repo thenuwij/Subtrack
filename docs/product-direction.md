@@ -104,24 +104,41 @@ New work:
 - Pay-cycle view and payday check-in.
 - New agent tools (table above).
 
-## 6. Suggested build order
+## 6. Build plan (redesigned 31 Oct 2026)
 
-1. **Accounts and transactions data model,** plus Alembic migration. Remember that local dev points at the prod Neon DB, so be careful with migrations.
-2. **CommBank CSV import.**
-3. **Pay-cycle detection and own-account transfer matching.**
-4. **Pay-cycle view (MVP screen).**
-5. **Afterpay/PayPal ↔ Gmail receipt matching,** including instalments.
-6. **Agent tools,** plus the unknowns → questions → saved rules loop.
-7. **Goals/pots and "committed before next pay".**
-8. **Payday check-in and alerts.**
+The first question to answer is now **"how much can I safely spend until payday?"** Neither a bank app (balance only) nor a subscription tracker (commitments only) answers it. Statement import makes the answer automatic, but is no longer a prerequisite.
 
-### Progress (30 Oct 2026)
+| Phase | Build | Done when |
+|---|---|---|
+| 1. Money engine | `safe_to_spend()` and `can_i_afford()` from a manual balance, payday, tracked payments and a buffer | Tests cover shortfalls, stale balances, missing FX and bills due on payday |
+| 2. Home screen | Daily number first, one-tap breakdown, balance date | The owner uses it for real spending decisions |
+| 3. Automatic Gmail scanning | First scan on connect, then daily incremental scans from a cron job | Findings reach Review without a prompt, and failed runs lose no emails |
+| 4. Assistant tools | Engine tools on the agent, with tracing, cost and latency per request | The assistant answers the eating-out question using engine numbers |
+| 5. Evals and guardrails | Tests for number accuracy, tool choice, the advice boundary and confirmations, run in CI | Evals report a score, and regressions fail CI |
+| 6. CommBank import | CSV import, own-account transfer matching, pay-cycle detection | A statement updates balance and pay in under a minute |
+| 7. "Where did my pay go?" | Pay-cycle screen with sources and stated gaps | It reproduces the real October answer (section 7) |
+| 8. Middlemen and rules | Afterpay/PayPal ↔ Gmail receipts, including instalments; unknowns become saved rules | The owner's real cycle needs fewer questions each time |
+| 9. Plans and context | Saved plans that recalculate, goals, editable preferences | "I'll spend $60 Friday" updates the daily number |
+| 10. MCP and alerts | MCP layer over the tools, payday check-in, early warnings; optional Gmail push | An external MCP client gets the same numbers, and alerts fire correctly |
+| 11. Launch and proof | Ship to about 20 students, track usage, README with metrics and diagrams | Real usage numbers exist |
+
+Use phases 1–2 for about two weeks before finalising phase 9.
+
+### Automatic Gmail scanning decisions
+
+- **First connect** scans about 3 months back. **Later scans** run daily and read only email since the last successful scan, which moves forward only on success.
+- **No silent money changes.** New subscriptions and price changes go to Review until evals justify auto-applying high-confidence findings.
+- **Gmail push is optional, added later.** It only triggers the same pipeline sooner; notifications carry no email content. The daily scan stays as its safety net.
+- **Consent.** Automatic scanning is stated at connect time and on the privacy page, and users can turn it off.
+- **Launch blocker.** The Google OAuth app is in Testing (31 Oct 2026), so refresh tokens expire after 7 days and only listed test users can connect. Complete restricted-scope verification before phase 11.
+
+### Progress (31 Oct 2026)
 
 Done:
 - **Safety and boundary:** migrations refuse remote databases outside production unless the host is in `MIGRATION_ALLOWED_HOST`. Tests are forced onto SQLite. The assistant's advice boundary matches section 2.
-- **Step 1, data model:** seven ledger tables and migration `0015_pay_cycle_ledger`, included in account export and deletion.
+- **Ledger data model:** seven ledger tables and migration `0015_pay_cycle_ledger`, included in account export and deletion.
 
-Next: **step 2, CommBank CSV import.** Check the parser against the column layout of a real export. Real statements never go in the repo or test fixtures.
+Next: **phase 1, money engine.** For phase 6, check the parser against the column layout of a real export. Real statements never go in the repo or test fixtures.
 
 Local dev should use a Neon dev branch, not prod.
 
