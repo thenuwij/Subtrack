@@ -137,8 +137,10 @@ Use phases 1–2 for about two weeks before finalising phase 9.
 Done:
 - **Safety and boundary:** migrations refuse remote databases outside production unless the host is in `MIGRATION_ALLOWED_HOST`. Tests are forced onto SQLite. The assistant's advice boundary matches section 2.
 - **Ledger data model:** seven ledger tables and migration `0015_pay_cycle_ledger`, included in account export and deletion.
+- **Phase 1, money engine:** safe-to-spend and can-I-afford, with migration `0016_safe_to_spend_profiles`.
+- **Phase 2, home screen:** the daily number and breakdown on the dashboard, and the browser timezone saved to preferences.
 
-Next: **phase 1, money engine.** For phase 6, check the parser against the column layout of a real export. Real statements never go in the repo or test fixtures.
+Next: **two weeks of real use by the owner, then phase 3.** For phase 6, check the parser against the column layout of a real export. Real statements never go in the repo or test fixtures.
 
 Local dev should use a Neon dev branch, not prod.
 

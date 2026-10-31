@@ -47,6 +47,7 @@ import {
   monthlyEquivalentNative,
   yearlyEquivalentNative,
 } from '@/lib/utils/recurrence'
+import { SafeToSpendCard } from '@/components/dashboard/SafeToSpendCard'
 import { UpcomingCharges } from '@/components/dashboard/UpcomingCharges'
 import { NeedsAttention } from '@/components/dashboard/NeedsAttention'
 import { GettingStarted } from '@/components/onboarding/GettingStarted'
@@ -293,6 +294,8 @@ export default function DashboardPage() {
           </div>
         )}
 
+        <SafeToSpendCard />
+
         {/* ── Hero ────────────────────────────────────────────────────────
             No card, no border, no icon chip. One number, given the room to
             be the thing you look at first. */}
@@ -309,7 +312,7 @@ export default function DashboardPage() {
             </Link>
           </div>
 
-          <p className="mt-2 text-5xl font-semibold tracking-tight tabular-nums text-foreground sm:text-6xl">
+          <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-foreground sm:text-4xl">
             {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(monthlyTotal, baseCurrency)}
           </p>
 

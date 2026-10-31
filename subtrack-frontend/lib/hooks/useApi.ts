@@ -11,6 +11,7 @@ export const apiKeys = {
   forecast: (days: number) => `forecast:${days}`,
   reminders: (horizonDays: number) => `reminders:${horizonDays}`,
   preferences: 'preferences',
+  safeToSpend: 'safe-to-spend',
   duplicates: 'duplicates',
   agentThreads: 'agent-threads',
 } as const
