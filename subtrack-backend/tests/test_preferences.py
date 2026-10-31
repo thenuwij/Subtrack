@@ -45,6 +45,17 @@ class PreferenceContractTests(unittest.TestCase):
         self.assertIsNone(result["monthly_income"])
         self.assertEqual(get_preferences("other", self.db)["monthly_income"], 9000)
 
+    def test_timezone_can_be_saved_and_must_be_known(self):
+        result = update_preferences(
+            PreferenceUpdate(timezone="Australia/Sydney"), user_id="owner", db=self.db,
+        )
+
+        self.assertEqual(result["timezone"], "Australia/Sydney")
+        with self.assertRaises(HTTPException) as caught:
+            update_preferences(PreferenceUpdate(timezone="Mars/Base"), user_id="owner", db=self.db)
+        self.assertEqual(caught.exception.status_code, 422)
+        self.assertEqual(get_preferences("owner", self.db)["timezone"], "Australia/Sydney")
+
     def test_onboarding_defaults_to_incomplete_and_can_be_completed_or_replayed(self):
         self.assertFalse(get_preferences("new-user", self.db)["onboarding_completed"])
 

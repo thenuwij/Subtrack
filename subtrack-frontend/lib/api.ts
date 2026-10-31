@@ -9,6 +9,8 @@ import type {
   RecurrenceUnit,
   Rates,
   ReminderInput,
+  SafeToSpend,
+  SafeToSpendProfileInput,
   Subscription,
   SubscriptionForecast,
   SubscriptionInput,
@@ -588,10 +590,24 @@ export async function getPreferences(token: string) {
 // Send only the fields you want to change — omitted fields are left untouched.
 export async function updatePreferences(
   token: string,
-  data: { base_currency?: string; monthly_income?: number | null; onboarding_completed?: boolean }
+  data: { base_currency?: string; monthly_income?: number | null; onboarding_completed?: boolean; timezone?: string }
 ): Promise<Preferences> {
   return request('/preferences', token, {
     method: 'PATCH',
+    body: JSON.stringify(data),
+  })
+}
+
+export async function getSafeToSpend(token: string): Promise<SafeToSpend> {
+  return request('/safe-to-spend', token)
+}
+
+export async function saveSafeToSpendProfile(
+  token: string,
+  data: SafeToSpendProfileInput,
+): Promise<SafeToSpend> {
+  return request('/safe-to-spend/profile', token, {
+    method: 'PUT',
     body: JSON.stringify(data),
   })
 }

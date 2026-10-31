@@ -2,6 +2,7 @@ import logging
 import math
 from datetime import datetime, timezone
 from typing import Literal
+from zoneinfo import available_timezones
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,6 +23,7 @@ class PreferenceUpdate(BaseModel):
     base_currency: Literal["AUD", "USD", "GBP", "SGD", "EUR", "JPY"] | None = None
     monthly_income: float | None = Field(default=None, ge=0)
     onboarding_completed: bool | None = None
+    timezone: str | None = Field(default=None, max_length=64)
 
 @router.get("")
 def get_preferences(user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
@@ -47,6 +49,9 @@ def update_preferences(
     user_id: str = Depends(verify_token),
     db: Session = Depends(get_db)
 ):
+    if body.timezone is not None and body.timezone not in available_timezones():
+        raise HTTPException(status_code=422, detail="Unknown timezone.")
+
     pref = db.query(UserPreference).filter(UserPreference.user_id == user_id).first()
     if not pref:
         pref = UserPreference(user_id=user_id)
@@ -90,6 +95,8 @@ def update_preferences(
         pref.base_currency = new_base
     if "monthly_income" in body.model_fields_set:
         pref.monthly_income = body.monthly_income
+    if body.timezone is not None:
+        pref.timezone = body.timezone
     if body.onboarding_completed is True and pref.onboarding_completed_at is None:
         pref.onboarding_completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     elif body.onboarding_completed is False:

@@ -279,3 +279,32 @@ export interface SubscriptionForecast {
     warning: string | null
   }
 }
+
+export type PayIntervalUnit = 'week' | 'month'
+
+export interface SafeToSpendProfileInput {
+  balance: number
+  currency: Currency
+  next_payday: string
+  pay_interval_unit: PayIntervalUnit
+  pay_interval_count: number
+  buffer: number
+}
+
+export interface SafeToSpend {
+  status: 'needs_setup' | 'ready' | 'balance_outdated' | 'incomplete'
+  scope: string
+  safe_to_spend: number | null
+  per_day?: number | null
+  shortfall?: number | null
+  next_payday?: string
+  days_until_payday?: number
+  balance_date?: string
+  base_currency?: Currency
+  balance?: number
+  buffer?: number
+  committed?: number
+  commitments?: { name: string; due_at: string; amount: number; is_estimate: boolean }[]
+  profile?: Omit<SafeToSpendProfileInput, 'next_payday'>
+  warnings?: string[]
+}
