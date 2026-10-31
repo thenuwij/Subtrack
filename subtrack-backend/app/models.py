@@ -797,3 +797,29 @@ class MoneyGoal(Base):
     target_date = Column(Date, nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class SafeToSpendProfile(Base):
+    __tablename__ = "safe_to_spend_profiles"
+    __table_args__ = (
+        CheckConstraint(
+            "pay_interval_unit IN ('week', 'month')",
+            name="ck_safe_to_spend_pay_unit",
+        ),
+        CheckConstraint(
+            "pay_interval_count >= 1 AND pay_interval_count <= 12",
+            name="ck_safe_to_spend_pay_count",
+        ),
+        CheckConstraint("buffer >= 0", name="ck_safe_to_spend_buffer"),
+    )
+
+    user_id = Column(String, primary_key=True)
+    balance = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(3), nullable=False, default="AUD")
+    balance_as_of = Column(DateTime, nullable=False)
+    pay_anchor_on = Column(Date, nullable=False)
+    pay_interval_unit = Column(String(12), nullable=False)
+    pay_interval_count = Column(Integer, nullable=False)
+    buffer = Column(Numeric(12, 2), nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
