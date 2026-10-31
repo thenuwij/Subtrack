@@ -23,6 +23,7 @@ from app.routers import (
     preferences,
     rates,
     reminders,
+    safe_to_spend,
     subscriptions,
 )
 from app.routers.meta import release_metadata
@@ -72,6 +73,7 @@ app.include_router(agent.router)
 app.include_router(gmail.router)
 app.include_router(detected.router)
 app.include_router(reminders.router)
+app.include_router(safe_to_spend.router)
 app.include_router(meta.router)
 app.include_router(demo.router)
 
