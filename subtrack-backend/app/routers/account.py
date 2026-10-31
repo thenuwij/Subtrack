@@ -35,6 +35,7 @@ from app.models import (
     MoneyGoal,
     MoneyRule,
     PaymentReminder,
+    SafeToSpendProfile,
     StatementImport,
     Subscription,
     SubscriptionChange,
@@ -233,6 +234,16 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ),
         ("created_at", "id"),
     ),
+    ExportResource(
+        "safe_to_spend_profile",
+        SafeToSpendProfile,
+        (
+            "balance", "currency", "balance_as_of", "pay_anchor_on",
+            "pay_interval_unit", "pay_interval_count", "buffer",
+            "created_at", "updated_at",
+        ),
+        ("created_at",),
+    ),
 )
 
 
@@ -245,6 +256,7 @@ DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("gmail_receipts", GmailReceipt),
     ("bank_transactions", BankTransaction),
     ("statement_imports", StatementImport),
+    ("safe_to_spend_profile", SafeToSpendProfile),
     ("money_goals", MoneyGoal),
     ("money_rules", MoneyRule),
     ("bank_accounts", BankAccount),

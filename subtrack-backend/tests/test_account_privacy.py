@@ -36,6 +36,7 @@ from app.models import (
     MoneyGoal,
     MoneyRule,
     PaymentReminder,
+    SafeToSpendProfile,
     StatementImport,
     Subscription,
     SubscriptionChange,
@@ -222,6 +223,16 @@ class AccountPrivacyTests(unittest.TestCase):
         )
         money_rule = MoneyRule(user_id=user_id, match_text="J SMITH", kind="bill")
         money_goal = MoneyGoal(user_id=user_id, name="Trip", target_amount=1200)
+        safe_to_spend_profile = SafeToSpendProfile(
+            user_id=user_id,
+            balance=620,
+            currency="AUD",
+            balance_as_of=datetime(2026, 8, 5),
+            pay_anchor_on=date(2026, 8, 12),
+            pay_interval_unit="week",
+            pay_interval_count=2,
+            buffer=50,
+        )
         self.db.add_all(
             [
                 bank_account,
@@ -231,6 +242,7 @@ class AccountPrivacyTests(unittest.TestCase):
                 transaction_link,
                 money_rule,
                 money_goal,
+                safe_to_spend_profile,
                 subscription,
                 distinct_subscription,
                 duplicate_dismissal,
