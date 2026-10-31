@@ -31,10 +31,6 @@ def _local_date(value_utc: datetime, zone: ZoneInfo) -> date:
     return value_utc.replace(tzinfo=timezone.utc).astimezone(zone).date()
 
 
-def _utc_naive_at(day: date, at: time, zone: ZoneInfo) -> datetime:
-    return datetime.combine(day, at, zone).astimezone(timezone.utc).replace(tzinfo=None)
-
-
 def _midnight(day: date) -> datetime:
     return datetime.combine(day, time.min)
 
@@ -85,7 +81,14 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         "shortfall": None,
         "next_payday": next_payday.isoformat(),
         "days_until_payday": days_until_payday,
-        "balance_as_of": profile.balance_as_of.isoformat(),
+        "balance_date": balance_day.isoformat(),
+        "profile": {
+            "balance": float(profile.balance),
+            "currency": profile.currency,
+            "pay_interval_unit": profile.pay_interval_unit,
+            "pay_interval_count": profile.pay_interval_count,
+            "buffer": float(profile.buffer),
+        },
         "warnings": [],
         "scope": SCOPE_NOTE,
     }
@@ -98,8 +101,8 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         db,
         user_id,
         now=now,
-        start_at=_utc_naive_at(balance_day, time.min, zone),
-        end_at=_utc_naive_at(next_payday, time.max, zone),
+        start_at=_midnight(balance_day),
+        end_at=datetime.combine(next_payday, time.max),
     )
     currency = CurrencyContext.for_user(db, user_id)
     balance, balance_quality = currency.convert(float(profile.balance), profile.currency)

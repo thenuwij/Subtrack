@@ -92,6 +92,14 @@ class SafeToSpendTests(unittest.TestCase):
 
         self.assertEqual(result["committed"], 100.0)
 
+    def test_payday_bill_stored_at_noon_utc_counts_in_new_zealand(self):
+        self.db.get(UserPreference, "owner").timezone = "Pacific/Auckland"
+        self.add_profile()
+        self.add_payment("On payday", 100, datetime(2026, 11, 10, 12, 0))
+        self.add_payment("Day before balance", 100, datetime(2026, 11, 2, 12, 0), interval_unit="year", cycle=BillingCycle.yearly)
+
+        self.assertEqual(safe_to_spend(self.db, "owner", now=NOW)["committed"], 100.0)
+
     def test_payment_due_on_balance_date_counts_as_unpaid(self):
         self.add_profile()
         self.add_payment("Due today", 20, datetime(2026, 11, 3))
