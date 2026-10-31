@@ -69,7 +69,7 @@ class FlexibleCadenceMigrationTests(unittest.TestCase):
                     connection.execute(
                         "SELECT version_num FROM alembic_version"
                     ).fetchone(),
-                    ("0014_drop_legacy_tables",),
+                    ("0015_pay_cycle_ledger",),
                 )
                 message_indexes = {
                     row[1]
@@ -90,7 +90,7 @@ class FlexibleCadenceMigrationTests(unittest.TestCase):
                     connection.execute(
                         "SELECT version_num FROM alembic_version"
                     ).fetchone(),
-                    ("0014_drop_legacy_tables",),
+                    ("0015_pay_cycle_ledger",),
                 )
 
     def test_legacy_rows_backfill_and_survive_supported_downgrade(self):

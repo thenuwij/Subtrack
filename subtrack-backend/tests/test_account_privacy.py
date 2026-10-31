@@ -2,7 +2,7 @@ import hashlib
 import json
 import os
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 from uuid import uuid4
 
@@ -21,6 +21,8 @@ from app.models import (
     AgentMessage,
     AgentResearchCache,
     AgentThread,
+    BankAccount,
+    BankTransaction,
     BillingCycle,
     Category,
     ChangeKind,
@@ -30,9 +32,14 @@ from app.models import (
     ExchangeRateSnapshot,
     GmailAccount,
     GmailOAuthState,
+    GmailReceipt,
+    MoneyGoal,
+    MoneyRule,
     PaymentReminder,
+    StatementImport,
     Subscription,
     SubscriptionChange,
+    TransactionLink,
     UserPreference,
 )
 from app.routers import account, gmail
@@ -185,8 +192,45 @@ class AccountPrivacyTests(unittest.TestCase):
             result_json={"summary": f"{user_id} private research"},
             expires_at=now + timedelta(hours=6),
         )
+        bank_account = BankAccount(id=uuid4(), user_id=user_id, name="Everyday")
+        statement_import = StatementImport(
+            id=uuid4(), user_id=user_id, bank_account_id=bank_account.id,
+        )
+        bank_transaction = BankTransaction(
+            id=uuid4(),
+            user_id=user_id,
+            bank_account_id=bank_account.id,
+            statement_import_id=statement_import.id,
+            posted_on=date(2026, 8, 5),
+            amount=-42.5,
+            description=f"{user_id} private transaction",
+            dedupe_hash=f"{user_id}-hash",
+        )
+        gmail_receipt = GmailReceipt(
+            id=uuid4(),
+            user_id=user_id,
+            gmail_message_id=f"{user_id}-message",
+            intermediary="afterpay",
+            amount=42.5,
+            received_on=date(2026, 8, 5),
+        )
+        transaction_link = TransactionLink(
+            user_id=user_id,
+            link_type="intermediary",
+            transaction_id=bank_transaction.id,
+            gmail_receipt_id=gmail_receipt.id,
+        )
+        money_rule = MoneyRule(user_id=user_id, match_text="J SMITH", kind="bill")
+        money_goal = MoneyGoal(user_id=user_id, name="Trip", target_amount=1200)
         self.db.add_all(
             [
+                bank_account,
+                statement_import,
+                bank_transaction,
+                gmail_receipt,
+                transaction_link,
+                money_rule,
+                money_goal,
                 subscription,
                 distinct_subscription,
                 duplicate_dismissal,
