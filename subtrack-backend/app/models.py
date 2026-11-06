@@ -823,3 +823,28 @@ class SafeToSpendProfile(Base):
     buffer = Column(Numeric(12, 2), nullable=False, default=0)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class AiCallTrace(Base):
+    """Metrics for one Claude API call. Holds no user ID, prompt or reply."""
+
+    __tablename__ = "ai_call_traces"
+    __table_args__ = (Index("ix_ai_call_traces_created_at", "created_at"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    feature = Column(String(40), nullable=False)
+    model = Column(String(80), nullable=False)
+    run_id = Column(UUID(as_uuid=True), nullable=True)
+    step = Column(Integer, nullable=True)
+    input_tokens = Column(Integer, nullable=False, default=0)
+    output_tokens = Column(Integer, nullable=False, default=0)
+    cache_read_tokens = Column(Integer, nullable=False, default=0)
+    cache_write_tokens = Column(Integer, nullable=False, default=0)
+    web_searches = Column(Integer, nullable=False, default=0)
+    latency_ms = Column(Integer, nullable=False)
+    cost_usd = Column(Numeric(12, 6), nullable=False)
+    stop_reason = Column(String(40), nullable=True)
+    tool_names = Column(JSON, nullable=True)
+    tool_ms = Column(Integer, nullable=True)
+    error_code = Column(String(80), nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())

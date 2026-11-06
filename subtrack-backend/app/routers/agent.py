@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Generator, Literal, Optional
 from urllib.parse import urlparse
@@ -24,6 +25,7 @@ from app.config import settings
 from app.database import get_db
 from app.middleware.auth import is_demo_user, verify_token
 from app.models import AgentAction, AgentMessage, AgentThread, Category
+from app.services.ai_tracing import elapsed_ms, record_call
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 # The SDK default is ten minutes per request, which can strand a streaming
@@ -34,6 +36,9 @@ client = anthropic.Anthropic(
     max_retries=1,
 )
 logger = logging.getLogger(__name__)
+
+AGENT_MODEL = "claude-haiku-4-5"
+AGENT_FEATURE = "assistant"
 
 MAX_AGENT_STEPS = 8
 MAX_CONTEXT_MESSAGES = 60
@@ -348,6 +353,31 @@ def _mark_failed(db: Session, message_id: UUID, code: str) -> None:
         db.commit()
 
 
+def _stream_step(
+    messages: list[dict],
+    page_context: Optional[dict],
+    accumulated_text: list[str],
+    separate_step: bool,
+) -> Generator[str, None, anthropic.types.Message]:
+    """Stream one model step to the client and return the final message."""
+    with client.messages.stream(
+        model=AGENT_MODEL,
+        max_tokens=1_500,
+        system=_system_prompt(page_context),
+        tools=TOOL_DEFINITIONS,
+        messages=messages,
+        cache_control={"type": "ephemeral"},
+    ) as stream:
+        for text in stream.text_stream:
+            if separate_step:
+                separate_step = False
+                accumulated_text.append("\n\n")
+                yield _sse("delta", {"text": "\n\n"})
+            accumulated_text.append(text)
+            yield _sse("delta", {"text": text})
+        return stream.get_final_message()
+
+
 def _stream_reply(
     db: Session,
     thread_id: UUID,
@@ -370,35 +400,29 @@ def _stream_reply(
         ).first() if assistant and assistant.reply_to_id else None
         page_context = source.context_json if source else None
 
-        for _ in range(MAX_AGENT_STEPS):
+        run_id = uuid4()
+        for step in range(MAX_AGENT_STEPS):
             # A model response can take more than a minute. End any read-only
             # transaction before waiting on Anthropic so a streaming request
             # does not reserve one of Render's limited database connections.
             db.commit()
             separate_step = bool("".join(accumulated_text).strip())
-            with client.messages.stream(
-                model="claude-haiku-4-5",
-                max_tokens=1_500,
-                system=_system_prompt(page_context),
-                tools=TOOL_DEFINITIONS,
-                messages=messages,
-                cache_control={"type": "ephemeral"},
-            ) as stream:
-                for text in stream.text_stream:
-                    if separate_step:
-                        separate_step = False
-                        accumulated_text.append("\n\n")
-                        yield _sse("delta", {"text": "\n\n"})
-                    accumulated_text.append(text)
-                    yield _sse("delta", {"text": text})
-                response = stream.get_final_message()
-            logger.info(
-                "Agent step tokens: input=%s cache_read=%s cache_write=%s output=%s",
-                response.usage.input_tokens,
-                response.usage.cache_read_input_tokens,
-                response.usage.cache_creation_input_tokens,
-                response.usage.output_tokens,
-            )
+            started = time.perf_counter()
+            try:
+                response = yield from _stream_step(
+                    messages, page_context, accumulated_text, separate_step
+                )
+            except Exception as exc:
+                record_call(
+                    AGENT_FEATURE, AGENT_MODEL, None, elapsed_ms(started),
+                    run_id=run_id, step=step, error_code=type(exc).__name__,
+                )
+                raise
+            model_ms = elapsed_ms(started)
+            if response.stop_reason != "tool_use":
+                record_call(
+                    AGENT_FEATURE, AGENT_MODEL, response, model_ms, run_id=run_id, step=step
+                )
 
             if response.stop_reason == "end_turn":
                 streamed_text = "".join(accumulated_text).strip()
@@ -447,10 +471,13 @@ def _stream_reply(
 
             messages.append({"role": "assistant", "content": response.content})
             tool_results = []
+            tool_names = []
+            tools_started = time.perf_counter()
             for block in response.content:
                 if block.type != "tool_use":
                     continue
                 yield _sse("status", {"state": "using_tool", "tool": block.name})
+                tool_names.append(block.name)
                 try:
                     result = run_tool(
                         block.name,
@@ -482,6 +509,11 @@ def _stream_reply(
                     "content": content,
                     "is_error": is_error,
                 })
+            record_call(
+                AGENT_FEATURE, AGENT_MODEL, response, model_ms,
+                run_id=run_id, step=step, tool_names=tool_names,
+                tool_ms=elapsed_ms(tools_started),
+            )
             messages.append({"role": "user", "content": tool_results})
 
         raise RuntimeError("Agent exceeded its maximum number of steps")

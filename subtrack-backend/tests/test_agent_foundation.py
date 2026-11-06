@@ -303,7 +303,9 @@ class AgentFoundationTests(unittest.TestCase):
         with patch.object(
             agent_router.client.messages, "stream",
             side_effect=lambda **kwargs: requests.append(kwargs) or FakeStream(*next(steps)),
-        ), patch.object(agent_router, "run_tool", return_value={}):
+        ), patch.object(agent_router, "run_tool", return_value={}), patch.object(
+            agent_router, "record_call"
+        ) as record:
             events = list(_stream_reply(db, thread.id, answer.id, "user-1"))
 
         streamed = "".join(
@@ -319,6 +321,12 @@ class AgentFoundationTests(unittest.TestCase):
             self.assertEqual(request["cache_control"], {"type": "ephemeral"})
             self.assertEqual(request["system"][0]["cache_control"], {"type": "ephemeral"})
         self.assertEqual(requests[0]["system"], requests[1]["system"])
+        traces = [call.kwargs for call in record.call_args_list]
+        self.assertEqual([trace["step"] for trace in traces], [0, 1])
+        self.assertEqual(traces[0]["tool_names"], ["get_financial_overview"])
+        self.assertIsNotNone(traces[0]["tool_ms"])
+        self.assertNotIn("tool_names", traces[1])
+        self.assertEqual(traces[0]["run_id"], traces[1]["run_id"])
         db.close()
 
     def test_cached_system_rules_do_not_vary_with_context(self):

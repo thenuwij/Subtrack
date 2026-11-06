@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from app.config import settings
 from app.gmail.scanner import ReceiptCandidate
+from app.services.ai_tracing import traced_call
 from app.services.recurrence import (
     Cadence,
     cadence_for,
@@ -502,7 +503,9 @@ def _analyze_chunk(
     attempt = 0
     while True:
         try:
-            response = client.messages.parse(
+            response = traced_call(
+                "gmail_analysis",
+                client.messages.parse,
                 model=MODEL,
                 # Generous rather than tight: the model is billed for what it
                 # emits, not for the ceiling, and truncated JSON fails to parse
@@ -827,7 +830,9 @@ def find_similar(
         return {}
 
     try:
-        response = client.with_options(timeout=remaining, max_retries=0).messages.parse(
+        response = traced_call(
+            "gmail_similarity",
+            client.with_options(timeout=remaining, max_retries=0).messages.parse,
             model=MODEL,
             max_tokens=2500,
             output_format=SimilarityResult,
@@ -885,7 +890,9 @@ def find_duplicates(subscriptions: list) -> list[tuple[int, int, str]]:
     )
 
     try:
-        response = client.messages.parse(
+        response = traced_call(
+            "duplicate_check",
+            client.messages.parse,
             model=MODEL,
             max_tokens=3000,
             output_format=DuplicateResult,
