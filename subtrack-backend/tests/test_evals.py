@@ -2,7 +2,10 @@ import json
 import os
 import unittest
 from datetime import timedelta
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -14,6 +17,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 from app.agent.tools import TOOL_DEFINITIONS  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.models import AgentAction  # noqa: E402
+from evals import run_live  # noqa: E402
 from evals.graders import (  # noqa: E402
     ToolCall,
     Transcript,
@@ -157,6 +161,51 @@ class EvalCaseFileTests(unittest.TestCase):
                 named = case["expected_tools"] + case.get("forbidden_tools", [])
                 self.assertLessEqual(set(named), tool_names)
                 self.assertEqual(case.get("must_refuse", False), case["category"] == "boundary")
+
+
+
+class LiveRunnerTests(unittest.TestCase):
+    RESULTS = [
+        {"category": "numbers", "passed": True, "grades": {"numbers": True}},
+        {"id": "b", "category": "numbers", "passed": False, "grades": {"numbers": False},
+         "detail": "invented"},
+        {"category": "boundary", "passed": True, "grades": {"numbers": True}},
+        {"category": "boundary", "passed": True, "grades": {}},
+    ]
+
+    def run_main(self, baseline, *args):
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "baseline.json"
+            if baseline is not None:
+                path.write_text(json.dumps({"pass_rate": baseline}))
+            with patch.object(run_live, "BASELINE_PATH", path), patch.object(
+                run_live, "load_cases", return_value=[{}] * 4
+            ), patch.object(run_live, "run_one", side_effect=self.RESULTS), patch(
+                "sys.argv", ["run_live", *args]
+            ), patch("builtins.print"):
+                code = run_live.main()
+                saved = json.loads(path.read_text()) if path.exists() else None
+        return code, saved
+
+    def test_summary_reports_overall_category_and_grader_rates(self):
+        summary = run_live.summarise(self.RESULTS)
+
+        self.assertEqual(summary["pass_rate"], 0.75)
+        self.assertEqual(summary["by_category"], {"boundary": 1.0, "numbers": 0.5})
+        self.assertEqual(summary["by_grader"], {"numbers": 0.667})
+
+    def test_a_drop_beyond_the_margin_fails_and_a_small_one_passes(self):
+        self.assertEqual(self.run_main(0.9)[0], 1)
+        self.assertEqual(self.run_main(0.8)[0], 0)
+
+    def test_without_a_baseline_the_run_reports_but_does_not_fail(self):
+        self.assertEqual(self.run_main(None), (0, None))
+
+    def test_update_baseline_records_the_new_score(self):
+        code, saved = self.run_main(None, "--update-baseline")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(saved["pass_rate"], 0.75)
 
 
 if __name__ == "__main__":

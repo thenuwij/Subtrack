@@ -158,12 +158,15 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
 
 def can_i_afford(db: Session, user_id: str, amount: Decimal, *, now: datetime | None = None) -> dict:
     position = safe_to_spend(db, user_id, now=now)
-    answer = {**position, "amount": float(amount), "affordable": None, "left_after": None}
+    answer = {
+        **position, "amount": float(amount), "affordable": None, "left_after": None, "short_by": None,
+    }
     if position["safe_to_spend"] is None:
         return answer
     left = _to_decimal(position["safe_to_spend"]) - amount
     answer["affordable"] = left >= 0
     answer["left_after"] = float(max(left, Decimal("0")))
+    answer["short_by"] = float(max(-left, Decimal("0")))
     answer["per_day_after"] = float(
         (max(left, Decimal("0")) / position["days_until_payday"]).quantize(CENTS, rounding=ROUND_DOWN)
     )

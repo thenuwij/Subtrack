@@ -197,15 +197,18 @@ READ_TOOL_DEFINITIONS = [
             "Get how much the user can safely spend until their next payday, from their saved "
             "balance, payday, buffer and tracked payments due before then. Returns the amount, "
             "per-day amount, any shortfall, the commitments counted and warnings. "
-            "A status other than ready means no safe amount can be given."
+            "A status other than ready means no safe amount can be given. "
+            "For a specific purchase amount, use check_can_i_afford instead."
         ),
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "check_can_i_afford",
         "description": (
+            "Always use this when the user names a purchase amount. "
             "Check whether a one-off purchase fits within the user's safe-to-spend amount "
-            "until payday, and what would be left overall and per day afterwards. "
+            "until payday, what would be left overall and per day afterwards, "
+            "and how much short the user would be if it doesn't fit. "
             "The amount is in the user's base currency."
         ),
         "input_schema": {
