@@ -1,8 +1,10 @@
 import os
 import unittest
+from datetime import datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 from sqlalchemy import create_engine
 from sqlalchemy.exc import OperationalError
@@ -18,9 +20,11 @@ from app.services.ai_tracing import (  # noqa: E402
     call_cost,
     record_call,
     traced_call,
+    usage_summary,
 )
 
 MODEL = "claude-haiku-4-5"
+NOW = datetime(2026, 11, 6, 9, 0)
 
 
 def fake_response(**usage):
@@ -108,6 +112,43 @@ class AiTracingTests(unittest.TestCase):
         [trace] = self.traces()
         self.assertEqual(trace.input_tokens, 0)
         self.assertIsNone(trace.stop_reason)
+
+    def test_summary_reports_percentiles_errors_and_cost_per_request(self):
+        first_run, second_run = uuid4(), uuid4()
+        rows = [
+            ("assistant", first_run, 100, 50, None, "0.002"),
+            ("assistant", first_run, 300, None, None, "0.004"),
+            ("assistant", second_run, 200, None, "APIError", "0"),
+            ("gmail_analysis", None, 1_000, None, None, "0.010"),
+            ("gmail_analysis", None, 3_000, None, None, "0.030"),
+        ]
+        with self.Session() as db:
+            for feature, run_id, latency, tool_ms, error, cost in rows:
+                db.add(AiCallTrace(
+                    feature=feature, model=MODEL, run_id=run_id, latency_ms=latency,
+                    tool_ms=tool_ms, error_code=error, cost_usd=Decimal(cost),
+                    input_tokens=0, output_tokens=0, cache_read_tokens=0,
+                    cache_write_tokens=0, web_searches=0, created_at=NOW,
+                ))
+            db.add(AiCallTrace(
+                feature="assistant", model=MODEL, latency_ms=9_999, cost_usd=Decimal(1),
+                input_tokens=0, output_tokens=0, cache_read_tokens=0,
+                cache_write_tokens=0, web_searches=0, created_at=NOW - timedelta(days=30),
+            ))
+            db.commit()
+
+            summary = usage_summary(db, NOW - timedelta(days=7))
+
+        assistant = summary["assistant"]
+        self.assertEqual(assistant["calls"], 3)
+        self.assertAlmostEqual(assistant["error_rate"], 1 / 3)
+        self.assertEqual((assistant["p50_ms"], assistant["p95_ms"]), (200, 300))
+        self.assertEqual(assistant["requests"], 2)
+        self.assertEqual(assistant["request_p95_ms"], 450)
+        self.assertEqual(assistant["cost_per_request_usd"], Decimal("0.003"))
+        gmail = summary["gmail_analysis"]
+        self.assertEqual(gmail["cost_usd"], Decimal("0.040"))
+        self.assertNotIn("requests", gmail)
 
 
 if __name__ == "__main__":
