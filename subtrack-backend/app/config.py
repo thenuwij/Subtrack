@@ -86,6 +86,11 @@ def assert_safe_migration_target(
     )
 
 
+# Every Claude call uses the cheapest current model at low effort. Haiku 5.5
+# thinks by default and thinking counts toward max_tokens, so caps leave room.
+CLAUDE_MODEL = "claude-haiku-5-5"
+CLAUDE_EFFORT = {"effort": "low"}
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", allow_inf_nan=False)
 

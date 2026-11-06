@@ -20,7 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import CLAUDE_EFFORT, CLAUDE_MODEL, settings
 from app.gmail.redaction import redact
 from app.models import AgentResearchCache, Category, Subscription
 from app.services.ai_tracing import traced_call
@@ -238,8 +238,9 @@ Rules:
         response = traced_call(
             "alternative_research",
             client.messages.create,
-            model="claude-haiku-4-5",
-            max_tokens=1_800,
+            model=CLAUDE_MODEL,
+            max_tokens=4_000,
+            output_config=CLAUDE_EFFORT,
             system=system,
             tools=[WEB_SEARCH_TOOL],
             messages=messages,
