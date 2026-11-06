@@ -586,7 +586,24 @@ def analyze_bounded(
 
     Raises AnalysisFailed when every batch errored.
     """
-    groups = _group_by_domain(candidates)
+    from app.gmail.rules import detect as detect_by_rules
+
+    all_groups = _group_by_domain(candidates)
+    # Clear repeat charges are decided by rules for free; only the rest
+    # (unclear senders, trials, cancellations, odd gaps) cost an AI call.
+    rule_found: list[DetectedSubscription] = []
+    groups: dict[str, list[ReceiptCandidate]] = {}
+    for domain, emails in all_groups.items():
+        finding = detect_by_rules(domain, emails)
+        if finding is not None:
+            rule_found.append(finding)
+        else:
+            groups[domain] = emails
+    if rule_found:
+        logger.info("Rules matched %d of %d sender(s) without AI", len(rule_found), len(all_groups))
+        if on_batch is not None:
+            on_batch(rule_found)
+
     domains = [
         domain for domain, _ in sorted(
             groups.items(),
@@ -596,9 +613,11 @@ def analyze_bounded(
     ]
     chunks = [domains[i:i + GROUPS_PER_CALL] for i in range(0, len(domains), GROUPS_PER_CALL)]
     if not chunks:
-        return AnalysisOutcome([], 0, 0, len(groups), 0, False, False)
+        return AnalysisOutcome(
+            rule_found, len(rule_found), len(rule_found), len(all_groups), 0, False, False,
+        )
 
-    results: list[DetectedSubscription] = []
+    results: list[DetectedSubscription] = list(rule_found)
     failed = 0
     succeeded = 0
     processed_domains = 0
@@ -656,9 +675,9 @@ def analyze_bounded(
 
     return AnalysisOutcome(
         subscriptions=_dedupe(results),
-        processed_domains=processed_domains,
-        selected_domains=len(domains),
-        total_domains=len(groups),
+        processed_domains=processed_domains + len(rule_found),
+        selected_domains=len(domains) + len(rule_found),
+        total_domains=len(all_groups),
         failed_batches=failed,
         truncated=timed_out or failed > 0 or len(domains) < len(groups),
         timed_out=timed_out,
