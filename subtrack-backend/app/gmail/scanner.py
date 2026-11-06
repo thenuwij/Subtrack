@@ -255,7 +255,9 @@ def _to_candidate(message: dict) -> ReceiptCandidate:
 
 # Gmail allows 100 requests per batch, but rejects that many concurrent reads
 # for one user with 429s. 25 keeps the speedup without tripping the limit.
-BATCH_SIZE = 25
+# Full messages are large; smaller batches keep each request well under the
+# HTTP timeout on a slow connection.
+BATCH_SIZE = 10
 MAX_RETRIES = 2
 
 
@@ -290,7 +292,14 @@ def _fetch_batch(service, message_ids: list[str]) -> tuple[list[ReceiptCandidate
             service.users().messages().get(userId="me", id=message_id, format="full"),
             request_id=message_id,
         )
-    batch.execute()
+    try:
+        batch.execute()
+    except (TimeoutError, OSError, httplib2.HttpLib2Error) as exc:
+        # A slow or dropped connection loses the whole round-trip, not the
+        # messages. Retry everything not yet fetched instead of failing the scan.
+        logger.warning("Gmail batch request failed (%s); retrying it", type(exc).__name__)
+        done = {candidate.message_id for candidate in fetched}
+        retry = [message_id for message_id in message_ids if message_id not in done]
 
     return fetched, retry
 
@@ -337,6 +346,9 @@ def _fetch_all(
 
     if pending:
         logger.warning("Gave up on %d messages after %d retries", len(pending), MAX_RETRIES)
+        # Report it as incomplete, so the daily-scan cursor doesn't move past
+        # emails that were never read.
+        timed_out = True
 
     return candidates, timed_out
 

@@ -139,3 +139,56 @@ class AnalyzerUsesRulesFirst(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GmailFetchTimeoutTests(unittest.TestCase):
+    """A slow Gmail batch is retried; it must not fail the whole scan."""
+
+    def _service(self, outcomes):
+        from unittest import mock
+        calls = {"n": 0}
+
+        def new_batch(callback):
+            batch = mock.Mock()
+            added = []
+            batch.add.side_effect = lambda request, request_id: added.append(request_id)
+
+            def execute():
+                outcome = outcomes[min(calls["n"], len(outcomes) - 1)]
+                calls["n"] += 1
+                if outcome == "timeout":
+                    raise TimeoutError("The read operation timed out")
+                for message_id in added:
+                    callback(message_id, {"id": message_id}, None)
+            batch.execute.side_effect = execute
+            return batch
+
+        service = mock.Mock()
+        service.new_batch_http_request.side_effect = new_batch
+        return service, calls
+
+    def _fetch(self, outcomes):
+        from unittest import mock
+
+        import app.gmail.scanner as scanner
+        service, calls = self._service(outcomes)
+        with mock.patch.object(scanner, "_to_candidate", side_effect=_with_id), \
+                mock.patch.object(scanner.time, "sleep"):
+            return scanner._fetch_all(service, [f"m{i}" for i in range(3)]), calls
+
+    def test_timeout_is_retried_and_scan_continues(self):
+        (candidates, incomplete), calls = self._fetch(["timeout", "ok"])
+        self.assertEqual(len(candidates), 3)
+        self.assertFalse(incomplete)
+        self.assertEqual(calls["n"], 2)
+
+    def test_repeated_timeouts_report_incomplete_instead_of_crashing(self):
+        (candidates, incomplete), _ = self._fetch(["timeout"])
+        self.assertEqual(candidates, [])
+        self.assertTrue(incomplete)
+
+
+def _with_id(response):
+    candidate = receipt("x.com", "2026-10-01", 1.0)
+    candidate.message_id = response["id"]
+    return candidate
