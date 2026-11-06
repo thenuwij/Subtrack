@@ -118,6 +118,8 @@ def run_case(db: Session, question: str, model: Callable[..., object] | None = N
             active.stop()
 
     db.refresh(reply)
+    if reply.status != "completed":
+        raise RuntimeError(f"assistant reply failed: {reply.error_code}")
     resolved = db.query(AgentAction).filter(
         AgentAction.user_id == EVAL_USER, AgentAction.status != "pending"
     ).count()
