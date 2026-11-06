@@ -515,7 +515,7 @@ export default function ReviewPage() {
         )}
 
         {isDemo ? (
-          <div className="rounded-2xl bg-card p-6 shadow-sm">
+          <div className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Mail className="h-5 w-5" />
@@ -529,7 +529,7 @@ export default function ReviewPage() {
             </div>
           </div>
         ) : gmail && !gmail.connected ? (
-          <div className="rounded-2xl bg-card p-6 shadow-sm">
+          <div className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Mail className="h-5 w-5" />
@@ -647,7 +647,7 @@ export default function ReviewPage() {
               return (
                 <div
                   key={item.id}
-                  className="rounded-2xl bg-card p-5 shadow-sm"
+                  className="rounded-2xl bg-card p-5 shadow-sm sm:p-6"
                 >
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 space-y-2">

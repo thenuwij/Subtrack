@@ -63,7 +63,7 @@ export function GettingStarted({ gmailConnected, hasPayments, hasIncome }: Getti
     <section className="rounded-2xl bg-card p-5 text-left shadow-sm sm:p-6" aria-labelledby="getting-started-heading">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 id="getting-started-heading" className="text-sm font-semibold text-foreground">Getting started</h2>
+          <h2 id="getting-started-heading" className="text-[17px] font-semibold text-foreground">Getting started</h2>
           <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
             {completed} of {items.length} done
           </p>

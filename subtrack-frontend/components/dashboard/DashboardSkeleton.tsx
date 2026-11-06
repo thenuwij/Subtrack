@@ -28,7 +28,7 @@ export function DashboardSkeleton() {
         <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start xl:gap-8">
         <div className="hidden space-y-6 xl:col-start-2 xl:row-start-1 xl:block">
           {[...Array(2)].map((_, i) => (
-            <div key={i} className="space-y-3 rounded-2xl bg-card p-5 shadow-sm">
+            <div key={i} className="space-y-3 rounded-2xl bg-card p-5 shadow-sm sm:p-6">
               <Bar className="h-5 w-36" />
               <Bar className="h-4 w-full" />
               <Bar className="h-4 w-3/4" />
@@ -38,7 +38,7 @@ export function DashboardSkeleton() {
 
         <div className="min-w-0 space-y-10 xl:col-start-1 xl:row-start-1 xl:space-y-8">
         {/* Breakdown */}
-        <div className="rounded-2xl bg-card p-6 shadow-sm">
+        <div className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
           <div className="flex items-center justify-between">
             <div className="space-y-2">
               <Bar className="h-5 w-48" />
@@ -60,7 +60,7 @@ export function DashboardSkeleton() {
         </div>
 
         {/* Changes */}
-        <div className="rounded-2xl bg-card p-6 shadow-sm">
+        <div className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
           <div className="space-y-2">
             <Bar className="h-5 w-36" />
             <Bar className="h-3.5 w-64" />

@@ -327,10 +327,10 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8">
+    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
 
-      <section className="flex flex-col gap-5 rounded-2xl bg-card p-6 shadow-sm sm:flex-row sm:items-center">
+      <section className="flex flex-col gap-5 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center">
         <UserAvatar
           name={currentUser.name}
           email={currentUser.email}
@@ -432,7 +432,7 @@ export default function AccountPage() {
       {gmail && (
         <div id="inbox" className="scroll-mt-6 rounded-2xl bg-card shadow-sm p-6 space-y-4">
           <div>
-            <h2 className="text-lg font-semibold">Email connection</h2>
+            <h2 className="text-[17px] font-semibold text-foreground">Email connection</h2>
           </div>
 
           {currentUser.isDemo ? (
@@ -668,10 +668,10 @@ function Section({
       className={
         tone === 'danger'
           ? 'rounded-2xl border border-destructive/30 bg-card p-6 shadow-sm'
-          : 'rounded-2xl bg-card p-6 shadow-sm'
+          : 'rounded-2xl bg-card p-5 shadow-sm sm:p-6'
       }
     >
-      <h2 className={tone === 'danger' ? 'text-lg font-semibold text-destructive' : 'text-lg font-semibold'}>
+      <h2 className={tone === 'danger' ? 'text-[17px] font-semibold text-destructive' : 'text-[17px] font-semibold text-foreground'}>
         {title}
       </h2>
       <div className="mt-2 divide-y divide-border">{children}</div>

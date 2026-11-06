@@ -395,7 +395,7 @@ export default function SubscriptionsPage() {
     if (loading || (missingDates === 0 && (ratesLoading || unconvertedCurrent === 0))) return null
     return (
       <section className={`rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 ${className}`}>
-        <h2 className="text-sm font-semibold text-foreground">Needs attention</h2>
+        <h2 className="text-[17px] font-semibold text-foreground">Needs attention</h2>
         <ul className="mt-1 space-y-1 text-xs leading-5 text-muted-foreground">
           {missingDates > 0 ? (
             <li>{missingDates} current payment{missingDates === 1 ? '' : 's'} need a next expected date for reminders and forecasts.</li>
@@ -411,12 +411,12 @@ export default function SubscriptionsPage() {
   // ─── render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-8 space-y-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-[1360px] space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Recurring payments</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
           {!loading && subscriptions.length > 0 && (
             <p className="text-sm text-muted-foreground mt-1 tabular-nums xl:hidden">
               {paid.length} paid{trials.length ? ` · ${trials.length} free trial${trials.length === 1 ? '' : 's'}` : ''} ·{' '}
@@ -619,7 +619,7 @@ export default function SubscriptionsPage() {
 
       {!loading && subscriptions.length > 0 ? (
         <aside className="hidden space-y-4 xl:sticky xl:top-8 xl:block xl:max-h-[calc(100vh-4rem)] xl:overflow-y-auto" aria-label="Payments summary">
-          <section className="rounded-2xl bg-card p-5 shadow-sm">
+          <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
             <p className="text-xs font-medium text-muted-foreground">
               {hasVariableAmounts ? 'Estimated monthly commitment' : 'Monthly commitment'}
             </p>
@@ -641,8 +641,8 @@ export default function SubscriptionsPage() {
           {renderAttention()}
 
           {categoryTotals.length > 0 && totalMonthly > 0 ? (
-            <section className="rounded-2xl bg-card p-5 shadow-sm">
-              <h2 className="text-sm font-semibold text-foreground">By category</h2>
+            <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
+              <h2 className="text-[17px] font-semibold text-foreground">By category</h2>
               <ul className="mt-3 space-y-1">
                 {categoryTotals.map(({ category, total }) => {
                   const share = (total / totalMonthly) * 100

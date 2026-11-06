@@ -60,7 +60,7 @@ export function ReminderCenter({ reminders, onDismiss }: ReminderCenterProps) {
         <div>
           <div className="flex items-center gap-2">
             <Bell className="h-4 w-4 text-primary" />
-            <h2 id="dashboard-reminders-title" className="text-sm font-semibold text-foreground">
+            <h2 id="dashboard-reminders-title" className="text-[17px] font-semibold text-foreground">
               Upcoming reminders
             </h2>
           </div>
