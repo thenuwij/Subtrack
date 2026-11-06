@@ -722,7 +722,7 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
                       min="0"
                       step="0.01"
                       placeholder="2.99"
-                      value={form.intro_amount}
+                      value={form.intro_amount ?? ''}
                       onChange={event => { setTrialTouched(true); set('intro_amount', event.target.value) }}
                       disabled={loading}
                     />
@@ -736,7 +736,7 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
                       min="1"
                       max="36"
                       step="1"
-                      value={form.intro_months}
+                      value={form.intro_months ?? ''}
                       onChange={event => { setTrialTouched(true); set('intro_months', event.target.value) }}
                       disabled={loading}
                     />
