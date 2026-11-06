@@ -2,9 +2,9 @@
 #
 # The frontend is on Vercel; this is the FastAPI backend it talks to.
 #
-# Gmail scans run in a dedicated, bounded executor. The free plan can spin down
-# while background work is active, so move to a paid plan before relying on
-# scheduled scans.
+# Gmail scans run in a dedicated, bounded executor. Daily scans are triggered by
+# the "Daily Gmail scan" GitHub Actions workflow, which wakes this service and
+# keeps calling it until every due inbox has been scanned.
 services:
   - type: web
     name: subtrack-api
@@ -44,6 +44,9 @@ services:
       # tokens written by another environment, and a fresh one silently
       # invalidates every mailbox already connected.
       - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      # Shared with the "Daily Gmail scan" GitHub Actions workflow.
+      - key: CRON_SECRET
         sync: false
 
       - key: GOOGLE_CLIENT_ID

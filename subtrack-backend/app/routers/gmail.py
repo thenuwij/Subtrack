@@ -16,7 +16,7 @@ from uuid import uuid4
 # ourselves below, so a declined permission produces a useful message.
 os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import RedirectResponse
 from google.auth.exceptions import GoogleAuthError, RefreshError
 from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -313,6 +313,8 @@ def gmail_status(
         "scan_total": account.scan_total or 0,
         "scan_partial": bool(account.scan_partial),
         "scan_message": account.scan_message,
+        "auto_scan_enabled": bool(account.auto_scan_enabled),
+        "scan_cursor_at": account.scan_cursor_at.isoformat() if account.scan_cursor_at else None,
     }
 
 
@@ -489,11 +491,24 @@ def gmail_oauth_complete(
         account = GmailAccount(user_id=user_id)
         db.add(account)
 
+    if account.email_address != email_address:
+        # A different mailbox starts over with a full first scan.
+        account.scan_cursor_at = None
     account.email_address = email_address
     account.refresh_token_encrypted = encrypt_token(credentials.refresh_token)
     db.commit()
 
     logger.info("Gmail connected", extra={"user_id": user_id})
+    # First scan starts straight away, so findings arrive without a button.
+    try:
+        locked = db.query(GmailAccount).filter(
+            GmailAccount.user_id == user_id,
+        ).with_for_update().first()
+        if locked:
+            _queue_scan(db, locked)
+    except (ScannerBusy, HTTPException):
+        db.rollback()
+        logger.info("First Gmail scan not started for %s; the daily run will pick it up", user_id)
     return {"connected": True, "email_address": email_address}
 
 
@@ -901,6 +916,8 @@ def _run_scan(user_id: str, run_id: str):
         if not account:
             return
 
+        cursor = account.scan_cursor_at
+        started_at = account.scan_started_at
         try:
             refresh_token = decrypt_token(account.refresh_token_encrypted)
             # Do not pin a database transaction or pooled connection while
@@ -914,6 +931,7 @@ def _run_scan(user_id: str, run_id: str):
                 max_messages=MAX_SCAN_MESSAGES,
                 on_progress=lambda done, total: heartbeat("reading", done, total),
                 deadline=fetch_deadline,
+                after=cursor,
             )
         except TokenUndecryptable:
             logger.error("Undecryptable Gmail token for %s — key mismatch", user_id)
@@ -983,6 +1001,10 @@ def _run_scan(user_id: str, run_id: str):
         account.scan_total = outcome.selected_domains
         account.scan_heartbeat_at = _utcnow()
         account.last_scanned_at = _utcnow()
+        # Move the cursor only when every matching email was read, so a
+        # cut-short run is retried from the same point next time.
+        if not partial and started_at:
+            account.scan_cursor_at = started_at
         db.commit()
         logger.info(
             "Scan complete for %s in %.1fs: %d findings, partial=%s",
@@ -1013,6 +1035,54 @@ def shutdown_scan_executor() -> None:
     _scan_executor.shutdown(wait=True, cancel_futures=True)
 
 
+class ScannerBusy(Exception):
+    """Every scan slot is in use; try again shortly."""
+
+
+def _queue_scan(db: Session, account: GmailAccount) -> str:
+    """Start a background scan for a locked account row.
+
+    Returns "running" (started now or already in progress). Raises
+    ``ScannerBusy`` when no slot is free, or HTTPException if queueing fails.
+    """
+    user_id = account.user_id
+    if account.scan_status == "running" and not _scan_is_stale(account):
+        return "running"
+    if not _scan_slots.acquire(blocking=False):
+        raise ScannerBusy()
+
+    run_id = str(uuid4())
+    now = _utcnow()
+    account.scan_status = "running"
+    account.scan_error = None
+    account.scan_started_at = now
+    account.scan_heartbeat_at = now
+    account.scan_run_id = run_id
+    account.scan_stage = "queued"
+    account.scan_processed = 0
+    account.scan_total = 0
+    account.scan_partial = False
+    account.scan_message = None
+    try:
+        db.commit()
+        _scan_executor.submit(_run_and_release, user_id, run_id)
+    except Exception:
+        _scan_slots.release()
+        db.rollback()
+        failed_account = db.query(GmailAccount).filter(
+            GmailAccount.user_id == user_id,
+            GmailAccount.scan_run_id == run_id,
+        ).first()
+        if failed_account:
+            failed_account.scan_status = "error"
+            failed_account.scan_error = "Could not start the inbox scan. Try again shortly."
+            failed_account.scan_stage = None
+            db.commit()
+        logger.exception("Could not queue Gmail scan for %s", user_id)
+        raise HTTPException(status_code=503, detail="Could not start the inbox scan. Try again shortly.") from None
+    return "running"
+
+
 @router.post("/scan")
 def start_scan(
     user_id: str = Depends(verify_token),
@@ -1032,8 +1102,87 @@ def start_scan(
     )
     if not account:
         raise HTTPException(status_code=404, detail="No Gmail account connected")
+    try:
+        _queue_scan(db, account)
+    except ScannerBusy:
+        raise HTTPException(
+            status_code=503,
+            detail="The inbox scanner is busy right now. Try again in a minute.",
+        ) from None
+    return {"status": "running", "deadline_seconds": SCAN_TIME_LIMIT_SECONDS}
+
+
+class GmailSettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    auto_scan_enabled: bool
+
+
+@router.patch("/settings")
+def update_gmail_settings(
+    body: GmailSettingsUpdate,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    account = db.query(GmailAccount).filter(GmailAccount.user_id == user_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="No Gmail account connected")
+    account.auto_scan_enabled = body.auto_scan_enabled
+    db.commit()
+    return {"auto_scan_enabled": account.auto_scan_enabled}
+
+
+# A daily run is due once this long has passed since the last attempt. Slightly
+# under a day so a scheduler that fires a little early still picks it up.
+AUTO_SCAN_INTERVAL = timedelta(hours=20)
+
+
+def due_for_auto_scan(account: GmailAccount, now: datetime) -> bool:
+    if not account.auto_scan_enabled:
+        return False
     if account.scan_status == "running" and not _scan_is_stale(account):
-        return {"status": "running", "deadline_seconds": SCAN_TIME_LIMIT_SECONDS}
+        return False
+    return account.scan_started_at is None or now - account.scan_started_at >= AUTO_SCAN_INTERVAL
+
+
+@router.post("/scheduled-scan", include_in_schema=False)
+def run_scheduled_scans(
+    x_cron_secret: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+):
+    """Called once a day by GitHub Actions. Starts scans for due accounts.
+
+    Only as many as there are free scan slots start per call, so the caller
+    repeats until ``remaining`` is 0. Each call is cheap and safe to retry.
+    """
+    if not settings.cron_secret or not x_cron_secret or not secrets.compare_digest(
+        x_cron_secret, settings.cron_secret
+    ):
+        raise HTTPException(status_code=401, detail="Not authorised")
+    if not gmail_is_configured():
+        return {"started": 0, "running": 0, "remaining": 0}
+
+    now = _utcnow()
+    started = 0
+    accounts = db.query(GmailAccount).filter(GmailAccount.auto_scan_enabled.is_(True)).all()
+    due_ids = [account.user_id for account in accounts if due_for_auto_scan(account, now)]
+    for user_id in due_ids:
+        account = db.query(GmailAccount).filter(
+            GmailAccount.user_id == user_id,
+        ).with_for_update().first()
+        if not account or not due_for_auto_scan(account, now):
+            db.rollback()
+            continue
+        try:
+            _queue_scan(db, account)
+            started += 1
+        except ScannerBusy:
+            db.rollback()
+            break
+        except HTTPException:
+            continue
+    running = db.query(GmailAccount).filter(GmailAccount.scan_status == "running").count()
+    return {"started": started, "running": running, "remaining": len(due_ids) - started}
     if not _scan_slots.acquire(blocking=False):
         raise HTTPException(
             status_code=503,

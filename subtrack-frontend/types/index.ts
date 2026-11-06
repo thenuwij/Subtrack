@@ -98,6 +98,8 @@ export interface GmailStatus {
   scan_total?: number
   scan_partial?: boolean
   scan_message?: string | null
+  auto_scan_enabled?: boolean
+  scan_cursor_at?: string | null
 }
 
 export interface DetectedSubscription {

@@ -433,6 +433,10 @@ export async function completeGmailOAuth(
   })
 }
 
+export async function updateGmailSettings(token: string, data: { auto_scan_enabled: boolean }) {
+  return request('/gmail/settings', token, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
 export async function startGmailScan(token: string) {
   return request('/gmail/scan', token, { method: 'POST' })
 }

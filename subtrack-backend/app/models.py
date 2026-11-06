@@ -18,6 +18,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     false,
+    true,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -268,6 +269,11 @@ class GmailAccount(Base):
     scan_total = Column(Integer, nullable=False, default=0)
     scan_partial = Column(Boolean, nullable=False, default=False)
     scan_message = Column(String(300), nullable=True)
+    # Daily automatic scans. ``scan_cursor_at`` is when the last *complete*
+    # scan started: the next scan reads only email after it, and it only moves
+    # forward on success, so a failed or cut-short run never skips email.
+    auto_scan_enabled = Column(Boolean, nullable=False, default=True, server_default=true())
+    scan_cursor_at = Column(DateTime, nullable=True)
 
 
 class GmailOAuthState(Base):

@@ -14,6 +14,7 @@ import {
   getGmailStatus,
   getPreferences,
   startGmailScan,
+  updateGmailSettings,
   updatePreferences,
 } from '@/lib/api'
 import type { GmailStatus } from '@/types'
@@ -146,6 +147,18 @@ export default function AccountPage() {
       const message = e instanceof Error ? e.message : 'Could not start the Gmail connection.'
       setGmailError(message)
       toast.error(message)
+    }
+  }
+
+  async function handleAutoScan(enabled: boolean) {
+    try {
+      await withToken(async token => {
+        await updateGmailSettings(token, { auto_scan_enabled: enabled })
+        void gmailQuery.mutate(g => (g ? { ...g, auto_scan_enabled: enabled } : g), { revalidate: false })
+        toast.success(enabled ? 'Daily inbox check turned on' : 'Daily inbox check turned off')
+      })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not change this setting.')
     }
   }
 
@@ -455,27 +468,45 @@ export default function AccountPage() {
                   <p className="text-sm font-medium truncate">{gmail.email_address}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {gmail.scan_status === 'running'
-                      ? 'Scanning your inbox…'
+                      ? 'Checking your inbox…'
                       : gmail.last_scanned_at
-                        ? `Last scanned ${new Date(gmail.last_scanned_at).toLocaleDateString('en-AU', {
-                            day: 'numeric', month: 'short', year: 'numeric',
+                        ? `Last checked ${new Date(gmail.last_scanned_at).toLocaleString('en-AU', {
+                            day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
                           })}`
-                        : 'Not scanned yet'}
+                        : 'First check starting soon'}
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <Button
+                    variant="outline"
                     onClick={handleScan}
                     disabled={gmailBusy || gmail.scan_status === 'running' || gmail.configured === false}
                   >
-                    {gmail.scan_status === 'running' ? 'Scanning' : 'Scan inbox'}
+                    {gmail.scan_status === 'running' ? 'Checking…' : 'Check now'}
                   </Button>
                 </div>
               </div>
 
               {gmail.scan_error && (
-                <p className="text-xs text-destructive">Last scan failed: {gmail.scan_error}</p>
+                <p className="text-xs text-destructive">Last check failed: {gmail.scan_error}</p>
               )}
+
+              <label className="flex cursor-pointer items-start justify-between gap-4 border-t border-border pt-4">
+                <span>
+                  <span className="block text-sm font-medium">Check my inbox every day</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Each morning Subtrack reads new receipts only. Anything it finds waits in Inbox for your OK.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
+                  checked={gmail.auto_scan_enabled ?? true}
+                  disabled={gmailBusy}
+                  onChange={event => void handleAutoScan(event.target.checked)}
+                />
+              </label>
 
               {gmail.configured === false ? (
                 <p className="text-xs text-amber-700 dark:text-amber-300">
@@ -532,7 +563,8 @@ export default function AccountPage() {
                 <div>
                   <p className="text-sm font-medium">Connect Gmail</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Read-only. Nothing is added without your approval.
+                    Read-only. Subtrack checks your last 3 months straight away, then new receipts
+                    once a day. Nothing is added without your approval, and you can turn daily checks off.
                   </p>
                   {/* Google renders read access to Gmail as its own tickbox and
                       leaves it unticked. Continuing past it returns a valid

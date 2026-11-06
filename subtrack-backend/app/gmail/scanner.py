@@ -33,7 +33,7 @@ GMAIL_HTTP_TIMEOUT_SECONDS = 12
 SEARCH_QUERY = (
     "(category:purchases OR subject:(receipt OR invoice OR payment OR "
     "subscription OR renewal OR \"tax invoice\") OR trial OR \"free trial\" OR "
-    "\"trial ends\") newer_than:{months}m"
+    "\"trial ends\") {window}"
 )
 
 CURRENCY_SYMBOLS = {
@@ -347,6 +347,7 @@ def scan(
     max_messages: int = 200,
     on_progress=None,
     deadline: float | None = None,
+    after: datetime | None = None,
 ) -> ScanResult:
     credentials = build_credentials(refresh_token)
     http = AuthorizedHttp(
@@ -354,7 +355,10 @@ def scan(
         http=httplib2.Http(timeout=GMAIL_HTTP_TIMEOUT_SECONDS),
     )
     service = build("gmail", "v1", http=http, cache_discovery=False)
-    query = SEARCH_QUERY.format(months=months)
+    # Daily scans read only mail since the last complete scan; the first scan
+    # looks back ``months``.
+    window = f"after:{int(after.replace(tzinfo=timezone.utc).timestamp())}" if after else f"newer_than:{months}m"
+    query = SEARCH_QUERY.format(window=window)
 
     # List first — ids only, and cheap — so we know the total before fetching.
     message_ids: list[str] = []

@@ -123,6 +123,9 @@ class Settings(BaseSettings):
     # Fernet key encrypting stored refresh tokens at rest. Generate with:
     #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
     token_encryption_key: str = ""
+    # Shared secret for the daily scheduled scan (sent by GitHub Actions).
+    # Empty disables the endpoint.
+    cron_secret: str = ""
     demo_token_secret: str = ""
     demo_session_hours: int = Field(default=24, ge=1, le=72)
     demo_sessions_per_client_per_hour: int = Field(default=15, ge=1, le=100)
