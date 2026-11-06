@@ -289,6 +289,7 @@ export interface SafeToSpendProfileInput {
   pay_interval_unit: PayIntervalUnit
   pay_interval_count: number
   buffer: number
+  payday_bills_after_pay: boolean
 }
 
 export interface SafeToSpend {

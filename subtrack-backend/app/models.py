@@ -17,6 +17,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -821,6 +822,9 @@ class SafeToSpendProfile(Base):
     pay_interval_unit = Column(String(12), nullable=False)
     pay_interval_count = Column(Integer, nullable=False)
     buffer = Column(Numeric(12, 2), nullable=False, default=0)
+    # When true, pay lands before bills due on payday, so those bills belong
+    # to the next pay period rather than this one.
+    payday_bills_after_pay = Column(Boolean, nullable=False, default=False, server_default=false())
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 

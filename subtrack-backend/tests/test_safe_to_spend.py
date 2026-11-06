@@ -93,6 +93,16 @@ class SafeToSpendTests(unittest.TestCase):
 
         self.assertEqual(result["committed"], 100.0)
 
+    def test_payment_due_on_payday_is_left_for_next_pay_when_pay_lands_first(self):
+        self.add_profile(payday_bills_after_pay=True)
+        self.add_payment("Day before payday", 100, datetime(2026, 11, 9, 23, 0))
+        self.add_payment("On payday", 100, datetime(2026, 11, 10))
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        self.assertEqual(result["committed"], 100.0)
+        self.assertIn("left for your next pay", result["scope"])
+
     def test_payday_bill_stored_at_noon_utc_counts_in_new_zealand(self):
         self.db.get(UserPreference, "owner").timezone = "Pacific/Auckland"
         self.add_profile()

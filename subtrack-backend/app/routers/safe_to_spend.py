@@ -25,6 +25,7 @@ class SafeToSpendProfileUpdate(BaseModel):
     pay_interval_unit: Literal["week", "month"]
     pay_interval_count: int = Field(ge=1, le=12)
     buffer: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
+    payday_bills_after_pay: bool = False
 
 
 @router.get("")
@@ -64,5 +65,6 @@ def put_profile(
     profile.pay_interval_unit = body.pay_interval_unit
     profile.pay_interval_count = body.pay_interval_count
     profile.buffer = body.buffer
+    profile.payday_bills_after_pay = body.payday_bills_after_pay
     db.commit()
     return safe_to_spend(db, user_id, now=now)

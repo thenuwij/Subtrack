@@ -17,6 +17,11 @@ SCOPE_NOTE = (
     "and one-off costs are not included. Payments due on your balance date or "
     "on payday count as still to pay."
 )
+SCOPE_NOTE_AFTER_PAY = (
+    "Covers your entered balance, tracked payments and buffer. Untracked bills "
+    "and one-off costs are not included. Payments due on your balance date count "
+    "as still to pay; payments due on payday are left for your next pay."
+)
 
 
 def _user_zone(db: Session, user_id: str) -> ZoneInfo:
@@ -88,9 +93,10 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
             "pay_interval_unit": profile.pay_interval_unit,
             "pay_interval_count": profile.pay_interval_count,
             "buffer": float(profile.buffer),
+            "payday_bills_after_pay": bool(profile.payday_bills_after_pay),
         },
         "warnings": [],
-        "scope": SCOPE_NOTE,
+        "scope": SCOPE_NOTE_AFTER_PAY if profile.payday_bills_after_pay else SCOPE_NOTE,
     }
     if _payday_since_balance(profile, balance_day, today):
         result["status"] = "balance_outdated"
@@ -102,7 +108,11 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         user_id,
         now=now,
         start_at=_midnight(balance_day),
-        end_at=datetime.combine(next_payday, time.max),
+        end_at=(
+            _midnight(next_payday) - timedelta(microseconds=1)
+            if profile.payday_bills_after_pay
+            else datetime.combine(next_payday, time.max)
+        ),
     )
     currency = CurrencyContext.for_user(db, user_id)
     balance, balance_quality = currency.convert(float(profile.balance), profile.currency)

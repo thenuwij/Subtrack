@@ -38,6 +38,7 @@ function ProfileForm({ position, onSaved, onCancel }: {
   const [nextPayday, setNextPayday] = useState(position?.next_payday ?? '')
   const [schedule, setSchedule] = useState<PaySchedule>(scheduleOf(position))
   const [buffer, setBuffer] = useState(position?.profile ? String(position.profile.buffer) : '50')
+  const [billsAfterPay, setBillsAfterPay] = useState(position?.profile?.payday_bills_after_pay ?? false)
   const [saving, setSaving] = useState(false)
 
   async function handleSubmit(event: FormEvent) {
@@ -54,6 +55,7 @@ function ProfileForm({ position, onSaved, onCancel }: {
         pay_interval_unit,
         pay_interval_count,
         buffer: Number(buffer),
+        payday_bills_after_pay: billsAfterPay,
       }
       onSaved(await saveSafeToSpendProfile(token, input))
     } catch (error) {
@@ -90,6 +92,20 @@ function ProfileForm({ position, onSaved, onCancel }: {
         <Label htmlFor="safe-buffer">Buffer to keep untouched</Label>
         <Input id="safe-buffer" type="number" step="0.01" min="0" inputMode="decimal" required value={buffer} onChange={event => setBuffer(event.target.value)} />
       </div>
+      <label className="flex items-start gap-2 text-sm sm:col-span-2">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-primary"
+          checked={billsAfterPay}
+          onChange={event => setBillsAfterPay(event.target.checked)}
+        />
+        <span>
+          My pay arrives before bills due on payday
+          <span className="block text-xs text-muted-foreground">
+            Bills due on payday will come out of your next pay instead of this balance.
+          </span>
+        </span>
+      </label>
       <div className="flex gap-2 sm:col-span-2">
         <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
         {onCancel ? <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button> : null}
