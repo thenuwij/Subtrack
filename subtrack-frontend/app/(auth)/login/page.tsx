@@ -168,11 +168,11 @@ export default function LoginPage() {
                 <h1 className="text-3xl font-bold tracking-tight text-foreground">
                   {mode === 'signin' ? 'Sign in to Subtrack' : 'Create your account'}
                 </h1>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {mode === 'signin'
-                    ? 'Welcome back.'
-                    : 'Free to use. You can connect Gmail later.'}
-                </p>
+                {mode === 'signup' ? (
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Free to use. You can connect Gmail later.
+                  </p>
+                ) : null}
                 <AuthPreviewBanner />
 
                 {sessionExpired ? (
@@ -202,7 +202,7 @@ export default function LoginPage() {
                   variant="outline"
                   onClick={handleGoogleLogin}
                   disabled={busy !== null}
-                  className="mt-8 h-10 w-full gap-2"
+                  className="mt-6 h-10 w-full gap-2"
                 >
                   <GoogleIcon className="h-4 w-4" />
                   {busy === 'google' ? 'Opening Google…' : 'Continue with Google'}
@@ -289,32 +289,26 @@ export default function LoginPage() {
                 </form>
 
 
-                <p className="mt-8 text-sm text-muted-foreground">
-                  {mode === 'signin' ? 'No account yet? ' : 'Already have an account? '}
+                <p className="mt-6 text-center text-sm text-muted-foreground">
+                  {mode === 'signin' ? 'New to Subtrack? ' : 'Already have an account? '}
                   <button
                     type="button"
                     className="font-medium text-primary hover:underline"
                     onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
                   >
-                    {mode === 'signin' ? 'Create one' : 'Sign in'}
+                    {mode === 'signin' ? 'Create an account' : 'Sign in'}
                   </button>
                 </p>
 
-                <div className="mt-8 rounded-xl border border-border p-4">
-                  <p className="text-sm font-medium text-foreground">Just looking?</p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    Explore Subtrack with sample data. No sign-up needed.
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="mt-3 h-10 w-full"
-                    onClick={() => void handleDemo()}
-                    disabled={busy !== null}
-                  >
-                    {busy === 'demo' ? 'Setting up the demo…' : 'Try the demo'}
-                  </Button>
-                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-4 h-10 w-full border-primary/40 bg-primary/10 font-medium text-primary hover:bg-primary/20 hover:text-primary"
+                  onClick={() => void handleDemo()}
+                  disabled={busy !== null}
+                >
+                  {busy === 'demo' ? 'Setting up the demo…' : 'Try the demo (no sign-up)'}
+                </Button>
                 {demoError && (
                   <p role="alert" className="mt-2 text-sm text-destructive">
                     {demoError}
