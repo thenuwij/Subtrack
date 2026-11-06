@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.gmail.redaction import redact
 from app.models import AgentResearchCache, Category, Subscription
+from app.services.ai_tracing import traced_call
 from app.services.recurrence import cadence_for, cadence_label
 from app.services.schedules import utc_naive
 from app.services.trials import active_trial
@@ -234,7 +235,9 @@ Rules:
 """
     response = None
     for _ in range(3):
-        response = client.messages.create(
+        response = traced_call(
+            "alternative_research",
+            client.messages.create,
             model="claude-haiku-4-5",
             max_tokens=1_800,
             system=system,
