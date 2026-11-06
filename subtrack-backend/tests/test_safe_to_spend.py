@@ -198,6 +198,16 @@ class SafeToSpendTests(unittest.TestCase):
         self.assertFalse(no["affordable"])
         self.assertEqual(no["left_after"], 0.0)
 
+    def test_can_i_afford_reports_the_shortfall_when_it_does_not_fit(self):
+        self.add_profile()
+        self.add_payment("Rent", 400, datetime(2026, 11, 5))
+
+        result = can_i_afford(self.db, "owner", Decimal("200.00"), now=NOW)
+
+        self.assertFalse(result["affordable"])
+        self.assertEqual(result["short_by"], 30.0)
+        self.assertEqual(result["left_after"], 0.0)
+
     def test_can_i_afford_has_no_answer_without_a_number(self):
         self.assertIsNone(can_i_afford(self.db, "owner", Decimal("5.00"), now=NOW)["affordable"])
 
