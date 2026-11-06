@@ -33,6 +33,7 @@ from app.services.recurrence import (
     forecast_end_for,
     monthly_equivalent,
     occurrences_between,
+    rewind_anchor,
     utc_naive,
 )
 from app.services.reminders import list_user_reminders
@@ -330,6 +331,7 @@ def upcoming_charges(
     now: datetime | None = None,
     start_at: datetime | None = None,
     end_at: datetime | None = None,
+    include_past: bool = False,
 ) -> dict:
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     start = utc_naive(start_at or now)
@@ -365,8 +367,13 @@ def upcoming_charges(
             continue
         payload, quality = _payment_payload(sub, currency)
         qualities.append(quality)
+        anchor = (
+            rewind_anchor(sub.next_due, sub, occurrence_start)
+            if include_past
+            else sub.next_due
+        )
         due_dates = occurrences_between(
-            sub.next_due,
+            anchor,
             sub,
             occurrence_start,
             end,

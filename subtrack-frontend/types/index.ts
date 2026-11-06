@@ -280,6 +280,11 @@ export interface SubscriptionForecast {
   }
 }
 
+export interface CalendarMonthCharges extends SubscriptionForecast {
+  year: number
+  month: number
+}
+
 export type PayIntervalUnit = 'week' | 'month'
 
 export interface SafeToSpendProfileInput {

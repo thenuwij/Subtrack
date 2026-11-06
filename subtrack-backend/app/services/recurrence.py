@@ -160,6 +160,29 @@ def _first_index_on_or_after(anchor: datetime, cadence: Cadence, start: datetime
     return index
 
 
+def rewind_anchor(anchor: datetime, unit_or_item, before: datetime, interval_count: int | None = None) -> datetime:
+    """Step a recorded due date back whole periods until it is on or before ``before``.
+
+    A saved ``next_due`` only says when the *next* charge is. Counting a full
+    calendar month needs the charges earlier in that month too, so this walks
+    the same cadence backwards. Months use ``add_months`` from the original
+    anchor, so month-end and short-month handling match forward projection.
+    """
+    anchor, before = utc_naive(anchor), utc_naive(before)
+    if anchor <= before:
+        return anchor
+    cadence = cadence_for(unit_or_item, interval_count)
+    if cadence.unit in {RecurrenceUnit.day.value, RecurrenceUnit.week.value}:
+        step = timedelta(days=cadence.count * (7 if cadence.unit == RecurrenceUnit.week.value else 1))
+        periods = -(-(anchor - before) // step)
+        return anchor - step * periods
+    step_months = cadence.count * (12 if cadence.unit == RecurrenceUnit.year.value else 1)
+    periods = 1
+    while add_months(anchor, -step_months * periods) > before:
+        periods += 1
+    return add_months(anchor, -step_months * periods)
+
+
 def project_next_occurrence(
     next_due: datetime | None,
     unit_or_item,

@@ -21,9 +21,11 @@ import {
   getReminders,
   getSubscriptionChanges,
   getSubscriptionForecast,
+  getCalendarMonth,
   getSubscriptions,
 } from '@/lib/api'
 import type {
+  CalendarMonthCharges,
   GmailStatus,
   DetectedSubscription,
   PaymentReminder,
@@ -76,13 +78,14 @@ export default function DashboardPage() {
   const forecastQuery = useApi<SubscriptionForecast>(
     apiKeys.forecast(14), token => getSubscriptionForecast(token, 14),
   )
+  const calendarMonthQuery = useApi<CalendarMonthCharges>(apiKeys.calendarMonth, getCalendarMonth)
   const detectionsQuery = useApi<DetectedSubscription[]>(
     apiKeys.detected('pending'), token => getDetected(token, 'pending'),
   )
 
   const queries = [
     subscriptionsQuery, changesQuery, preferencesQuery, gmailQuery,
-    remindersQuery, forecastQuery, detectionsQuery,
+    remindersQuery, forecastQuery, detectionsQuery, calendarMonthQuery,
   ]
   const loading = queries.some(query => query.isLoading)
 
@@ -127,24 +130,42 @@ export default function DashboardPage() {
 
   // Everything is normalised to a monthly figure in the base currency so the
   // numbers on this page are actually comparable to each other.
+  // "Monthly" means this calendar month: a weekly payment counts 4 or 5
+  // times depending on the month, not its yearly cost divided by 12.
+  const thisMonth = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const charge of calendarMonthQuery.data?.charges ?? []) {
+      if (charge.charge_amount_in_base === null) continue
+      totals.set(charge.id, (totals.get(charge.id) ?? 0) + charge.charge_amount_in_base)
+    }
+    return totals
+  }, [calendarMonthQuery.data])
+  const monthName = calendarMonthQuery.data
+    ? new Date(calendarMonthQuery.data.year, calendarMonthQuery.data.month - 1, 1)
+      .toLocaleDateString('en-AU', { month: 'long' })
+    : 'this month'
+
   const ranked = useMemo(() => {
     return subscriptions
       .filter(contributesToCommitment)
       .filter(subscription => canConvert(subscription.currency))
       .map((s) => ({
         subscription: s,
-        monthly: convertAmount(monthlyEquivalentNative(s), s.currency) ?? 0,
+        monthly: calendarMonthQuery.data
+          ? thisMonth.get(s.id) ?? 0
+          : convertAmount(monthlyEquivalentNative(s), s.currency) ?? 0,
         yearly: convertAmount(yearlyEquivalentNative(s), s.currency) ?? 0,
       }))
+      .filter(entry => entry.monthly > 0)
       .sort((a, b) => b.monthly - a.monthly)
-  }, [subscriptions, canConvert, convertAmount])
+  }, [subscriptions, canConvert, convertAmount, calendarMonthQuery.data, thisMonth])
 
   const contributingPayments = useMemo(
     () => subscriptions.filter(contributesToCommitment),
     [subscriptions],
   )
 
-  const unavailableCurrencies = contributingPayments.length - ranked.length
+  const unavailableCurrencies = contributingPayments.filter(payment => !canConvert(payment.currency)).length
   const hasVariableAmounts = ranked.some(entry => entry.subscription.amount_type === 'variable')
 
   const monthlyTotal = useMemo(
@@ -351,7 +372,7 @@ export default function DashboardPage() {
               <span className="font-semibold tabular-nums text-foreground">
                 {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(monthlyTotal, baseCurrency)}
               </span>{' '}
-              a month
+              in {monthName}
               {shareOfIncome !== null ? ` · ${shareOfIncome.toFixed(0)}% of your income` : ''}
               {' · '}
               <Link href="/subscriptions" className="text-primary hover:underline">Manage</Link>

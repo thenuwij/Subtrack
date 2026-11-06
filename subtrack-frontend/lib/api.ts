@@ -1,4 +1,5 @@
 import type {
+  CalendarMonthCharges,
   ApiCapabilities,
   AmountType,
   BillingCycle,
@@ -350,6 +351,11 @@ export async function getSubscriptionForecast(
   days: number = 30,
 ): Promise<SubscriptionForecast> {
   return request(`/subscriptions/forecast?days=${days}`, token)
+}
+
+/** Every charge dated in the current calendar month, including ones already paid. */
+export async function getCalendarMonth(token: string): Promise<CalendarMonthCharges> {
+  return request('/subscriptions/month', token)
 }
 
 export async function getSubscriptionEquivalents(

@@ -367,6 +367,39 @@ def get_upcoming_forecast(
 
     return upcoming_charges(db, user_id, days=days)
 
+@router.get("/month")
+def get_calendar_month(
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    month: int | None = Query(default=None, ge=1, le=12),
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Every charge dated in one calendar month, including ones already paid.
+
+    Totals here are what that month actually costs (a weekly payment counts 4
+    or 5 times), not a yearly figure divided by 12. Defaults to the current
+    month in the user's timezone.
+    """
+    import calendar
+    from datetime import time
+
+    from app.agent.finance import upcoming_charges
+    from app.services.safe_to_spend import _user_zone
+
+    today = datetime.now(_user_zone(db, user_id)).date()
+    year = year or today.year
+    month = month or today.month
+    last_day = calendar.monthrange(year, month)[1]
+    result = upcoming_charges(
+        db,
+        user_id,
+        start_at=datetime(year, month, 1),
+        end_at=datetime.combine(datetime(year, month, last_day).date(), time.max),
+        include_past=True,
+    )
+    return {**result, "year": year, "month": month}
+
+
 @router.get("/changes")
 def get_changes(
     days: int = Query(default=30, ge=1, le=730),

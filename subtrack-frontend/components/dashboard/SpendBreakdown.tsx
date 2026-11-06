@@ -298,7 +298,7 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
                         </span>
                         <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
                           {subscription.amount_type === 'variable' ? '≈ ' : ''}
-                          {formatCurrency(monthly, baseCurrency)}/mo
+                          {formatCurrency(monthly, baseCurrency)}
                         </span>
                       </li>
                     ))}
