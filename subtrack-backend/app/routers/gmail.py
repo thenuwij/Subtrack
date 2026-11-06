@@ -976,7 +976,9 @@ def _run_scan(user_id: str, run_id: str):
             if row.status == DetectionStatus.pending
         ]
         active = [subscription for subscription in subscriptions if subscription.is_active]
-        if pending and active and time.monotonic() < deadline - 2:
+        # Only look for duplicates when this scan analysed something new, so a
+        # quiet daily check makes no AI calls at all.
+        if outcome.processed_domains and pending and active and time.monotonic() < deadline - 2:
             for i, (j, reason) in find_similar(
                 pending[:50],
                 active[:100],

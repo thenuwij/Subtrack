@@ -106,6 +106,19 @@ class AutoScanTests(unittest.TestCase):
 
         self.assertEqual(self.cursor(), cursor)
 
+    def test_quiet_daily_scan_makes_no_duplicate_check_call(self):
+        self.start_running("run-5", utcnow(), cursor=utcnow() - timedelta(days=1))
+        with patch("app.gmail.analyzer.find_similar") as similar:
+            scan_result = ScanResult([], 0, 0, 0, False)
+            outcome = AnalysisOutcome([], 0, 0, 0, 0, False, False)
+            with patch.object(gmail_router, "SessionLocal", self.Session), patch.object(
+                gmail_router, "decrypt_token", return_value="token"
+            ), patch("app.gmail.scanner.scan", return_value=scan_result), patch(
+                "app.gmail.analyzer.analyze_bounded", return_value=outcome
+            ):
+                gmail_router._run_scan("owner", "run-5")
+        similar.assert_not_called()
+
     def test_gmail_query_uses_after_for_daily_scans(self):
         self.assertIn("{window}", SEARCH_QUERY)
 
