@@ -23,6 +23,8 @@ import {
 import { Button }                 from '@/components/ui/button'
 import { Skeleton }               from '@/components/ui/skeleton'
 import { Plus, CreditCard }       from 'lucide-react'
+import { useSWRConfig } from 'swr'
+import { useThisMonth } from '@/lib/hooks/useThisMonth'
 import { useCurrency }            from '@/lib/context/currency'
 import { formatCurrency }         from '@/lib/utils/currency'
 import { categoryColor, formatCategory } from '@/lib/utils/categories'
@@ -33,7 +35,6 @@ import { isActiveTrial } from '@/lib/utils/trials'
 import {
   contributesToCommitment,
   isTerminalStatus,
-  monthlyEquivalentNative,
   yearlyEquivalentNative,
 } from '@/lib/utils/recurrence'
 import {
@@ -88,6 +89,8 @@ export default function SubscriptionsPage() {
   const [reminderSubscription, setReminderSubscription] = useState<Subscription | null>(null)
   const [assistantSubscription, setAssistantSubscription] = useState<Subscription | null>(null)
   const { baseCurrency, canConvert, convertAmount, ratesLoading, ratesStale } = useCurrency()
+  const { costOf, monthName, monthShort } = useThisMonth()
+  const { mutate: mutateCache } = useSWRConfig()
   const duplicateOperationRef = useRef(false)
 
   // filter / sort / group state
@@ -175,6 +178,7 @@ export default function SubscriptionsPage() {
     void subscriptionsQuery.mutate(prev => [created, ...(prev ?? [])], { revalidate: false })
     void duplicatesQuery.mutate([], { revalidate: true })
     toast.success('Payment added')
+    void mutateCache(apiKeys.calendarMonth)
   }
 
   // ── update ─────────────────────────────────────────────────────────────────
@@ -190,6 +194,7 @@ export default function SubscriptionsPage() {
     void duplicatesQuery.mutate([], { revalidate: true })
     setEditingSubscription(null)
     toast.success('Payment updated')
+    void mutateCache(apiKeys.calendarMonth)
   }
 
   // ── delete ─────────────────────────────────────────────────────────────────
@@ -204,6 +209,7 @@ export default function SubscriptionsPage() {
       { revalidate: true },
     )
     toast.success('Payment deleted')
+    void mutateCache(apiKeys.calendarMonth)
   }
 
   function askAssistant(subscription: Subscription) {
@@ -226,9 +232,7 @@ export default function SubscriptionsPage() {
   const paid = subscriptions.filter(contributesToCommitment)
   const convertiblePaid = paid.filter(subscription => canConvert(subscription.currency))
   const totalMonthly = convertiblePaid.reduce(
-    (sum, subscription) => sum + (convertAmount(
-      monthlyEquivalentNative(subscription), subscription.currency,
-    ) ?? 0),
+    (sum, subscription) => sum + (costOf(subscription) ?? 0),
     0,
   )
   const totalYearly = convertiblePaid.reduce(
@@ -266,8 +270,7 @@ export default function SubscriptionsPage() {
       }
       return true
     })
-    const monthlyCost = (subscription: Subscription) =>
-      convertAmount(monthlyEquivalentNative(subscription), subscription.currency)
+    const monthlyCost = costOf
     list = [...list].sort((a, b) => {
       if (sortBy === 'name') return a.name.localeCompare(b.name)
       if (sortBy === 'recent') return b.created_at.localeCompare(a.created_at)
@@ -287,16 +290,14 @@ export default function SubscriptionsPage() {
       return da.localeCompare(db)
     })
     return list
-  }, [subscriptions, scope, search, selectedCategory, period, fromDate, toDate, sortBy, convertAmount])
+  }, [subscriptions, scope, search, selectedCategory, period, fromDate, toDate, sortBy, costOf])
 
   const filteredContributing = filtered.filter(contributesToCommitment)
   const filteredConvertible = filteredContributing.filter(
     subscription => canConvert(subscription.currency),
   )
   const totalAmount = filteredConvertible.reduce(
-    (sum, subscription) => sum + (convertAmount(
-      monthlyEquivalentNative(subscription), subscription.currency,
-    ) ?? 0),
+    (sum, subscription) => sum + (costOf(subscription) ?? 0),
     0,
   )
   const filteredUnavailable = filteredContributing.length - filteredConvertible.length
@@ -304,7 +305,7 @@ export default function SubscriptionsPage() {
   const totalLabel  = filtered.length > 0 && (filtersActive || filteredUnavailable > 0)
     ? ratesLoading
       ? `${filtered.length} item${filtered.length !== 1 ? 's' : ''} · updating exchange rates…`
-      : `${filtered.length} item${filtered.length !== 1 ? 's' : ''} · ${formatCurrency(totalAmount, baseCurrency)}/mo${filteredUnavailable ? ` · ${filteredUnavailable} excluded (FX unavailable)` : ''}`
+      : `${filtered.length} item${filtered.length !== 1 ? 's' : ''} · ${formatCurrency(totalAmount, baseCurrency)} in ${monthShort}${filteredUnavailable ? ` · ${filteredUnavailable} excluded (FX unavailable)` : ''}`
     : ''
 
   const scopeCounts: Record<RecordScope, number> = {
@@ -318,14 +319,14 @@ export default function SubscriptionsPage() {
     const totals = new Map<string, number>()
     for (const subscription of subscriptions) {
       if (!contributesToCommitment(subscription)) continue
-      const monthly = convertAmount(monthlyEquivalentNative(subscription), subscription.currency)
-      if (monthly === null) continue
+      const monthly = costOf(subscription)
+      if (!monthly) continue
       totals.set(subscription.category, (totals.get(subscription.category) ?? 0) + monthly)
     }
     return [...totals.entries()]
       .map(([category, total]) => ({ category, total }))
       .sort((a, b) => b.total - a.total)
-  }, [subscriptions, convertAmount])
+  }, [subscriptions, costOf])
 
   const isFiltered = !!(scope !== 'current' || search || selectedCategory || period !== 'all')
 
@@ -422,7 +423,7 @@ export default function SubscriptionsPage() {
               {paid.length} paid{trials.length ? ` · ${trials.length} free trial${trials.length === 1 ? '' : 's'}` : ''} ·{' '}
               {ratesLoading ? 'updating exchange rates…' : (
                 <>
-                  {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(totalMonthly, baseCurrency)}/mo ·{' '}
+                  {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(totalMonthly, baseCurrency)} in {monthShort} ·{' '}
                   {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(totalYearly, baseCurrency)}/yr
                   {unconvertedCurrent ? ` · ${unconvertedCurrent} excluded (FX unavailable)` : ''}
                 </>
@@ -621,7 +622,7 @@ export default function SubscriptionsPage() {
         <aside className="hidden space-y-4 xl:sticky xl:top-8 xl:block xl:max-h-[calc(100vh-4rem)] xl:overflow-y-auto" aria-label="Payments summary">
           <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
             <p className="text-xs font-medium text-muted-foreground">
-              {hasVariableAmounts ? 'Estimated monthly commitment' : 'Monthly commitment'}
+              {hasVariableAmounts ? `Estimated for ${monthName}` : `Due in ${monthName}`}
             </p>
             <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
               {ratesLoading ? '…' : `${hasVariableAmounts ? '≈ ' : ''}${formatCurrency(totalMonthly, baseCurrency)}`}

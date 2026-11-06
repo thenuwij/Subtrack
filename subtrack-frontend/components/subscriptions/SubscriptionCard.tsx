@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Subscription } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Bell, Clock3, Trash2, Pencil, Sparkles } from 'lucide-react'
+import { useThisMonth } from '@/lib/hooks/useThisMonth'
 import { useCurrency } from '@/lib/context/currency'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatCategory } from '@/lib/utils/categories'
@@ -12,7 +13,6 @@ import { isActiveTrial } from '@/lib/utils/trials'
 import {
   cadenceLabel,
   isTerminalStatus,
-  monthlyEquivalentNative,
   paymentStatusLabel,
   yearlyEquivalentNative,
 } from '@/lib/utils/recurrence'
@@ -54,11 +54,9 @@ export function SubscriptionCard({
     || subscription.status === 'cancelling'
   const trialActive = !terminal && isActiveTrial(subscription)
   const canShowConversion = canConvert(subscription.currency)
-  const monthlyNative = monthlyEquivalentNative(subscription)
   const yearlyNative = yearlyEquivalentNative(subscription)
-  const monthlyBase = canShowConversion
-    ? convertAmount(monthlyNative, subscription.currency)
-    : null
+  const { costOf, monthShort } = useThisMonth()
+  const monthlyBase = costOf(subscription)
   const yearlyBase = canShowConversion
     ? convertAmount(yearlyNative, subscription.currency)
     : null
@@ -144,7 +142,7 @@ export function SubscriptionCard({
           ) : null}
           {!trialActive && monthlyBase !== null && yearlyBase !== null ? (
             <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
-              {subscription.amount_type === 'variable' ? '≈ ' : ''}{formatCurrency(monthlyBase, baseCurrency)}/mo ·{' '}
+              {subscription.amount_type === 'variable' ? '≈ ' : ''}{formatCurrency(monthlyBase, baseCurrency)} in {monthShort} ·{' '}
               {formatCurrency(yearlyBase, baseCurrency)}/yr
             </p>
           ) : null}
