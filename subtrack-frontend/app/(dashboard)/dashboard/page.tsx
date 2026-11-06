@@ -374,7 +374,7 @@ export default function DashboardPage() {
               </span>{' '}
               in {monthName}
               {' · '}
-              <Link href="/account#income" className="hover:text-foreground hover:underline">
+              <Link href="/account#income" className="font-medium text-primary hover:underline">
                 {shareOfIncome !== null ? `${shareOfIncome.toFixed(0)}% of your income` : 'Add your income'}
               </Link>
               {' · '}
