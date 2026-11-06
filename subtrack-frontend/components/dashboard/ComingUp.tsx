@@ -100,20 +100,11 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
   const lead = leadIsTomorrow ? tomorrow : today
   const leadLabel = leadIsTomorrow ? 'Tomorrow' : 'Today'
   const next = forecast.charges.find(charge => charge.days_until_due > (leadIsTomorrow ? 1 : 0))
-  const leadTotal = lead.reduce((sum, charge) => sum + (charge.charge_amount_in_base ?? 0), 0)
 
   return (
     <section className="h-full rounded-2xl bg-card p-5 shadow-sm sm:p-6" aria-labelledby="coming-up-heading">
       <div className="flex items-baseline justify-between gap-4">
         <h2 id="coming-up-heading" className="text-[17px] font-semibold text-foreground">Coming up</h2>
-        {lead.length > 0 ? (
-          <p className="text-sm text-muted-foreground">
-            <span className="font-semibold tabular-nums text-foreground">
-              {formatCurrency(leadTotal, forecast.currency_conversion.base_currency)}
-            </span>{' '}
-            due {leadLabel.toLowerCase()}
-          </p>
-        ) : null}
       </div>
 
       <div className="mt-5 space-y-4">
