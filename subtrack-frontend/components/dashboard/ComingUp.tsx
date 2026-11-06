@@ -75,7 +75,7 @@ function Group({ title, charges, estimated, empty, showDate = false, onSelect }:
   )
 }
 
-/** The first thing on the dashboard: what is being paid today, tomorrow, and next. */
+/** The first thing on the dashboard: what is being paid today, and what is next. */
 export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
   const [showLater, setShowLater] = useState(false)
 
@@ -93,8 +93,7 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
 
   const estimated = forecast.currency_conversion.status === 'estimated'
   const today = forecast.charges.filter(charge => charge.days_until_due <= 0)
-  const tomorrow = forecast.charges.filter(charge => charge.days_until_due === 1)
-  const later = forecast.charges.filter(charge => charge.days_until_due > 1)
+  const later = forecast.charges.filter(charge => charge.days_until_due > 0)
   const next = later[0]
   const todayTotal = today.reduce((sum, charge) => sum + (charge.charge_amount_in_base ?? 0), 0)
 
@@ -114,7 +113,6 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
 
       <div className="mt-5 space-y-4">
         <Group title="Today" charges={today} estimated={estimated} empty="Nothing due today." />
-        <Group title="Tomorrow" charges={tomorrow} estimated={estimated} empty="Nothing due tomorrow." />
         {later.length > 0 ? (
           <Group
             title="Next payment"
@@ -123,7 +121,7 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
             empty=""
             showDate
           />
-        ) : today.length === 0 && tomorrow.length === 0 ? (
+        ) : today.length === 0 ? (
           <p className="px-2 text-sm text-muted-foreground">Nothing else is due in the next 2 weeks.</p>
         ) : null}
       </div>
