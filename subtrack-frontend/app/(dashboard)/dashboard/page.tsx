@@ -306,6 +306,9 @@ export default function DashboardPage() {
           forecast={forecast}
           gmail={gmail}
           gmailScanStale={gmailScanStale}
+          undatedPayments={subscriptions
+            .filter(subscription => !subscription.next_due && ['active', 'cancelling'].includes(subscription.status))
+            .map(({ id, name }) => ({ id, name }))}
         />
 
 

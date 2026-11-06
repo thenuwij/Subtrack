@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ChevronDown } from 'lucide-react'
+import { useEditPayment } from '@/components/subscriptions/PaymentEditor'
 import type { DetectedSubscription, GmailStatus, SubscriptionForecast } from '@/types'
 
 interface Props {
@@ -10,9 +11,11 @@ interface Props {
   forecast: SubscriptionForecast | null
   gmail: GmailStatus | null
   gmailScanStale: boolean
+  undatedPayments?: { id: string; name: string }[]
 }
 
-export function NeedsAttention({ detections, forecast, gmail, gmailScanStale }: Props) {
+export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, undatedPayments = [] }: Props) {
+  const editPayment = useEditPayment()
   const uncertainDetections = detections.filter(item =>
     item.confidence !== 'high'
     || item.cadence_confidence !== 'high'
@@ -80,12 +83,27 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale }: 
           </li>
         ) : null}
         {missingDates > 0 ? (
-          <li className="flex items-center justify-between gap-4 py-3">
+          <li className="py-3">
             <span className="flex items-center gap-2.5 text-foreground">
               <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
-              {missingDates} current payment{missingDates === 1 ? '' : 's'} need a next expected date.
+              {missingDates} payment{missingDates === 1 ? ' needs' : 's need'} a next date
             </span>
-            <Link href="/subscriptions" className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted">Payments</Link>
+            {undatedPayments.length > 0 ? (
+              <span className="mt-2 flex flex-wrap gap-2 pl-[18px]">
+                {undatedPayments.map(payment => (
+                  <button
+                    key={payment.id}
+                    type="button"
+                    onClick={() => editPayment(payment.id)}
+                    className="min-h-9 rounded-full border border-border px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-muted"
+                  >
+                    {payment.name} · Add date
+                  </button>
+                ))}
+              </span>
+            ) : (
+              <Link href="/subscriptions" className="mt-2 inline-block pl-[18px] text-[13px] font-medium text-primary hover:underline">Open payments</Link>
+            )}
           </li>
         ) : null}
         {pausedWithoutResume > 0 ? (
