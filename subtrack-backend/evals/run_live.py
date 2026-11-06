@@ -1,6 +1,6 @@
 """Run every eval case against Claude and compare the score with the baseline.
 
-Usage: venv/bin/python -m evals.run_live [--report path] [--update-baseline]
+Usage: venv/bin/python -m evals.run_live [--report path] [--update-baseline] [--case id ...]
 
 Each case runs on a fresh in-memory database, so no real data is used. Exits
 with status 1 when the pass rate drops more than the allowed margin below
@@ -76,9 +76,13 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--report", type=Path, help="write full results as JSON here")
     parser.add_argument("--update-baseline", action="store_true")
+    parser.add_argument("--case", action="append", help="run only this case id (repeatable)")
     args = parser.parse_args()
+    if args.case and args.update_baseline:
+        parser.error("--update-baseline needs every case")
 
-    results = [run_one(case) for case in load_cases()]
+    cases = [c for c in load_cases() if not args.case or c["id"] in args.case]
+    results = [run_one(case) for case in cases]
     summary = summarise(results)
     if args.report:
         args.report.write_text(json.dumps({"summary": summary, "results": results}, indent=2))
@@ -94,6 +98,8 @@ def main() -> int:
         BASELINE_PATH.write_text(json.dumps(summary, indent=2) + "\n")
         print(f"Baseline updated to {summary['pass_rate']:.0%}")
         return 0
+    if args.case:
+        return 0 if summary["pass_rate"] == 1 else 1
     if not BASELINE_PATH.exists():
         print("No baseline yet; run with --update-baseline and commit evals/baseline.json.")
         return 0

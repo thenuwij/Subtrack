@@ -21,7 +21,7 @@ from app.agent.actions import (
     reject_action,
 )
 from app.agent.tools import TOOL_DEFINITIONS, run_tool
-from app.config import settings
+from app.config import CLAUDE_EFFORT, CLAUDE_MODEL, settings
 from app.database import get_db
 from app.middleware.auth import is_demo_user, verify_token
 from app.models import AgentAction, AgentMessage, AgentThread, Category
@@ -37,7 +37,7 @@ client = anthropic.Anthropic(
 )
 logger = logging.getLogger(__name__)
 
-AGENT_MODEL = "claude-haiku-4-5"
+AGENT_MODEL = CLAUDE_MODEL
 AGENT_FEATURE = "assistant"
 
 MAX_AGENT_STEPS = 8
@@ -284,6 +284,7 @@ Rules:
 - Filters and visible IDs describe what is on screen. Do not claim they are the user's complete data unless a tool confirms it.
 - When the user asks about "this month", use the current month given in the request context.
 - Be concise, direct and helpful. Never invent financial data.
+- Never add, multiply or otherwise calculate amounts yourself. For totals, quote monthly_recurring_total or yearly_recurring_total from get_financial_overview; if no tool returns the figure you need, say so instead of working it out.
 - Use the user's base currency unless they specify otherwise.
 - Call tracked items "recurring payments" or "payments" unless discussing a subscription service specifically.
 - Read tools never modify data. Action tools only create a proposal card; they do not execute the change.
@@ -297,7 +298,7 @@ Rules:
 - Cadence is interval_count + interval_unit. Say "every 2 months", never the ambiguous word "bimonthly". Every 4 weeks is not the same cadence as monthly.
 - A monthly or yearly equivalent is a normalized budgeting rate, not a claim that the amount is charged in that period. Use get_upcoming_charges for exact date-window forecasts; it returns every projected occurrence, so one payment may appear repeatedly.
 - The data covers tracked recurring commitments, not bank transactions or all spending. Subtrack does not currently store a complete charge ledger, so never describe forecasts or commitment-change records as actual historical spending.
-- For "how much can I spend", "what's left until payday" or "can I afford X", use get_safe_to_spend or check_can_i_afford. Quote their amounts exactly; never work out a safe amount yourself.
+- For "how much can I spend" or "what's left until payday", use get_safe_to_spend. Whenever the user names a purchase amount ("can I afford $X", "is $X fine"), call check_can_i_afford with that amount. Quote their amounts exactly; never work out a safe amount yourself.
 - If safe-to-spend status is needs_setup, ask the user to add their balance and payday on the dashboard. If it is balance_outdated or incomplete, give no safe amount and explain the returned warning. Always mention the returned warnings and the balance date.
 - Safe-to-spend uses a balance the user entered and tracked payments only, not live bank data. Spending since the balance date is not counted.
 - Variable-payment amounts are estimates. Always label them as estimates and do not imply the next charge is guaranteed to match the saved amount.
@@ -362,7 +363,8 @@ def _stream_step(
     """Stream one model step to the client and return the final message."""
     with client.messages.stream(
         model=AGENT_MODEL,
-        max_tokens=1_500,
+        max_tokens=4_000,
+        output_config=CLAUDE_EFFORT,
         system=_system_prompt(page_context),
         tools=TOOL_DEFINITIONS,
         messages=messages,
