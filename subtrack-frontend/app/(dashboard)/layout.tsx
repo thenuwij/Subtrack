@@ -1,4 +1,5 @@
 import Navbar from '@/components/layout/Navbar'
+import { BackendGate } from '@/components/layout/BackendGate'
 import { CurrencyProvider } from '@/lib/context/currency'
 import { Toaster } from '@/components/ui/sonner'
 import { AgentChat } from '@/components/agent/AgentChat'
@@ -10,6 +11,7 @@ import { DemoBanner } from '@/components/demo/DemoBanner'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   return (
+    <BackendGate>
     <CurrencyProvider>
       <ApiCacheProvider>
       <AgentPageContextProvider>
@@ -28,5 +30,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </ApiCacheProvider>
       <Toaster />
     </CurrencyProvider>
+    </BackendGate>
   )
 }

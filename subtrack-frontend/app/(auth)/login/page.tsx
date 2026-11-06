@@ -1,5 +1,5 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -13,6 +13,7 @@ import { AuthPreviewBanner, AuthPreviewPanel } from '@/components/auth/AuthPrevi
 import { GoogleIcon } from '@/components/auth/GoogleIcon'
 import { authErrorMessage, MIN_PASSWORD_LENGTH, passwordProblem } from '@/lib/auth/errors'
 import { endDemo, startDemo } from '@/lib/auth/session'
+import { warmBackend } from '@/lib/backend-status'
 
 type Mode = 'signin' | 'signup'
 
@@ -30,6 +31,9 @@ export default function LoginPage() {
   // session. Whether that step exists at all is a Supabase project setting,
   // so both outcomes are handled rather than assumed.
   const [checkEmail, setCheckEmail] = useState<string | null>(null)
+
+  // Start a sleeping server waking now, so it's ready by the time sign-in finishes.
+  useEffect(() => warmBackend(), [])
 
   const hydrated = useHydrated()
   const reason = hydrated
