@@ -111,7 +111,7 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
 
   if (ranked.length === 0) {
     return (
-      <section className="rounded-2xl bg-card p-6 shadow-sm">
+      <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
         <h2 className="text-[17px] font-semibold text-foreground">Where your money goes</h2>
         <div className="mt-6 flex flex-col items-center justify-center py-10 text-center">
           <p className="text-sm font-medium text-foreground">Nothing to break down yet</p>
@@ -134,7 +134,7 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
   const visiblePayments = showAllPayments ? ranked : ranked.slice(0, 6)
 
   return (
-    <section className="rounded-2xl bg-card p-6 shadow-sm">
+    <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-[17px] font-semibold text-foreground">Where your money goes</h2>

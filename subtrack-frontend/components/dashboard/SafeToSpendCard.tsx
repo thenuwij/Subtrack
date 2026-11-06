@@ -170,7 +170,7 @@ export function SafeToSpendCard() {
 
   if (query.error && !position) {
     return (
-      <section className="flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <section className="flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-[17px] font-semibold text-foreground">Safe to spend</h2>
           <p className="mt-1 text-sm text-muted-foreground">We couldn&apos;t work this out right now.</p>
@@ -185,7 +185,7 @@ export function SafeToSpendCard() {
 
   if (position.status === 'needs_setup') {
     return (
-      <section className="rounded-2xl bg-card p-6 shadow-sm">
+      <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
         <h2 className="text-[17px] font-semibold text-foreground">How much can you safely spend?</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Add your balance and payday, and we&apos;ll set aside your tracked payments.

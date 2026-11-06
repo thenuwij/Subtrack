@@ -311,7 +311,7 @@ export default function DashboardPage() {
 
         {/* ── Inbox nudge — only while there's something to act on ─────── */}
         {gmail && !gmail.connected && !isDemo && (
-          <section className="flex flex-col gap-4 rounded-2xl bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <section className="flex flex-col gap-4 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Mail className="h-4 w-4" />
@@ -361,7 +361,7 @@ export default function DashboardPage() {
         {changesError || changes.length > 0 ? (
         <>
         {/* ── What changed ────────────────────────────────────────────── */}
-        <section className="rounded-2xl bg-card p-6 shadow-sm">
+        <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <h2 className="text-[17px] font-semibold text-foreground">What changed</h2>

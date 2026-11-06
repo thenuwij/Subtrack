@@ -80,7 +80,7 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
   if (!forecast) {
     if (!error) return null
     return (
-      <section className="flex items-center justify-between gap-3 rounded-2xl bg-card p-5 shadow-sm">
+      <section className="flex items-center justify-between gap-3 rounded-2xl bg-card p-5 shadow-sm sm:p-6">
         <p className="text-sm text-muted-foreground">We couldn&apos;t load your upcoming payments.</p>
         <Button size="sm" variant="outline" disabled={retrying} onClick={onRetry}>
           {retrying ? 'Trying again…' : 'Try again'}

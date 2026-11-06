@@ -1,6 +1,8 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
+import { ChevronDown } from 'lucide-react'
 import type { DetectedSubscription, GmailStatus, SubscriptionForecast } from '@/types'
 
 interface Props {
@@ -29,6 +31,11 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale }: 
       .map(charge => charge.id) ?? [],
   ).size
   const scanIsPartial = Boolean(gmail?.connected && gmail.scan_partial)
+  const [open, setOpen] = useState(false)
+  const count = [
+    uncertainDetections, unknownTrialPrices, missingDates, pausedWithoutResume,
+    unconverted, estimatedPayments, scanIsPartial || gmailScanStale,
+  ].filter(Boolean).length
 
   if (!uncertainDetections && !unknownTrialPrices && !missingDates
       && !unconverted && !pausedWithoutResume && !estimatedPayments
@@ -37,9 +44,23 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale }: 
   }
 
   return (
-    <section className="rounded-2xl bg-card p-5 shadow-sm" aria-labelledby="needs-attention-heading">
-      <h2 id="needs-attention-heading" className="text-[17px] font-semibold text-foreground">Needs attention</h2>
-      <ul className="mt-2 divide-y divide-border text-[15px]">
+    <section className="rounded-2xl bg-card px-5 py-2 shadow-sm sm:px-6" aria-labelledby="needs-attention-heading">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls="needs-attention-list"
+        onClick={() => setOpen(value => !value)}
+        className="flex min-h-11 w-full items-center gap-3 py-2 text-left"
+      >
+        <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-muted px-1.5 text-[13px] font-semibold tabular-nums text-foreground">
+          {count}
+        </span>
+        <h2 id="needs-attention-heading" className="flex-1 text-[15px] font-medium text-foreground">
+          {count === 1 ? 'Thing needs' : 'Things need'} your attention
+        </h2>
+        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+      </button>
+      <ul id="needs-attention-list" hidden={!open} className="divide-y divide-border border-t border-border pb-1 text-[15px]">
         {uncertainDetections > 0 ? (
           <li className="flex items-center justify-between gap-4 py-3">
             <span className="flex items-center gap-2.5 text-foreground">
