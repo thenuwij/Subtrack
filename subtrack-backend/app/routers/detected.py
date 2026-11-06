@@ -7,6 +7,7 @@ rescans don't resurface it.
 """
 import logging
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +23,7 @@ from app.models import (
     ChangeKind,
     DetectedSubscription,
     DetectionStatus,
+    PaymentExtra,
     PaymentReminder,
     PaymentStatus,
     RecurrenceUnit,
@@ -30,6 +32,7 @@ from app.models import (
 )
 from app.routers.rates import conversion_for_storage
 from app.routers.subscriptions import log_change, rebill, resolve_split
+from app.services.payment_links import name_match, remember_link
 from app.services.recurrence import (
     Cadence,
     cadence_for,
@@ -189,6 +192,9 @@ def list_detections(
         DetectedSubscription.status == status,
     ).order_by(DetectedSubscription.charge_count.desc()).all()
 
+    if status == DetectionStatus.pending:
+        _suggest_by_name(db, user_id, pending)
+
     wanted = {d.existing_subscription_id for d in pending if d.existing_subscription_id}
     wanted |= {d.similar_subscription_id for d in pending if d.similar_subscription_id}
     subs = {
@@ -202,6 +208,95 @@ def list_detections(
         _serialize(d, subs.get(d.existing_subscription_id), subs.get(d.similar_subscription_id))
         for d in pending
     ]
+
+
+def _suggest_by_name(db: Session, user_id: str, pending: list[DetectedSubscription]) -> None:
+    """Free "is this your X?" hints: "Anytime Fitness membership" contains "Anytime Fitness".
+
+    Only fills findings that have no link yet; the user still confirms it.
+    """
+    unlinked = [d for d in pending if not d.existing_subscription_id and not d.similar_subscription_id]
+    if not unlinked:
+        return
+    active = db.query(Subscription).filter(
+        Subscription.user_id == user_id, Subscription.is_active.is_(True),
+    ).all()
+    changed = False
+    for detection in unlinked:
+        match = name_match(detection.merchant, active)
+        if match is not None:
+            detection.similar_subscription_id = match.id
+            detection.similar_reason = f"The name matches your {match.name} payment."
+            changed = True
+    if changed:
+        db.commit()
+
+
+class SamePaymentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subscription_id: UUID
+    # regular: an ordinary charge, nothing to change
+    # extra: the charge was higher because of a late fee or other one-off
+    # new_price: the regular price has changed
+    kind: Literal["regular", "extra", "new_price"]
+
+
+@router.post("/{detection_id}/same-payment")
+def confirm_same_payment(
+    detection_id: UUID,
+    body: SamePaymentRequest,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """The user confirmed this finding is a payment they already track.
+
+    Remembers the sender and business name so later receipts link on their
+    own, then records why the amount differed (if it did).
+    """
+    detection = _get_pending(db, user_id, detection_id, for_update=True)
+    sub = db.query(Subscription).filter(
+        Subscription.id == body.subscription_id, Subscription.user_id == user_id,
+    ).first()
+    if sub is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    remember_link(db, user_id, detection.sender_domain, detection.merchant, sub.id)
+    result: dict = {"linked": True, "subscription_id": str(sub.id)}
+
+    if body.kind == "new_price":
+        overrides = ApproveOverrides(
+            replace_subscription_id=sub.id,
+            interval_unit=sub.interval_unit or cadence_for(sub).unit,
+            interval_count=sub.interval_count or cadence_for(sub).count,
+            name=sub.name,
+        )
+        apply_approval(detection_id, overrides, user_id, db, commit=True)
+        return {**result, "updated_price": True}
+
+    if body.kind == "extra":
+        regular = float(sub.full_amount or sub.amount)
+        extra = round(float(detection.amount) - regular, 2)
+        if extra <= 0:
+            raise HTTPException(
+                status_code=422,
+                detail="This charge isn't more than your usual price, so there's no extra to record.",
+            )
+        db.add(PaymentExtra(
+            user_id=user_id,
+            subscription_id=sub.id,
+            amount=extra,
+            currency=(detection.currency or sub.currency).upper(),
+            charged_at=detection.last_charge_at or utcnow(),
+            reason="late_fee",
+        ))
+        result["extra_amount"] = extra
+
+    detection.status = DetectionStatus.approved
+    detection.existing_subscription_id = sub.id
+    detection.resolved_at = utcnow()
+    db.commit()
+    return result
 
 
 class ApproveOverrides(BaseModel):

@@ -386,7 +386,7 @@ def get_calendar_month(
     import calendar
     from datetime import time
 
-    from app.agent.finance import upcoming_charges
+    from app.agent.finance import CurrencyContext, upcoming_charges
     from app.services.safe_to_spend import _user_zone
 
     today = datetime.now(_user_zone(db, user_id)).date()
@@ -400,7 +400,57 @@ def get_calendar_month(
         end_at=datetime.combine(datetime(year, month, last_day).date(), time.max),
         include_past=True,
     )
-    return {**result, "year": year, "month": month}
+    from app.models import PaymentExtra
+
+    month_start = datetime(year, month, 1)
+    month_end = datetime.combine(datetime(year, month, last_day).date(), time.max)
+    extras = db.query(PaymentExtra).filter(
+        PaymentExtra.user_id == user_id,
+        PaymentExtra.charged_at >= month_start,
+        PaymentExtra.charged_at <= month_end,
+    ).all()
+    currency = CurrencyContext.for_user(db, user_id)
+    extra_rows = []
+    for extra in extras:
+        in_base, _ = currency.convert(float(extra.amount), extra.currency)
+        extra_rows.append({
+            "subscription_id": str(extra.subscription_id),
+            "amount": float(extra.amount),
+            "currency": extra.currency,
+            "amount_in_base": in_base,
+            "charged_at": extra.charged_at.isoformat(),
+            "reason": extra.reason,
+        })
+    return {**result, "year": year, "month": month, "extras": extra_rows}
+
+
+@router.get("/extras")
+def get_extras(
+    days: int = Query(default=90, ge=1, le=730),
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """One-off extra charges (like late fees) per payment over the last ``days``."""
+    from datetime import timedelta
+
+    from app.agent.finance import CurrencyContext
+    from app.models import PaymentExtra
+
+    since = datetime.utcnow() - timedelta(days=days)
+    currency = CurrencyContext.for_user(db, user_id)
+    totals: dict[str, dict] = {}
+    for extra in db.query(PaymentExtra).filter(
+        PaymentExtra.user_id == user_id, PaymentExtra.charged_at >= since,
+    ).all():
+        in_base, _ = currency.convert(float(extra.amount), extra.currency)
+        row = totals.setdefault(str(extra.subscription_id), {
+            "subscription_id": str(extra.subscription_id), "count": 0,
+            "total_in_base": 0.0, "base_currency": currency.base,
+        })
+        row["count"] += 1
+        if in_base is not None:
+            row["total_in_base"] = round(row["total_in_base"] + in_base, 2)
+    return list(totals.values())
 
 
 @router.get("/changes")

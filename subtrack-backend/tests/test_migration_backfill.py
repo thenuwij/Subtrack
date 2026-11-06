@@ -69,7 +69,7 @@ class FlexibleCadenceMigrationTests(unittest.TestCase):
                     connection.execute(
                         "SELECT version_num FROM alembic_version"
                     ).fetchone(),
-                    ("0020_gmail_auto_scan",),
+                    ("0021_payment_extras",),
                 )
                 message_indexes = {
                     row[1]
@@ -90,7 +90,7 @@ class FlexibleCadenceMigrationTests(unittest.TestCase):
                     connection.execute(
                         "SELECT version_num FROM alembic_version"
                     ).fetchone(),
-                    ("0020_gmail_auto_scan",),
+                    ("0021_payment_extras",),
                 )
 
     def test_legacy_rows_backfill_and_survive_supported_downgrade(self):

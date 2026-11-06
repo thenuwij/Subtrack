@@ -1,5 +1,6 @@
 import type {
   CalendarMonthCharges,
+  PaymentExtrasSummary,
   ApiCapabilities,
   AmountType,
   BillingCycle,
@@ -358,6 +359,11 @@ export async function getCalendarMonth(token: string): Promise<CalendarMonthChar
   return request('/subscriptions/month', token)
 }
 
+/** One-off extra charges (like late fees) per payment over the last `days`. */
+export async function getPaymentExtras(token: string, days = 90): Promise<PaymentExtrasSummary[]> {
+  return request(`/subscriptions/extras?days=${days}`, token)
+}
+
 export async function getSubscriptionEquivalents(
   token: string,
   data: { amount: number; interval_unit: RecurrenceUnit; interval_count: number },
@@ -554,6 +560,15 @@ export async function approveDetected(
     method: 'POST',
     body: JSON.stringify(overrides),
   })
+}
+
+/** Confirm a finding is a payment you already track, and say why the amount differed. */
+export async function confirmSamePayment(
+  token: string,
+  id: string,
+  data: { subscription_id: string; kind: 'regular' | 'extra' | 'new_price' },
+): Promise<{ linked: boolean; extra_amount?: number; updated_price?: boolean }> {
+  return request(`/detected/${id}/same-payment`, token, { method: 'POST', body: JSON.stringify(data) })
 }
 
 export async function dismissDetected(token: string, id: string) {

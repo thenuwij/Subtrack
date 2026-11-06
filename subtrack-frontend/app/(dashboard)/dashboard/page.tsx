@@ -138,6 +138,10 @@ export default function DashboardPage() {
       if (charge.charge_amount_in_base === null) continue
       totals.set(charge.id, (totals.get(charge.id) ?? 0) + charge.charge_amount_in_base)
     }
+    for (const extra of calendarMonthQuery.data?.extras ?? []) {
+      if (extra.amount_in_base === null) continue
+      totals.set(extra.subscription_id, (totals.get(extra.subscription_id) ?? 0) + extra.amount_in_base)
+    }
     return totals
   }, [calendarMonthQuery.data])
   const monthName = calendarMonthQuery.data

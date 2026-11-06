@@ -46,6 +46,7 @@ from app.models import (
     Subscription,
 )
 from app.services.gmail_access import revoke_encrypted_refresh_token
+from app.services.payment_links import linked_subscription_id, load_links
 from app.services.recurrence import Cadence, cadence_for, legacy_cycle_for, utc_naive
 
 logger = logging.getLogger(__name__)
@@ -739,14 +740,18 @@ def _scan_is_stale(account: GmailAccount) -> bool:
     return now - heartbeat > timedelta(minutes=STALE_SCAN_MINUTES)
 
 
-def _apply_detections(db, user_id, subscriptions, existing_detections, detected):
+def _apply_detections(db, user_id, subscriptions, existing_detections, detected, links=None):
     """Fold a batch of analyzer results into the review queue.
 
     Mutates `existing_detections` in place as rows are added, so calling this
     per batch is equivalent to one pass over everything at the end.
+    ``links`` are the user's saved "this sender is my X payment" answers.
     """
+    by_id = {sub.id: sub for sub in subscriptions}
     for found in detected:
-        tracked = _match_subscription(subscriptions, found)
+        linked_id = linked_subscription_id(links or {}, found.sender_domain, found.merchant)
+        tracked = by_id.get(linked_id) if linked_id else None
+        tracked = tracked or _match_subscription(subscriptions, found)
         previous = _match_detection(existing_detections, found)
 
         # Dismissed means "stop suggesting this" — a rescan must not nag.
@@ -853,6 +858,9 @@ def _apply_detections(db, user_id, subscriptions, existing_detections, detected)
             row.due_date_confidence = "unknown"
             row.due_date_evidence = None
         row.existing_subscription_id = existing_sub_id
+        row.last_charge_at = (
+            utc_naive(found.last_successful_charge_at) if found.last_successful_charge_at else None
+        )
         row.status = DetectionStatus.pending
         row.resolved_at = None
 
@@ -949,9 +957,11 @@ def _run_scan(user_id: str, run_id: str):
             DetectedSubscription.user_id == user_id
         ).all()
 
+        links = load_links(db, user_id)
+
         def apply_batch(found):
             ensure_current()
-            _apply_detections(db, user_id, subscriptions, existing_detections, found)
+            _apply_detections(db, user_id, subscriptions, existing_detections, found, links)
             account.scan_heartbeat_at = _utcnow()
             db.commit()
 

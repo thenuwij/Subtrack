@@ -7,6 +7,7 @@ import {
   approveDetected,
   clearAllDismissedDetected,
   clearDismissedDetected,
+  confirmSamePayment,
   dismissDetected,
   getDetected,
   getGmailStatus,
@@ -303,6 +304,27 @@ export default function ReviewPage() {
   // a question rather than an action — replacing the wrong row silently would
   // be worse than an extra one.
   const [choosing, setChoosing] = useState<string | null>(null)
+  // Findings where the user said "No, it's a different payment" to the name match.
+  const [notSame, setNotSame] = useState<Set<string>>(() => new Set())
+
+  async function samePayment(id: string, subscriptionId: string, kind: 'regular' | 'extra' | 'new_price') {
+    if (!beginBusy(id)) return
+    try {
+      const t = await token()
+      if (!t) throw new Error('Your session has expired. Sign in again to continue.')
+      const result = await confirmSamePayment(t, id, { subscription_id: subscriptionId, kind })
+      removeItem(id)
+      toast.success(
+        kind === 'extra' && result.extra_amount
+          ? `Recorded a ${formatCurrency(result.extra_amount, items.find(i => i.id === id)?.currency ?? 'AUD')} extra charge`
+          : kind === 'new_price' ? 'Price updated' : 'Linked to your payment',
+      )
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not link this payment.')
+    } finally {
+      endBusy()
+    }
+  }
 
   async function approveWith(id: string, replaceId?: string) {
     if (!beginBusy(id)) return
@@ -643,6 +665,21 @@ export default function ReviewPage() {
               )
               const approvePossible = !item.cancelled
                 || Boolean(item.existing_subscription_id || item.similar_subscription_id)
+              // "Is this your X payment?" — offered for a name match the user hasn't
+              // rejected, and for an already-linked payment whose charge was higher.
+              const askSame = tab === 'pending' && !item.cancelled
+                && Boolean(item.similar_subscription_id) && !item.existing_subscription_id
+                && !notSame.has(item.id)
+              const linkedRegular = item.existing_subscription_id
+                ? (item.current_full_amount ?? item.current_amount) : null
+              const askWhyHigher = tab === 'pending' && !item.cancelled
+                && Boolean(item.existing_subscription_id)
+                && linkedRegular !== null && item.amount > linkedRegular + 0.005
+              const sameTargetId = askSame ? item.similar_subscription_id : item.existing_subscription_id
+              const sameTargetName = askSame ? item.similar_name : item.current_name
+              const sameRegular = askSame ? (item.similar_full_amount ?? item.similar_amount) : linkedRegular
+              const sameCadence = askSame ? item.similar_cadence_label : item.current_cadence_label
+              const extraAmount = sameRegular !== null ? Math.round((item.amount - sameRegular) * 100) / 100 : 0
 
               return (
                 <div
@@ -971,7 +1008,67 @@ export default function ReviewPage() {
                         </p>
                       ) : null}
 
-                      {item.similar_subscription_id && (
+                      {(askSame || askWhyHigher) && sameTargetId ? (
+                        <div className="rounded-xl border border-primary/25 bg-primary/5 p-3">
+                          <p className="text-sm font-medium text-foreground">
+                            {askSame ? (
+                              <>Is this your {sameTargetName} payment?</>
+                            ) : (
+                              <>Why was this {sameTargetName} charge higher?</>
+                            )}
+                          </p>
+                          {sameRegular !== null ? (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              You normally pay {formatCurrency(sameRegular, item.currency)}
+                              {sameCadence ? ` · ${sameCadence.toLowerCase()}` : ''}. This charge was{' '}
+                              {formatCurrency(item.amount, item.currency)}
+                              {extraAmount > 0 ? ` (+${formatCurrency(extraAmount, item.currency)})` : ''}.
+                            </p>
+                          ) : null}
+                          <div className="mt-2.5 flex flex-wrap gap-2">
+                            {extraAmount > 0 ? (
+                              <>
+                                <Button size="sm" disabled={busy !== null}
+                                  onClick={() => void samePayment(item.id, sameTargetId, 'extra')}>
+                                  Late fee or extra charge
+                                </Button>
+                                <Button size="sm" variant="outline" disabled={busy !== null}
+                                  onClick={() => void samePayment(item.id, sameTargetId, 'new_price')}>
+                                  New regular price
+                                </Button>
+                              </>
+                            ) : extraAmount < 0 ? (
+                              <>
+                                <Button size="sm" disabled={busy !== null}
+                                  onClick={() => void samePayment(item.id, sameTargetId, 'new_price')}>
+                                  Yes, new price
+                                </Button>
+                                <Button size="sm" variant="outline" disabled={busy !== null}
+                                  onClick={() => void samePayment(item.id, sameTargetId, 'regular')}>
+                                  Yes, one-off discount
+                                </Button>
+                              </>
+                            ) : (
+                              <Button size="sm" disabled={busy !== null}
+                                onClick={() => void samePayment(item.id, sameTargetId, 'regular')}>
+                                Yes, same payment
+                              </Button>
+                            )}
+                            {askSame ? (
+                              <Button size="sm" variant="ghost" disabled={busy !== null}
+                                className="text-muted-foreground"
+                                onClick={() => setNotSame(previous => new Set(previous).add(item.id))}>
+                                No, it&apos;s different
+                              </Button>
+                            ) : null}
+                          </div>
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            Subtrack will remember this, so future receipts link on their own.
+                          </p>
+                        </div>
+                      ) : null}
+
+                      {item.similar_subscription_id && item.cancelled && (
                         <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3">
                           <p className="text-xs text-foreground">
                             Looks like{' '}
@@ -1137,7 +1234,7 @@ export default function ReviewPage() {
                             <Button
                               size="sm"
                               onClick={() =>
-                                item.similar_subscription_id && choosing !== item.id
+                                item.similar_subscription_id && item.cancelled && choosing !== item.id
                                   ? setChoosing(item.id)
                                   : resolve(item.id, 'approve')
                               }

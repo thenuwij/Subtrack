@@ -23,6 +23,11 @@ export function useThisMonth() {
       if (charge.charge_amount_in_base === null) continue
       map.set(charge.id, (map.get(charge.id) ?? 0) + charge.charge_amount_in_base)
     }
+    // Late fees and other one-off extras charged this month are part of its real cost.
+    for (const extra of data?.extras ?? []) {
+      if (extra.amount_in_base === null) continue
+      map.set(extra.subscription_id, (map.get(extra.subscription_id) ?? 0) + extra.amount_in_base)
+    }
     return map
   }, [data])
 

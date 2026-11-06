@@ -284,9 +284,26 @@ export interface SubscriptionForecast {
   }
 }
 
+export interface PaymentExtraRow {
+  subscription_id: string
+  amount: number
+  currency: string
+  amount_in_base: number | null
+  charged_at: string
+  reason: 'late_fee' | 'extra'
+}
+
 export interface CalendarMonthCharges extends SubscriptionForecast {
   year: number
   month: number
+  extras?: PaymentExtraRow[]
+}
+
+export interface PaymentExtrasSummary {
+  subscription_id: string
+  count: number
+  total_in_base: number
+  base_currency: string
 }
 
 export type PayIntervalUnit = 'week' | 'month'

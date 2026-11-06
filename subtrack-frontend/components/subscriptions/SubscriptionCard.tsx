@@ -1,10 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Subscription } from '@/types'
+import type { PaymentExtrasSummary, Subscription } from '@/types'
 import { Button } from '@/components/ui/button'
 import { Bell, Clock3, Trash2, Pencil, Sparkles } from 'lucide-react'
 import { useThisMonth } from '@/lib/hooks/useThisMonth'
+import { apiKeys, useApi } from '@/lib/hooks/useApi'
+import { getPaymentExtras } from '@/lib/api'
 import { useCurrency } from '@/lib/context/currency'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatCategory } from '@/lib/utils/categories'
@@ -58,6 +60,8 @@ export function SubscriptionCard({
   const canShowConversion = canConvert(subscription.currency)
   const yearlyNative = yearlyEquivalentNative(subscription)
   const { costOf, monthShort } = useThisMonth()
+  const extrasQuery = useApi<PaymentExtrasSummary[]>(apiKeys.extras(90), token => getPaymentExtras(token, 90))
+  const extras = extrasQuery.data?.find(row => row.subscription_id === subscription.id)
   const monthlyBase = costOf(subscription)
   const yearlyBase = canShowConversion
     ? convertAmount(yearlyNative, subscription.currency)
@@ -141,6 +145,11 @@ export function SubscriptionCard({
           </p>
           {trialActive ? (
             <p className="mt-0.5 text-[10px] font-medium text-primary">after trial</p>
+          ) : null}
+          {extras && extras.count > 0 ? (
+            <p className="mt-0.5 text-xs font-medium text-amber-700 tabular-nums dark:text-amber-300">
+              +{formatCurrency(extras.total_in_base, extras.base_currency)} in extras · 3 months
+            </p>
           ) : null}
           {introActive && trialEnd ? (
             <p className="mt-0.5 text-xs font-medium text-primary tabular-nums">

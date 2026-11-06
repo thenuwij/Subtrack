@@ -28,6 +28,9 @@ MULTI_PRODUCT_SENDERS = {
     "afterpay.com", "zip.co", "klarna.com",
     "ebay.com", "ebay.com.au", "uber.com", "doordash.com", "menulog.com.au",
     "stripe.com", "square.com", "squareup.com",
+    # Direct-debit collectors that bill on behalf of many gyms and clubs.
+    "debitsuccess.com", "debitsuccess.com.au", "ezidebit.com.au", "ezidebit.com",
+    "paywise.com.au", "gocardless.com", "integrapay.com.au",
 }
 
 # Single-product senders, so a clean pattern can be named and filed confidently.
