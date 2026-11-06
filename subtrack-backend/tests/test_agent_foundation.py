@@ -60,6 +60,8 @@ class AgentFoundationTests(unittest.TestCase):
             "list_review_detections",
             "get_saving_candidates",
             "list_payment_reminders",
+            "get_safe_to_spend",
+            "check_can_i_afford",
             "research_cheaper_alternatives",
         })
         for name in read_names:

@@ -11,6 +11,7 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-secret")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
+from app.agent.tools import run_tool  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.models import (  # noqa: E402
     BillingCycle,
@@ -228,3 +229,45 @@ class SafeToSpendTests(unittest.TestCase):
         put_profile(body, user_id="owner", db=self.db)
 
         self.assertGreater(self.db.get(SafeToSpendProfile, "owner").balance_as_of, old)
+
+    def run_at_now(self, tool_name, tool_input):
+        with patch(
+            "app.agent.tools.safe_to_spend",
+            side_effect=lambda db, user_id: safe_to_spend(db, user_id, now=NOW),
+        ), patch(
+            "app.agent.tools.can_i_afford",
+            side_effect=lambda db, user_id, amount: can_i_afford(db, user_id, amount, now=NOW),
+        ):
+            return run_tool(tool_name, tool_input, self.db, "owner")
+
+    def test_assistant_tool_returns_the_engine_answer(self):
+        self.add_profile()
+        self.add_payment("Rent", 400, datetime(2026, 11, 5))
+
+        result = self.run_at_now("get_safe_to_spend", {})
+
+        self.assertEqual(result, safe_to_spend(self.db, "owner", now=NOW))
+        self.assertEqual(result["safe_to_spend"], 170.0)
+
+    def test_assistant_afford_tool_uses_the_engine_with_an_exact_amount(self):
+        self.add_profile()
+        self.add_payment("Rent", 400, datetime(2026, 11, 5))
+
+        result = self.run_at_now("check_can_i_afford", {"amount": 60.1})
+
+        self.assertEqual(result, can_i_afford(self.db, "owner", Decimal("60.10"), now=NOW))
+        self.assertTrue(result["affordable"])
+
+    def test_assistant_afford_tool_rejects_invalid_amounts(self):
+        self.add_profile()
+        for amount in (None, True, "lots", 0, -5, 12.345, float("nan"), 1e12):
+            with self.subTest(amount=amount):
+                result = self.run_at_now("check_can_i_afford", {"amount": amount})
+                self.assertIn("error", result)
+
+    def test_assistant_tools_only_read_the_authenticated_user(self):
+        self.add_profile(user_id="someone-else")
+
+        result = self.run_at_now("get_safe_to_spend", {})
+
+        self.assertEqual(result["status"], "needs_setup")

@@ -1,5 +1,6 @@
 """Anthropic schemas for user-scoped reads and inert action proposals."""
 from datetime import datetime, time
+from decimal import Decimal, InvalidOperation
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -22,14 +23,33 @@ from app.agent.finance import (
 )
 from app.agent.research import ALTERNATIVE_RESEARCH_TOOL, research_alternatives
 from app.models import Category
+from app.services.safe_to_spend import can_i_afford, safe_to_spend
 
 CATEGORIES = [item.value for item in Category]
+MAX_AFFORD_AMOUNT = 9_999_999_999.99
+CENTS = Decimal("0.01")
 
 
 def _utc_date(value: str, *, end_of_day: bool = False) -> datetime:
     """Interpret assistant date-only tool input using Subtrack's UTC policy."""
     parsed = datetime.strptime(value, "%Y-%m-%d").date()
     return datetime.combine(parsed, time.max if end_of_day else time.min)
+
+
+def _purchase_amount(value: object) -> Decimal:
+    """Validate a model-supplied purchase amount the same way the REST endpoint does."""
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError("amount must be a number")
+    try:
+        amount = Decimal(str(value))
+    except InvalidOperation as exc:
+        raise ValueError("amount must be a number") from exc
+    if not amount.is_finite() or amount <= 0 or amount > Decimal(str(MAX_AFFORD_AMOUNT)):
+        raise ValueError("amount must be greater than 0 and within the supported range")
+    if amount != amount.quantize(CENTS):
+        raise ValueError("amount can have at most 2 decimal places")
+    return amount
+
 
 READ_TOOL_DEFINITIONS = [
     {
@@ -171,6 +191,36 @@ READ_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "get_safe_to_spend",
+        "description": (
+            "Get how much the user can safely spend until their next payday, from their saved "
+            "balance, payday, buffer and tracked payments due before then. Returns the amount, "
+            "per-day amount, any shortfall, the commitments counted and warnings. "
+            "A status other than ready means no safe amount can be given."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "check_can_i_afford",
+        "description": (
+            "Check whether a one-off purchase fits within the user's safe-to-spend amount "
+            "until payday, and what would be left overall and per day afterwards. "
+            "The amount is in the user's base currency."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": MAX_AFFORD_AMOUNT,
+                },
+            },
+            "required": ["amount"],
+            "additionalProperties": False,
+        },
+    },
     ALTERNATIVE_RESEARCH_TOOL,
 ]
 
@@ -232,6 +282,14 @@ def run_tool(
         return saving_candidates(db, user_id, tool_input.get("limit", 5))
     if tool_name == "list_payment_reminders":
         return reminders_overview(db, user_id, tool_input)
+    if tool_name == "get_safe_to_spend":
+        return safe_to_spend(db, user_id)
+    if tool_name == "check_can_i_afford":
+        try:
+            amount = _purchase_amount(tool_input.get("amount"))
+        except ValueError as exc:
+            return {"error": str(exc)}
+        return can_i_afford(db, user_id, amount)
     if tool_name == "research_cheaper_alternatives":
         return research_alternatives(db, user_id, tool_input)
     return {"error": "Unknown assistant tool"}
