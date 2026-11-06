@@ -155,6 +155,7 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         committed=float(committed),
         commitments=[
             {
+                "id": row["id"],
                 "name": row["name"],
                 "due_at": row["due_at"],
                 "amount": row["charge_amount_in_base"],

@@ -305,7 +305,7 @@ export interface SafeToSpend {
   balance?: number
   buffer?: number
   committed?: number
-  commitments?: { name: string; due_at: string; amount: number; is_estimate: boolean }[]
+  commitments?: { id: string; name: string; due_at: string; amount: number; is_estimate: boolean }[]
   profile?: Omit<SafeToSpendProfileInput, 'next_payday'>
   warnings?: string[]
 }
