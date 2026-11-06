@@ -5,13 +5,17 @@ stored, so they never hold financial data and need no export or deletion.
 Recording is best effort and never fails the request it measures.
 """
 import logging
+import math
 import time
+from collections import defaultdict
 from collections.abc import Callable, Iterable
+from datetime import datetime
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import AiCallTrace
@@ -120,3 +124,53 @@ def traced_call(feature: str, call: Callable[..., Any], **kwargs: Any) -> Any:
     record_call(feature, kwargs["model"], response, elapsed_ms(started))
     return response
 
+
+def _percentile(values: list[int], fraction: float) -> int | None:
+    """Nearest-rank percentile; None for an empty list."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    return ordered[max(0, math.ceil(fraction * len(ordered)) - 1)]
+
+
+def usage_summary(db: Session, since: datetime) -> dict[str, dict]:
+    """Per-feature call count, error rate, latency percentiles and cost since a time.
+
+    For the assistant, latency and cost are also reported per request, since
+    one request can make several model calls.
+    """
+    traces = db.query(AiCallTrace).filter(AiCallTrace.created_at >= since).all()
+    by_feature: dict[str, list[AiCallTrace]] = defaultdict(list)
+    for trace in traces:
+        by_feature[trace.feature].append(trace)
+
+    summary = {}
+    for feature, rows in sorted(by_feature.items()):
+        latencies = [row.latency_ms for row in rows]
+        cost = sum((row.cost_usd for row in rows), Decimal(0))
+        entry = {
+            "calls": len(rows),
+            "error_rate": sum(1 for row in rows if row.error_code) / len(rows),
+            "p50_ms": _percentile(latencies, 0.5),
+            "p95_ms": _percentile(latencies, 0.95),
+            "cost_usd": cost,
+        }
+        runs: dict[UUID, list[AiCallTrace]] = defaultdict(list)
+        for row in rows:
+            if row.run_id is not None:
+                runs[row.run_id].append(row)
+        if runs:
+            request_ms = [
+                sum(row.latency_ms + (row.tool_ms or 0) for row in steps)
+                for steps in runs.values()
+            ]
+            entry.update(
+                requests=len(runs),
+                request_p50_ms=_percentile(request_ms, 0.5),
+                request_p95_ms=_percentile(request_ms, 0.95),
+                cost_per_request_usd=sum(
+                    (row.cost_usd for steps in runs.values() for row in steps), Decimal(0)
+                ) / len(runs),
+            )
+        summary[feature] = entry
+    return summary
