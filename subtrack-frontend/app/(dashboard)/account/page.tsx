@@ -383,6 +383,7 @@ export default function AccountPage() {
         </Row>
 
         <Row
+          id="income"
           title="Monthly income"
           description="Used to show what share of your income goes to recurring payments"
           note={incomeStatus === 'cleared' ? (
@@ -680,18 +681,20 @@ function Section({
 }
 
 function Row({
+  id,
   title,
   description,
   note,
   children,
 }: {
+  id?: string
   title: string
   description?: string
   note?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-3 py-4 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+    <div id={id} className="flex scroll-mt-20 flex-col gap-3 py-4 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="text-sm font-medium">{title}</p>
         {description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}

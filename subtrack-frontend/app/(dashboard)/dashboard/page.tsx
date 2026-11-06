@@ -373,7 +373,10 @@ export default function DashboardPage() {
                 {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(monthlyTotal, baseCurrency)}
               </span>{' '}
               in {monthName}
-              {shareOfIncome !== null ? ` · ${shareOfIncome.toFixed(0)}% of your income` : ''}
+              {' · '}
+              <Link href="/account#income" className="hover:text-foreground hover:underline">
+                {shareOfIncome !== null ? `${shareOfIncome.toFixed(0)}% of your income` : 'Add your income'}
+              </Link>
               {' · '}
               <Link href="/subscriptions" className="text-primary hover:underline">Manage</Link>
             </p>
