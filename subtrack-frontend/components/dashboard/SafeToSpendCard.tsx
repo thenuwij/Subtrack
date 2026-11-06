@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { ChevronDown, ChevronUp, Pencil } from 'lucide-react'
+import { ChevronRight, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Preferences, SafeToSpend, SafeToSpendProfileInput } from '@/types'
 import { getPreferences, getSafeToSpend, saveSafeToSpendProfile, updatePreferences } from '@/lib/api'
@@ -10,6 +10,7 @@ import { useCurrency } from '@/lib/context/currency'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatStoredDate } from '@/lib/utils/dates'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useEditPayment } from '@/components/subscriptions/PaymentEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -257,20 +258,23 @@ export function SafeToSpendCard() {
         <div className="mt-5 border-t border-border pt-4">
           <button
             type="button"
-            aria-expanded={showBreakdown}
-            onClick={() => setShowBreakdown(value => !value)}
-            className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+            onClick={() => setShowBreakdown(true)}
+            className="flex min-h-11 items-center gap-1 text-sm font-medium text-primary hover:underline"
           >
             How this is worked out
-            {showBreakdown ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </button>
-          {showBreakdown ? (
-            <div className="mt-3 divide-y divide-border border-t border-border">
+          <Dialog open={showBreakdown} onOpenChange={setShowBreakdown}>
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>How safe to spend is worked out</DialogTitle>
+              </DialogHeader>
+            <div className="divide-y divide-border">
               <Row label="Balance" value={formatCurrency(position.balance ?? 0, currency)} />
               {position.commitments?.map(item => (
                 <Row
                   key={`${item.id}-${item.due_at}`}
-                  onClick={() => editPayment(item.id)}
+                  onClick={() => { setShowBreakdown(false); editPayment(item.id) }}
                   label={`${item.name} · ${formatStoredDate(item.due_at, { day: 'numeric', month: 'short' })}`}
                   value={`${item.is_estimate ? '≈ ' : ''}−${formatCurrency(item.amount, currency)}`}
                 />
@@ -283,7 +287,8 @@ export function SafeToSpendCard() {
                 Click a payment to change its date or amount. {position.scope}
               </p>
             </div>
-          ) : null}
+            </DialogContent>
+          </Dialog>
         </div>
       ) : null}
     </section>

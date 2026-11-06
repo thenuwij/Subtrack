@@ -1,7 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { ForecastCharge, SubscriptionForecast } from '@/types'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/shared/BrandLogo'
@@ -22,13 +23,13 @@ function amountLabel(charge: ForecastCharge, estimated: boolean) {
   return `${approx ? '≈ ' : ''}${formatCurrency(inBase ?? charge.amount, inBase === null ? charge.currency : charge.base_currency)}`
 }
 
-function ChargeRow({ charge, estimated, showDate }: { charge: ForecastCharge; estimated: boolean; showDate: boolean }) {
+function ChargeRow({ charge, estimated, showDate, onSelect }: { charge: ForecastCharge; estimated: boolean; showDate: boolean; onSelect?: () => void }) {
   const edit = useEditPayment()
   return (
     <li>
       <button
         type="button"
-        onClick={() => edit(charge.id)}
+        onClick={() => { onSelect?.(); edit(charge.id) }}
         title="Edit this payment"
         className="group flex min-h-11 w-full items-center gap-3 rounded-lg px-2 py-2.5 text-left transition-colors hover:bg-muted"
       >
@@ -50,7 +51,8 @@ function ChargeRow({ charge, estimated, showDate }: { charge: ForecastCharge; es
   )
 }
 
-function Group({ title, charges, estimated, empty, showDate = false }: {
+function Group({ title, charges, estimated, empty, showDate = false, onSelect }: {
+  onSelect?: () => void
   title: string
   charges: ForecastCharge[]
   estimated: boolean
@@ -65,7 +67,7 @@ function Group({ title, charges, estimated, empty, showDate = false }: {
       ) : (
         <ul className="mt-1 divide-y divide-border/60">
           {charges.map((charge, index) => (
-            <ChargeRow key={`${charge.id}-${charge.due_at}-${index}`} charge={charge} estimated={estimated} showDate={showDate} />
+            <ChargeRow key={`${charge.id}-${charge.due_at}-${index}`} charge={charge} estimated={estimated} showDate={showDate} onSelect={onSelect} />
           ))}
         </ul>
       )}
@@ -115,8 +117,8 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
         <Group title="Tomorrow" charges={tomorrow} estimated={estimated} empty="Nothing due tomorrow." />
         {later.length > 0 ? (
           <Group
-            title={showLater ? 'Next 2 weeks' : 'Next payment'}
-            charges={showLater ? later : [next]}
+            title="Next payment"
+            charges={[next]}
             estimated={estimated}
             empty=""
             showDate
@@ -129,14 +131,29 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
       {later.length > 1 ? (
         <button
           type="button"
-          aria-expanded={showLater}
-          onClick={() => setShowLater(value => !value)}
-          className="mt-3 flex items-center gap-1 px-2 text-sm font-medium text-primary hover:underline"
+          onClick={() => setShowLater(true)}
+          className="mt-3 flex min-h-11 items-center gap-1 px-2 text-sm font-medium text-primary hover:underline"
         >
-          {showLater ? 'Show less' : `See all ${later.length} in the next 2 weeks`}
-          {showLater ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          See all {later.length} in the next 2 weeks
+          <ChevronRight className="h-4 w-4" aria-hidden="true" />
         </button>
       ) : null}
+
+      <Dialog open={showLater} onOpenChange={setShowLater}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Next 2 weeks</DialogTitle>
+          </DialogHeader>
+          <Group
+            title={`${later.length} payments`}
+            charges={later}
+            estimated={estimated}
+            empty=""
+            showDate
+            onSelect={() => setShowLater(false)}
+          />
+        </DialogContent>
+      </Dialog>
 
     </section>
   )
