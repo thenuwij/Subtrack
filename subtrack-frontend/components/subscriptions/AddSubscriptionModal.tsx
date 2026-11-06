@@ -31,6 +31,7 @@ import {
 import {
   addUtcDays,
   dateAtNoonUtc,
+  formatStoredDate,
   storedDateKey,
   todayUtcDateKey,
 } from '@/lib/utils/dates'
@@ -43,6 +44,22 @@ function presetKey(unit: RecurrenceUnit, count: number) {
   return CADENCE_PRESETS.find(
     preset => preset.interval_unit === unit && preset.interval_count === count,
   )?.key ?? 'custom'
+}
+
+/** YYYY-MM-DD plus whole months, keeping the day (clamped to short months). */
+function addMonthsToKey(key: string, months: number) {
+  const [year, month, day] = key.split('-').map(Number)
+  const target = new Date(Date.UTC(year, month - 1 + months, 1))
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate()
+  target.setUTCDate(Math.min(day, lastDay))
+  return target.toISOString().slice(0, 10)
+}
+
+function monthsBetween(from: string, to: string) {
+  if (!from || !to) return 0
+  const [fy, fm] = from.split('-').map(Number)
+  const [ty, tm] = to.split('-').map(Number)
+  return (ty - fy) * 12 + (tm - fm)
 }
 
 interface FormState {
@@ -59,6 +76,7 @@ interface FormState {
   trial_ends_at: string
   has_intro: boolean
   intro_amount: string
+  intro_months: string
   status: PaymentStatus
   paused_until: string
   cancellation_effective_at: string
@@ -91,6 +109,7 @@ function createInitialForm(baseCurrency: Currency, initialData?: Subscription): 
       trial_ends_at: '',
       has_intro: false,
       intro_amount: '',
+      intro_months: '3',
       status: 'active',
       paused_until: '',
       cancellation_effective_at: '',
@@ -121,6 +140,7 @@ function createInitialForm(baseCurrency: Currency, initialData?: Subscription): 
       && Boolean(initialData.trial_ends_at)
       && storedDateKey(initialData.trial_ends_at) >= todayUtcDateKey(),
     intro_amount: initialData.intro_amount != null ? String(initialData.intro_amount) : '',
+    intro_months: String(monthsBetween(storedDateKey(initialData.next_due), storedDateKey(initialData.trial_ends_at)) || 3),
     status: initialData.status,
     paused_until: storedDateKey(initialData.paused_until),
     cancellation_effective_at: storedDateKey(initialData.cancellation_effective_at),
@@ -282,18 +302,24 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
     if (!Number.isInteger(intervalCount) || intervalCount < 1 || intervalCount > 1200) {
       return setError('Billing interval must be a whole number from 1 to 1,200.')
     }
-    if (form.is_trial && !form.trial_ends_at) {
+    const introMonths = Number(form.intro_months)
+    let trialEnd = form.trial_ends_at
+    if (form.has_intro) {
+      if (!Number.isInteger(introMonths) || introMonths < 1 || introMonths > 36) {
+        return setError('Intro length must be 1 to 36 months.')
+      }
+      if (!form.next_due) return setError('Add the date the intro price started.')
+      trialEnd = addMonthsToKey(form.next_due, introMonths)
+      if (trialEnd <= todayUtcDateKey()) {
+        return setError('That intro price has already ended. Choose Regular instead.')
+      }
+    }
+    if (form.is_trial && !trialEnd) {
       return setError(form.has_intro ? 'Add the date the intro price ends.' : 'Add the date this free trial ends.')
     }
     const introAmount = Number(form.intro_amount)
     if (form.has_intro && (!form.intro_amount || !Number.isFinite(introAmount) || introAmount < 0)) {
       return setError('Add the intro price.')
-    }
-    if (form.has_intro && !form.next_due) {
-      return setError('Add the date of your next intro payment.')
-    }
-    if (form.has_intro && form.next_due >= form.trial_ends_at) {
-      return setError('The next intro payment must be before the intro price ends.')
     }
     if (supportsLifecycle && form.status === 'cancelling'
         && !form.cancellation_effective_at) {
@@ -303,7 +329,7 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
         && form.paused_until <= todayUtcDateKey()) {
       return setError('The resume date must be in the future.')
     }
-    const effectiveNextDue = form.is_trial && !form.has_intro ? form.trial_ends_at : form.next_due
+    const effectiveNextDue = form.is_trial && !form.has_intro ? trialEnd : form.next_due
     if (form.recurrence_end_at && effectiveNextDue && form.recurrence_end_at < effectiveNextDue) {
       return setError('The final recurrence date cannot be before the next payment date.')
     }
@@ -339,7 +365,7 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
     }
 
     if (!initialData || trialTouched) {
-      payload.trial_ends_at = form.is_trial ? dateAtNoonUtc(form.trial_ends_at) : null
+      payload.trial_ends_at = form.is_trial ? dateAtNoonUtc(trialEnd) : null
       payload.intro_amount = form.is_trial && form.has_intro ? introAmount : null
     }
 
@@ -702,28 +728,33 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
                     />
                   </div>
                   <div className="grid gap-1.5">
-                    <Label htmlFor="sub-intro-end">Full price starts</Label>
+                    <Label htmlFor="sub-intro-months">For how many months</Label>
                     <Input
-                      id="sub-intro-end"
-                      type="date"
-                      min={todayUtcDateKey()}
-                      value={form.trial_ends_at}
-                      onChange={event => { setTrialTouched(true); set('trial_ends_at', event.target.value) }}
+                      id="sub-intro-months"
+                      inputMode="numeric"
+                      type="number"
+                      min="1"
+                      max="36"
+                      step="1"
+                      value={form.intro_months}
+                      onChange={event => { setTrialTouched(true); set('intro_months', event.target.value) }}
                       disabled={loading}
                     />
                   </div>
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="sub-due">Next intro payment</Label>
+                  <Label htmlFor="sub-due">Intro started on</Label>
                   <Input
                     id="sub-due"
                     type="date"
                     value={form.next_due}
-                    onChange={event => set('next_due', event.target.value)}
+                    onChange={event => { setTrialTouched(true); set('next_due', event.target.value) }}
                     disabled={loading}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Charged at the intro price until the full price starts, each billing period.
+                    {form.next_due && Number(form.intro_months) >= 1
+                      ? `Full price starts ${formatStoredDate(addMonthsToKey(form.next_due, Number(form.intro_months)), { day: 'numeric', month: 'short', year: 'numeric' })}.`
+                      : 'The date of your first intro payment.'}
                   </p>
                 </div>
               </div>
