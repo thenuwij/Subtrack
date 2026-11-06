@@ -132,6 +132,18 @@ Use phases 1–2 for about two weeks before finalising phase 9.
 - **Consent.** Automatic scanning is stated at connect time and on the privacy page, and users can turn it off.
 - **Launch blocker.** The Google OAuth app is in Testing (31 Oct 2026), so refresh tokens expire after 7 days and only listed test users can connect. Complete restricted-scope verification before phase 11.
 
+### Bank data and AI requirements
+
+Phase 6 must meet these. Statement import stays optional: a manual balance and tracked payments still give the daily number.
+
+- **Code parses statements.** Import never sends the file to an LLM.
+- **Keep the minimum.** Discard the original file and store only the fields needed, such as date, amount and description. Never ask for bank logins or full account numbers; the last 4 digits stay optional.
+- **Minimum data to the AI.** The assistant receives tool results such as totals, not the transaction history. When it needs specific transactions, it gets only the relevant lines, with names and reference numbers removed.
+- **Separate AI consent.** Importing doesn't allow AI access to bank data. Without it, safe-to-spend and "Where did my pay go?" still work from code, and unknown transactions are resolved through questions and saved rules.
+- **Easy deletion.** Offer "delete this import" and "delete all bank data", as well as account deletion.
+- **Prove it.** Evals check what is actually sent to the model. Don't publish a privacy claim until it's true in the shipped code.
+- **Be honest about the limits.** A useful assistant still sees some amounts and merchant names, which can be sensitive, and stored transactions remain a breach risk. Consider field-level encryption for descriptions before launch, and check the AI provider's current data terms before describing them on the privacy page.
+
 ### Progress (31 Oct 2026)
 
 Done:
@@ -154,4 +166,4 @@ Rebuild the owner's **real October 2026 pay cycle** from their CommBank statemen
 - Afterpay instalment matching is fiddly.
 - Statement drop-in friction. If it takes more than about a minute per cycle, users will drop off like they do with logging.
 - Trust. One wrong or made-up number breaks it. Hence the tools-only rule for numbers, with sources cited.
-- Privacy. Statements are sensitive: keep them scoped to the user, store as little as possible, and allow deletion.
+- Privacy. Statements are sensitive, and people may refuse to upload them or to let AI see them. Follow the bank data and AI requirements in section 6.
