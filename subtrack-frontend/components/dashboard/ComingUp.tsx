@@ -94,26 +94,31 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
   const estimated = forecast.currency_conversion.status === 'estimated'
   const today = forecast.charges.filter(charge => charge.days_until_due <= 0)
   const later = forecast.charges.filter(charge => charge.days_until_due > 0)
-  const next = later[0]
-  const todayTotal = today.reduce((sum, charge) => sum + (charge.charge_amount_in_base ?? 0), 0)
+  const tomorrow = forecast.charges.filter(charge => charge.days_until_due === 1)
+  // Lead with today; when today is clear, tomorrow takes its place.
+  const leadIsTomorrow = today.length === 0 && tomorrow.length > 0
+  const lead = leadIsTomorrow ? tomorrow : today
+  const leadLabel = leadIsTomorrow ? 'Tomorrow' : 'Today'
+  const next = forecast.charges.find(charge => charge.days_until_due > (leadIsTomorrow ? 1 : 0))
+  const leadTotal = lead.reduce((sum, charge) => sum + (charge.charge_amount_in_base ?? 0), 0)
 
   return (
     <section className="h-full rounded-2xl bg-card p-5 shadow-sm sm:p-6" aria-labelledby="coming-up-heading">
       <div className="flex items-baseline justify-between gap-4">
         <h2 id="coming-up-heading" className="text-[17px] font-semibold text-foreground">Coming up</h2>
-        {today.length > 0 ? (
+        {lead.length > 0 ? (
           <p className="text-sm text-muted-foreground">
             <span className="font-semibold tabular-nums text-foreground">
-              {formatCurrency(todayTotal, forecast.currency_conversion.base_currency)}
+              {formatCurrency(leadTotal, forecast.currency_conversion.base_currency)}
             </span>{' '}
-            due today
+            due {leadLabel.toLowerCase()}
           </p>
         ) : null}
       </div>
 
       <div className="mt-5 space-y-4">
-        <Group title="Today" charges={today} estimated={estimated} empty="Nothing due today." />
-        {later.length > 0 ? (
+        <Group title={leadLabel} charges={lead} estimated={estimated} empty="Nothing due today." />
+        {next ? (
           <Group
             title="Next payment"
             charges={[next]}
@@ -121,7 +126,7 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
             empty=""
             showDate
           />
-        ) : today.length === 0 ? (
+        ) : lead.length === 0 ? (
           <p className="px-2 text-sm text-muted-foreground">Nothing else is due in the next 2 weeks.</p>
         ) : null}
       </div>
