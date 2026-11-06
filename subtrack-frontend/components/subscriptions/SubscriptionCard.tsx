@@ -17,7 +17,7 @@ import {
   yearlyEquivalentNative,
 } from '@/lib/utils/recurrence'
 import { toast } from 'sonner'
-import { formatStoredDate } from '@/lib/utils/dates'
+import { formatStoredDate, storedDateKey, todayUtcDateKey } from '@/lib/utils/dates'
 
 // Just the date it next goes out. Subtrack isn't tracking whether payments landed,
 // so anything framed as overdue/due-soon would be claiming knowledge it doesn't have.
@@ -53,6 +53,8 @@ export function SubscriptionCard({
   const remindersAvailable = subscription.status === 'active'
     || subscription.status === 'cancelling'
   const trialActive = !terminal && isActiveTrial(subscription)
+  const introActive = !terminal && subscription.intro_amount != null && Boolean(subscription.trial_ends_at)
+    && storedDateKey(subscription.trial_ends_at) >= todayUtcDateKey()
   const canShowConversion = canConvert(subscription.currency)
   const yearlyNative = yearlyEquivalentNative(subscription)
   const { costOf, monthShort } = useThisMonth()
@@ -139,6 +141,11 @@ export function SubscriptionCard({
           </p>
           {trialActive ? (
             <p className="mt-0.5 text-[10px] font-medium text-primary">after trial</p>
+          ) : null}
+          {introActive && trialEnd ? (
+            <p className="mt-0.5 text-xs font-medium text-primary tabular-nums">
+              {formatCurrency(subscription.intro_amount ?? 0, subscription.currency)} until {trialEnd}
+            </p>
           ) : null}
           {!trialActive && monthlyBase !== null && yearlyBase !== null ? (
             <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">

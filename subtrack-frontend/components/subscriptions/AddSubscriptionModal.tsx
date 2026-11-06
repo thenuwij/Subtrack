@@ -57,6 +57,8 @@ interface FormState {
   recurrence_end_at: string
   is_trial: boolean
   trial_ends_at: string
+  has_intro: boolean
+  intro_amount: string
   status: PaymentStatus
   paused_until: string
   cancellation_effective_at: string
@@ -87,6 +89,8 @@ function createInitialForm(baseCurrency: Currency, initialData?: Subscription): 
       recurrence_end_at: '',
       is_trial: false,
       trial_ends_at: '',
+      has_intro: false,
+      intro_amount: '',
       status: 'active',
       paused_until: '',
       cancellation_effective_at: '',
@@ -113,6 +117,10 @@ function createInitialForm(baseCurrency: Currency, initialData?: Subscription): 
         && storedDateKey(initialData.trial_ends_at) >= todayUtcDateKey(),
     ),
     trial_ends_at: storedDateKey(initialData.trial_ends_at),
+    has_intro: initialData.intro_amount != null
+      && Boolean(initialData.trial_ends_at)
+      && storedDateKey(initialData.trial_ends_at) >= todayUtcDateKey(),
+    intro_amount: initialData.intro_amount != null ? String(initialData.intro_amount) : '',
     status: initialData.status,
     paused_until: storedDateKey(initialData.paused_until),
     cancellation_effective_at: storedDateKey(initialData.cancellation_effective_at),
@@ -275,7 +283,17 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
       return setError('Billing interval must be a whole number from 1 to 1,200.')
     }
     if (form.is_trial && !form.trial_ends_at) {
-      return setError('Add the date this free trial ends.')
+      return setError(form.has_intro ? 'Add the date the intro price ends.' : 'Add the date this free trial ends.')
+    }
+    const introAmount = Number(form.intro_amount)
+    if (form.has_intro && (!form.intro_amount || !Number.isFinite(introAmount) || introAmount < 0)) {
+      return setError('Add the intro price.')
+    }
+    if (form.has_intro && !form.next_due) {
+      return setError('Add the date of your next intro payment.')
+    }
+    if (form.has_intro && form.next_due >= form.trial_ends_at) {
+      return setError('The next intro payment must be before the intro price ends.')
     }
     if (supportsLifecycle && form.status === 'cancelling'
         && !form.cancellation_effective_at) {
@@ -285,7 +303,7 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
         && form.paused_until <= todayUtcDateKey()) {
       return setError('The resume date must be in the future.')
     }
-    const effectiveNextDue = form.is_trial ? form.trial_ends_at : form.next_due
+    const effectiveNextDue = form.is_trial && !form.has_intro ? form.trial_ends_at : form.next_due
     if (form.recurrence_end_at && effectiveNextDue && form.recurrence_end_at < effectiveNextDue) {
       return setError('The final recurrence date cannot be before the next payment date.')
     }
@@ -322,6 +340,7 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
 
     if (!initialData || trialTouched) {
       payload.trial_ends_at = form.is_trial ? dateAtNoonUtc(form.trial_ends_at) : null
+      payload.intro_amount = form.is_trial && form.has_intro ? introAmount : null
     }
 
     if (supportsLifecycle) {
@@ -412,7 +431,7 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">
                 <Label htmlFor="sub-amount">
-                  {form.is_trial ? 'Price after trial' : isShared ? 'Full bill' : 'Amount'}
+                  {form.has_intro ? 'Full price after intro' : form.is_trial ? 'Price after trial' : isShared ? 'Full bill' : 'Amount'}
                 </Label>
                 <Input
                   id="sub-amount"
@@ -620,33 +639,95 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
               ) : null}
             </div>
 
-            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-muted/30 p-3">
-              <input
-                type="checkbox"
-                checked={form.is_trial}
-                onChange={event => {
-                  setTrialTouched(true)
-                  setForm(previous => ({
-                    ...previous,
-                    is_trial: event.target.checked,
-                    trial_ends_at: event.target.checked
-                      && previous.trial_ends_at >= todayUtcDateKey()
-                      ? previous.trial_ends_at : '',
-                  }))
-                  setError(null)
-                }}
-                disabled={loading}
-                className="mt-0.5 h-4 w-4 accent-primary"
-              />
-              <span>
-                <span className="block text-sm font-medium text-foreground">This is a free trial</span>
-                <span className="mt-0.5 block text-xs leading-5 text-muted-foreground">
-                  Enter the price after the trial. You get a reminder 7 days before it ends.
-                </span>
-              </span>
-            </label>
+            <div className="grid gap-1.5">
+              <Label id="sub-offer-label">Pricing</Label>
+              <div role="radiogroup" aria-labelledby="sub-offer-label" className="grid grid-cols-3 gap-1 rounded-lg bg-muted p-1">
+                {([
+                  ['regular', 'Regular'],
+                  ['free', 'Free trial'],
+                  ['intro', 'Intro price'],
+                ] as const).map(([value, label]) => {
+                  const selected = value === 'regular' ? !form.is_trial : value === 'free' ? form.is_trial && !form.has_intro : form.has_intro
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={loading}
+                      onClick={() => {
+                        setTrialTouched(true)
+                        setForm(previous => ({
+                          ...previous,
+                          is_trial: value !== 'regular',
+                          has_intro: value === 'intro',
+                          trial_ends_at: value !== 'regular' && previous.trial_ends_at >= todayUtcDateKey()
+                            ? previous.trial_ends_at : '',
+                        }))
+                        setError(null)
+                      }}
+                      className={`min-h-9 rounded-md px-2 text-sm font-medium transition-colors ${
+                        selected ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {form.has_intro
+                  ? 'A lower price for a while, like A$2.99 a month for 3 months, then the full price.'
+                  : form.is_trial
+                    ? 'Free until the trial ends, then the price above. You get a reminder 7 days before.'
+                    : 'The same price every time.'}
+              </p>
+            </div>
 
-            {form.is_trial ? (
+            {form.has_intro ? (
+              <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="sub-intro-amount">Intro price</Label>
+                    <Input
+                      id="sub-intro-amount"
+                      inputMode="decimal"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="2.99"
+                      value={form.intro_amount}
+                      onChange={event => { setTrialTouched(true); set('intro_amount', event.target.value) }}
+                      disabled={loading}
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="sub-intro-end">Full price starts</Label>
+                    <Input
+                      id="sub-intro-end"
+                      type="date"
+                      min={todayUtcDateKey()}
+                      value={form.trial_ends_at}
+                      onChange={event => { setTrialTouched(true); set('trial_ends_at', event.target.value) }}
+                      disabled={loading}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="sub-due">Next intro payment</Label>
+                  <Input
+                    id="sub-due"
+                    type="date"
+                    value={form.next_due}
+                    onChange={event => set('next_due', event.target.value)}
+                    disabled={loading}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Charged at the intro price until the full price starts, each billing period.
+                  </p>
+                </div>
+              </div>
+            ) : form.is_trial ? (
               <div className="grid gap-1.5">
                 <Label htmlFor="sub-trial-end">Trial end date</Label>
                 <Input

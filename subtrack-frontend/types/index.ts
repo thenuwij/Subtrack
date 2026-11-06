@@ -49,6 +49,7 @@ export interface Subscription {
   next_expected_source: 'recorded' | 'projected_from_recorded_cycle' | 'missing' | 'ended' | 'inactive' | 'paused_without_resume'
   recurrence_end_at: string | null
   trial_ends_at: string | null       // post-trial price is stored in `amount`
+  intro_amount?: number | null       // discounted price charged until trial_ends_at
   status: PaymentStatus
   paused_until: string | null
   cancellation_effective_at: string | null
@@ -72,6 +73,7 @@ export interface SubscriptionInput {
   next_due?: string | null
   recurrence_end_at?: string | null
   trial_ends_at?: string | null
+  intro_amount?: number | null
   status?: PaymentStatus
   paused_until?: string | null
   cancellation_effective_at?: string | null
@@ -254,7 +256,7 @@ export interface ForecastCharge {
   base_currency: string
   charge_amount_in_base: number | null
   charge_amount_is_estimate: boolean
-  charge_kind: 'renewal' | 'trial_conversion'
+  charge_kind: 'renewal' | 'trial_conversion' | 'intro'
   days_until_due: number
   due_date_source: 'recorded' | 'projected_from_recorded_cycle'
 }

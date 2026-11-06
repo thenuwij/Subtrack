@@ -158,6 +158,10 @@ class Subscription(Base):
     # remains the price that will be charged after the trial; dashboards omit
     # future trials from current paid totals until this date passes.
     trial_ends_at = Column(DateTime, nullable=True)
+    # A discounted intro price (e.g. A$2.99 a month for 3 months). When set,
+    # charges before ``trial_ends_at`` cost this instead of nothing; ``amount``
+    # is still the full price from that date on.
+    intro_amount = Column(Numeric(12, 2), nullable=True)
     status = Column(String(24), nullable=False, default="active")
     paused_until = Column(DateTime, nullable=True)
     cancellation_effective_at = Column(DateTime, nullable=True)

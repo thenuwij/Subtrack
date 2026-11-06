@@ -88,9 +88,12 @@ export function isTerminalStatus(status: PaymentStatus) {
   return status === 'cancelled' || status === 'ended'
 }
 
-export function contributesToCommitment(subscription: Pick<Subscription, 'status' | 'trial_ends_at'>) {
+export function contributesToCommitment(
+  subscription: Pick<Subscription, 'status' | 'trial_ends_at'> & { intro_amount?: number | null },
+) {
   if (subscription.status !== 'active' && subscription.status !== 'cancelling') return false
-  if (!subscription.trial_ends_at) return true
+  // An intro offer is already being paid for, unlike a free trial.
+  if (!subscription.trial_ends_at || subscription.intro_amount != null) return true
   return storedDateKey(subscription.trial_ends_at) < todayUtcDateKey()
 }
 

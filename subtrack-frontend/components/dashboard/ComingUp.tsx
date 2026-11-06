@@ -36,11 +36,11 @@ function ChargeRow({ charge, estimated, showDate, onSelect }: { charge: Forecast
         <BrandLogo name={charge.name} category={charge.category} className="h-8 w-8" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-medium text-foreground">{charge.name}</span>
-          {showDate || charge.charge_kind === 'trial_conversion' ? (
+          {showDate || charge.charge_kind !== 'renewal' ? (
             <span className="block truncate text-[13px] text-muted-foreground">
               {showDate ? formatStoredDate(charge.due_at, { weekday: 'short', day: 'numeric', month: 'short' }) : ''}
-              {showDate && charge.charge_kind === 'trial_conversion' ? ' · ' : ''}
-              {charge.charge_kind === 'trial_conversion' ? 'First charge after trial' : ''}
+              {showDate && charge.charge_kind !== 'renewal' ? ' · ' : ''}
+              {charge.charge_kind === 'trial_conversion' ? 'Full price starts' : charge.charge_kind === 'intro' ? 'Intro price' : ''}
             </span>
           ) : null}
         </span>

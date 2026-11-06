@@ -118,6 +118,7 @@ def subscription_payload(sub: Subscription) -> dict:
             sub.recurrence_end_at.isoformat() if sub.recurrence_end_at else None
         ),
         "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None,
+        "intro_amount": float(sub.intro_amount) if sub.intro_amount is not None else None,
         "status": status,
         "paused_until": sub.paused_until.isoformat() if sub.paused_until else None,
         "cancellation_effective_at": (
@@ -218,6 +219,7 @@ class SubscriptionCreate(BaseModel):
     next_due: Optional[datetime] = None
     recurrence_end_at: Optional[datetime] = None
     trial_ends_at: Optional[datetime] = None
+    intro_amount: Optional[float] = Field(default=None, ge=0)
     status: PaymentStatus = PaymentStatus.active
     paused_until: Optional[datetime] = None
     cancellation_effective_at: Optional[datetime] = None
@@ -271,6 +273,7 @@ class SubscriptionUpdate(BaseModel):
     next_due: Optional[datetime] = None
     recurrence_end_at: Optional[datetime] = None
     trial_ends_at: Optional[datetime] = None
+    intro_amount: Optional[float] = Field(default=None, ge=0)
     status: Optional[PaymentStatus] = None
     paused_until: Optional[datetime] = None
     cancellation_effective_at: Optional[datetime] = None
@@ -466,6 +469,8 @@ def create_subscription(
     trial_end = fields.get("trial_ends_at")
     if trial_end and utc_naive(trial_end).date() < utcnow().date():
         raise HTTPException(status_code=422, detail="The trial end date has already passed")
+    if fields.get("intro_amount") is not None and not trial_end:
+        raise HTTPException(status_code=422, detail="An intro price needs the date it ends")
     if trial_end and fields.get("next_due") is None:
         fields["next_due"] = trial_end
     recurrence_end = fields.get("recurrence_end_at")
@@ -548,6 +553,8 @@ def update_subscription(
             sub.cycle = requested_cycle
     trial_changed = "trial_ends_at" in supplied
     trial_end = supplied.pop("trial_ends_at", None)
+    # Like the trial date, an intro price can be cleared with null.
+    supplied.pop("intro_amount", None)
     if trial_end and utc_naive(trial_end).date() < utcnow().date():
         raise HTTPException(status_code=422, detail="The trial end date has already passed")
     # Existing update semantics intentionally ignore null for ordinary fields;
@@ -609,6 +616,13 @@ def update_subscription(
             status_code=422,
             detail="The pause-until date must be in the future",
         )
+
+    if "intro_amount" in data.model_fields_set:
+        sub.intro_amount = data.intro_amount
+    if trial_changed and not trial_end:
+        sub.intro_amount = None
+    if sub.intro_amount is not None and not (trial_end if trial_changed else sub.trial_ends_at):
+        raise HTTPException(status_code=422, detail="An intro price needs the date it ends")
 
     if trial_changed:
         sub.trial_ends_at = trial_end
