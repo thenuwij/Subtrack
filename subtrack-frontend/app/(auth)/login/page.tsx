@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Check, Eye, EyeOff } from 'lucide-react'
-import { AuthPreviewPanel } from '@/components/auth/AuthPreviewPanel'
+import { AuthPreviewBanner, AuthPreviewPanel } from '@/components/auth/AuthPreviewPanel'
 import { GoogleIcon } from '@/components/auth/GoogleIcon'
 import { authErrorMessage, MIN_PASSWORD_LENGTH, passwordProblem } from '@/lib/auth/errors'
 import { endDemo, startDemo } from '@/lib/auth/session'
@@ -173,9 +173,7 @@ export default function LoginPage() {
                     ? 'Welcome back.'
                     : 'Free to use. You can connect Gmail later.'}
                 </p>
-                <p className="mt-1 text-sm text-muted-foreground lg:hidden">
-                  Know what you can safely spend until payday.
-                </p>
+                <AuthPreviewBanner />
 
                 {sessionExpired ? (
                   <p role="status" className="mt-6 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2.5 text-sm text-foreground">

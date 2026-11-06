@@ -12,10 +12,29 @@ const FEATURES = [
   { icon: MessageCircle, text: 'Answers “can I afford it?” in plain words' },
 ]
 
+const BRAND_GRADIENT = 'bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700'
+
+/** Phone-sized version of the panel: one line and the example number. */
+export function AuthPreviewBanner() {
+  return (
+    <div className={`relative mt-6 overflow-hidden rounded-2xl ${BRAND_GRADIENT} p-5 text-white shadow-lg shadow-indigo-950/20 lg:hidden`}>
+      <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-sky-400/30 blur-2xl" />
+      <p className="relative text-base font-semibold leading-snug">
+        Know what you can spend until payday.
+      </p>
+      <div className="relative mt-3 flex items-baseline gap-2">
+        <span className="text-3xl font-semibold tracking-tight tabular-nums">$43.55</span>
+        <span className="text-sm text-white/80">a day</span>
+        <span className="ml-auto rounded-full bg-white/15 px-2 py-0.5 text-xs ring-1 ring-white/20">Example</span>
+      </div>
+    </div>
+  )
+}
+
 /** Desktop-only panel that shows what Subtrack does before someone signs in. */
 export function AuthPreviewPanel() {
   return (
-    <aside className="relative hidden overflow-hidden bg-gradient-to-br from-blue-600 via-indigo-600 to-violet-700 px-12 py-16 text-white lg:flex lg:flex-col lg:justify-center xl:px-20">
+    <aside className={`relative hidden overflow-hidden ${BRAND_GRADIENT} px-12 py-16 text-white lg:flex lg:flex-col lg:justify-center xl:px-20`}>
       <div aria-hidden="true" className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-sky-400/30 blur-3xl" />
       <div aria-hidden="true" className="pointer-events-none absolute -bottom-32 -left-20 h-96 w-96 rounded-full bg-fuchsia-500/30 blur-3xl" />
 
