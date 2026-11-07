@@ -923,12 +923,35 @@ class ScanSuperseded(Exception):
     """The mailbox was disconnected or a newer run took ownership."""
 
 
+# A bill, invoice or reminder says money is owed; only a receipt says it was paid.
+NOT_PROOF_OF_PAYMENT = re.compile(
+    r"(?i)(overdue|unsuccessful|declined|failed|reminder|payment problem|billing problem|"
+    r"invoice due|new invoice|bill is now|amount due|will be charged|refund)"
+)
+PROOF_OF_PAYMENT = re.compile(
+    r"(?i)(receipt|thanks for your payment|payment received|payment has been|"
+    r"tax invoice|order receipt|you've been charged|has been funded|successful)"
+)
+
+
+def _is_payment_proof(candidate) -> bool:
+    text = f"{candidate.subject} {candidate.excerpt}"
+    if NOT_PROOF_OF_PAYMENT.search(candidate.subject or ""):
+        return False
+    # A plain "Your electricity bill" is a request to pay, not proof of payment.
+    is_bill = re.search(r"(?i)\bbill\b", candidate.subject or "")
+    return not is_bill or bool(PROOF_OF_PAYMENT.search(text))
+
+
 def _save_receipts(db, user_id: str, candidates) -> None:
     """Keep each charge seen (sender, business, amount, date) for paid history.
 
     No email text is stored. Already-saved messages are skipped.
     """
-    rows = [c for c in candidates if c.amount and c.amount > 0 and c.currency and c.date]
+    rows = [
+        c for c in candidates
+        if c.amount and c.amount > 0 and c.currency and c.date and _is_payment_proof(c)
+    ]
     if not rows:
         return
     seen = {

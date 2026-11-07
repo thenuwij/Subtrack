@@ -11,31 +11,105 @@ payments (Apple Music and iCloud), the closest amount wins.
 """
 from __future__ import annotations
 
+import re
 from datetime import date, datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from app.agent.finance import CurrencyContext
 from app.models import GmailReceipt, PaymentExtra, SenderLink, Subscription
-from app.services.payment_links import merchant_key
+from app.services.payment_links import merchant_key, name_words
 from app.services.recurrence import forecast_end_for, occurrences_between, rewind_anchor, utc_naive
 
 MATCH_WINDOW_DAYS = 4
 
 
-def _receipt_owner(receipt: GmailReceipt, by_domain: dict, links: dict) -> Subscription | None:
+# Parts of a sender address that say nothing about who it is.
+SENDER_NOISE = {
+    "com", "au", "net", "org", "co", "io", "mail", "email", "emails", "noreply", "no", "reply",
+    "mybill", "billing", "bill", "info", "hello", "notifications", "news", "comms", "retail",
+    "account", "accounts", "members", "receipts", "invoice", "statements",
+}
+
+
+# Products sold under a parent brand's sender.
+BRAND_SENDERS = {
+    "icloud": "apple", "itunes": "apple", "youtube": "google", "claude": "anthropic",
+    "chatgpt": "openai", "prime": "amazon", "xbox": "microsoft",
+}
+# Senders that bill for a category rather than naming the product.
+CATEGORY_SENDERS = {
+    "housing": ("property", "realestate", "realty", "rent", "strata", "lettings"),
+}
+
+
+def _is_variable(sub: Subscription) -> bool:
+    return getattr(sub.amount_type, "value", sub.amount_type) == "variable"
+
+
+def _amount_fits(sub: Subscription, amount: float) -> bool:
+    """Close to the regular (whole-bill) price, or to an intro price."""
+    tolerance = 0.6 if _is_variable(sub) else 0.1
+    if _close(sub, amount, tolerance):
+        return True
+    intro = float(sub.intro_amount) if sub.intro_amount is not None else None
+    return intro is not None and abs(intro - amount) <= max(intro * tolerance, 0.05)
+
+
+def _regular(sub: Subscription) -> float:
+    """What the biller charges: the whole bill for a shared payment."""
+    return float(sub.full_amount or sub.amount)
+
+
+def _close(sub: Subscription, amount: float, tolerance: float) -> bool:
+    regular = _regular(sub)
+    return bool(regular) and abs(regular - amount) <= regular * tolerance
+
+
+def _named_in(sub: Subscription, receipt: GmailReceipt) -> bool:
+    """The payment's name shows up in the sender's address or business name.
+
+    "Vodafone" ↔ mybill.vodafone.com.au, "Origin Energy" ↔ originenergy.com.au.
+    """
+    sender = [part for part in re.split(r"[.\-]", receipt.intermediary.lower()) if part not in SENDER_NOISE]
+    haystack = " ".join(sender + [(receipt.merchant or "").lower()])
+    words = [word for word in name_words(sub.name) if len(word) >= 4]
+    if words and (words[0] in haystack or BRAND_SENDERS.get(words[0], "\0") in haystack):
+        return True
+    category = getattr(sub.category, "value", sub.category)
+    return any(hint in haystack for hint in CATEGORY_SENDERS.get(category, ()))
+
+
+def _receipt_owner(
+    receipt: GmailReceipt, by_domain: dict, links: dict, active: list[Subscription],
+) -> Subscription | None:
     linked = links.get((receipt.intermediary, merchant_key(receipt.merchant or "")))
     if linked is not None:
         return linked
-    candidates = by_domain.get(receipt.intermediary, [])
-    if len(candidates) == 1:
-        return candidates[0]
-    if not candidates:
-        return None
+    # Billing platforms (Debitsuccess) put their own name on receipts, not the
+    # gym's. With only one saved link for that sender, it's that payment.
+    domain_links = {sub.id: sub for (domain, _key), sub in links.items() if domain == receipt.intermediary and sub}
+    if len(domain_links) == 1:
+        return next(iter(domain_links.values()))
     amount = float(receipt.amount)
-    best = min(candidates, key=lambda sub: abs(float(sub.full_amount or sub.amount) - amount))
-    regular = float(best.full_amount or best.amount)
-    return best if regular and abs(regular - amount) <= regular * 0.1 else None
+    candidates = [sub for sub in by_domain.get(receipt.intermediary, []) if _amount_fits(sub, amount)]
+    if candidates:
+        return min(candidates, key=lambda sub: abs(_regular(sub) - amount))
+    # Payments added by hand have no sender on record, so fall back to the
+    # name. A name match alone is weaker, so the amount must be close too
+    # (variable bills such as electricity are allowed to move more).
+    named = [sub for sub in active if _named_in(sub, receipt) and _amount_fits(sub, amount)]
+    if not named:
+        return None
+    return min(named, key=lambda sub: abs(_regular(sub) - amount))
+
+
+def _your_part(sub: Subscription, receipt: GmailReceipt) -> float:
+    """A receipt for a shared bill shows the whole bill; show the user's share."""
+    amount = float(receipt.amount)
+    if sub.full_amount and _close(sub, amount, 0.1):
+        return float(sub.amount)
+    return amount
 
 
 def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | None = None) -> dict:
@@ -49,6 +123,7 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
     for sub in subs:
         if sub.source_domain:
             by_domain.setdefault(sub.source_domain.lower(), []).append(sub)
+    active = [sub for sub in subs if sub.is_active]
     links = {
         (link.sender_domain, link.merchant_key): by_id.get(link.subscription_id)
         for link in db.query(SenderLink).filter(SenderLink.user_id == user_id)
@@ -60,7 +135,7 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
         GmailReceipt.received_on >= start,
         GmailReceipt.received_on <= today,
     ):
-        owner = _receipt_owner(receipt, by_domain, links)
+        owner = _receipt_owner(receipt, by_domain, links, active)
         if owner is not None:
             receipts.setdefault(owner.id, []).append(receipt)
 
@@ -102,11 +177,11 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
             )
             if match is not None:
                 unused.remove(match)
-                rows.append(row(sub, match.received_on, float(match.amount), match.currency, "confirmed", "receipt"))
+                rows.append(row(sub, match.received_on, _your_part(sub, match), match.currency, "confirmed", "receipt"))
             elif sub.is_active and due >= tracked_since:
                 rows.append(row(sub, due, float(sub.amount), sub.currency, "expected", "schedule"))
         for receipt in unused:
-            rows.append(row(sub, receipt.received_on, float(receipt.amount), receipt.currency, "confirmed", "receipt"))
+            rows.append(row(sub, receipt.received_on, _your_part(sub, receipt), receipt.currency, "confirmed", "receipt"))
 
     for extra in db.query(PaymentExtra).filter(
         PaymentExtra.user_id == user_id,

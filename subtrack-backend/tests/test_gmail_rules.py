@@ -192,3 +192,21 @@ def _with_id(response):
     candidate = receipt("x.com", "2026-10-01", 1.0)
     candidate.message_id = response["id"]
     return candidate
+
+
+class PaymentProofTests(unittest.TestCase):
+    def check(self, subject, excerpt=""):
+        from app.routers.gmail import _is_payment_proof
+        return _is_payment_proof(receipt("x.com", "2026-10-01", 10.0, subject=subject, excerpt=excerpt))
+
+    def test_receipts_count(self):
+        self.assertTrue(self.check("Receipt for your payment to Origin Energy"))
+        self.assertTrue(self.check("Debitsuccess Payment Receipt: 15871945"))
+        self.assertTrue(self.check("Your tax invoice from Apple."))
+
+    def test_bills_and_notices_do_not(self):
+        self.assertFalse(self.check("Your Origin electricity bill"))
+        self.assertFalse(self.check("Your Vodafone email bill for 17-09-2026 to 16-10-2026"))
+        self.assertFalse(self.check("New invoice due for 90/2-6 Willis St"))
+        self.assertFalse(self.check("Your bill is now overdue"))
+        self.assertFalse(self.check("Debitsuccess Payment Unsuccessful"))

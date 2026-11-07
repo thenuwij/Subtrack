@@ -36,6 +36,7 @@ from app.services.duplicates import (
     duplicate_suggestions,
     persist_duplicate_dismissal,
 )
+from app.services.payment_links import name_words
 from app.services.recurrence import (
     Cadence,
     annual_equivalent,
@@ -640,6 +641,14 @@ def update_subscription(
         sub.full_amount = split.full_amount
         sub.share_ratio = split.share_ratio
         sub.split_mode = split.split_mode
+
+    # Renaming a payment into a different one (e.g. "Claude Pro" -> "iCloud")
+    # must drop the old Gmail source, or the old sender's receipts and
+    # findings keep landing on it.
+    new_name = fields.get("name")
+    if new_name and sub.source_domain and not (name_words(new_name) & name_words(sub.name)):
+        sub.source_domain = None
+        sub.source_key = None
 
     for key, value in fields.items():
         if hasattr(value, "value"):

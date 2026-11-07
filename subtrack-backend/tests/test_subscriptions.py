@@ -113,6 +113,27 @@ class SubscriptionContractTests(unittest.TestCase):
         self.assertEqual(sub.split_mode, "ratio")
         self.assertEqual(payload["monthly_equivalent"], 120)
 
+    def test_renaming_into_a_different_payment_drops_its_old_gmail_source(self):
+        sub = self.create(name="Claude Pro subscription")
+        sub.source_domain, sub.source_key = "mail.anthropic.com", "anthropic-claude-pro"
+        self.db.commit()
+
+        update_subscription(sub.id, SubscriptionUpdate(name="iCloud"), user_id="owner", db=self.db)
+
+        self.db.refresh(sub)
+        self.assertIsNone(sub.source_domain)
+        self.assertIsNone(sub.source_key)
+
+    def test_small_rename_keeps_the_gmail_source(self):
+        sub = self.create(name="Claude Pro subscription")
+        sub.source_domain = "mail.anthropic.com"
+        self.db.commit()
+
+        update_subscription(sub.id, SubscriptionUpdate(name="Claude Pro"), user_id="owner", db=self.db)
+
+        self.db.refresh(sub)
+        self.assertEqual(sub.source_domain, "mail.anthropic.com")
+
     def test_lifecycle_dates_can_be_explicitly_cleared(self):
         future = datetime.now() + timedelta(days=90)
         sub = self.create(

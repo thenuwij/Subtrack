@@ -94,6 +94,26 @@ class PaidHistoryTests(unittest.TestCase):
         kinds = [r["kind"] for r in self.history() if r["date"] == "2026-10-30"]
         self.assertEqual(kinds, ["late_fee"])
 
+    def test_hand_added_payment_matches_receipts_by_name(self):
+        self.sub("Vodafone", 58.0, None, datetime(2026, 11, 2))
+        self.receipt("mybill.vodafone.com.au", date(2026, 10, 3), 58.0)
+        rows = [(r["name"], r["status"]) for r in self.history() if r["date"] == "2026-10-03"]
+        self.assertEqual(rows, [("Vodafone", "confirmed")])
+
+    def test_name_match_needs_a_close_amount(self):
+        self.sub("Vodafone", 58.0, None, datetime(2026, 11, 2))
+        self.receipt("mybill.vodafone.com.au", date(2026, 10, 3), 300.0)
+        self.assertNotIn("2026-10-03", [r["date"] for r in self.history()])
+
+    def test_shared_bill_receipt_shows_your_share(self):
+        rent = self.sub("Rent", 320.0, "email.propertyme.com", datetime(2026, 11, 9))
+        rent.interval_unit = "week"
+        rent.full_amount = 1050.0
+        self.db.commit()
+        self.receipt("email.propertyme.com", date(2026, 11, 2), 1050.0, message="r1")
+        rows = [(r["amount"], r["status"]) for r in self.history() if r["name"] == "Rent" and r["date"] == "2026-11-02"]
+        self.assertEqual(rows, [(320.0, "confirmed")])
+
     def test_unknown_sender_receipts_are_ignored(self):
         self.receipt("randomshop.com", date(2026, 10, 2), 50.0)
         self.assertNotIn("2026-10-02", [r["date"] for r in self.history()])
