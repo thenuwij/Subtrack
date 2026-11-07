@@ -220,7 +220,7 @@ export default function PaidPage() {
                           ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-label="Confirmed" />
                           : row.status === 'unsorted'
                             ? <CircleAlert className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-label="Needs sorting" />
-                            : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Expected" />}
+                            : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" aria-label={row.status === 'skipped' ? 'Skipped' : 'Expected'} />}
                         <BrandLogo name={row.name} category={row.category} className="h-8 w-8" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[15px] font-medium text-foreground">{row.name}</span>
@@ -229,7 +229,7 @@ export default function PaidPage() {
                           </span>
                         </span>
                         <span className={`shrink-0 text-[15px] font-semibold tabular-nums ${
-                          row.kind === 'late_fee' || row.kind === 'above_plan' ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'
+                          row.status === 'skipped' ? 'line-through text-muted-foreground' : row.kind === 'late_fee' || row.kind === 'above_plan' ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'
                         }`}>
                           {row.status === 'expected' ? '≈ ' : row.kind === 'above_plan' ? '+' : ''}
                           {formatCurrency(row.amount, row.currency)}

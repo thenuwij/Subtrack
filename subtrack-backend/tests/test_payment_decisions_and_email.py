@@ -47,19 +47,28 @@ class PaymentAndEmailTests(unittest.TestCase):
 
     def test_cannot_confirm_another_users_occurrence(self):
         with self.assertRaises(HTTPException) as error:
-            decide_payment(PaymentDecisionInput(target=f"payment:{self.sub.id}:2026-10-12", decision="paid"), "intruder", self.db)
+            decide_payment(
+                PaymentDecisionInput(target=f"payment:{self.sub.id}:2026-10-12", decision="paid"), "intruder", self.db
+            )
         self.assertEqual(error.exception.status_code, 404)
 
     def prepare_email(self):
         self.db.add(EmailPreference(user_id="owner", email="owner@example.com", enabled=True))
-        self.db.add(PaymentReminder(id=uuid4(), user_id="owner", subscription_id=self.sub.id, kind="renewal", days_before=7, is_active=True))
+        self.db.add(
+            PaymentReminder(
+                id=uuid4(), user_id="owner", subscription_id=self.sub.id, kind="renewal", days_before=7, is_active=True
+            )
+        )
         self.db.commit()
 
     def test_delivery_deduplicates_and_respects_opt_out(self):
         self.prepare_email()
         send = Mock(return_value=httpx.Response(200, request=httpx.Request("POST", "https://api.resend.com/emails")))
         now = datetime(2026, 11, 8, 10)
-        with patch('app.services.email_reminders.settings.resend_api_key', 'test'), patch('app.services.email_reminders.settings.reminder_email_from', 'Subtrack <hello@example.com>'):
+        with (
+            patch("app.services.email_reminders.settings.resend_api_key", "test"),
+            patch("app.services.email_reminders.settings.reminder_email_from", "Subtrack <hello@example.com>"),
+        ):
             self.assertEqual(send_due(self.db, now=now, send=send)["sent"], 1)
             self.assertEqual(send_due(self.db, now=now, send=send)["sent"], 0)
             self.assertEqual(send.call_count, 1)
@@ -69,20 +78,23 @@ class PaymentAndEmailTests(unittest.TestCase):
 
     def test_failed_delivery_reuses_payload_and_stops_before_idempotency_expires(self):
         self.prepare_email()
-        send = Mock(side_effect=httpx.ReadTimeout('timeout'))
+        send = Mock(side_effect=httpx.ReadTimeout("timeout"))
         now = datetime(2026, 11, 8, 10)
-        with patch('app.services.email_reminders.settings.resend_api_key', 'test'), patch('app.services.email_reminders.settings.reminder_email_from', 'hello@example.com'):
+        with (
+            patch("app.services.email_reminders.settings.resend_api_key", "test"),
+            patch("app.services.email_reminders.settings.reminder_email_from", "hello@example.com"),
+        ):
             self.assertEqual(send_due(self.db, now=now, send=send)["failed"], 1)
             payload = self.db.query(ReminderDelivery).one().payload
-            self.sub.name = 'Renamed payment'
+            self.sub.name = "Renamed payment"
             self.db.commit()
             send_due(self.db, now=now + timedelta(hours=1), send=send)
-            self.assertEqual(send.call_args.kwargs['json'], payload)
+            self.assertEqual(send.call_args.kwargs["json"], payload)
             self.assertEqual(send_due(self.db, now=now + timedelta(hours=24), send=send)["expired"], 1)
             self.assertEqual(send.call_count, 2)
 
     def test_savings_reports_no_price_rises_instead_of_all_changes(self):
-        with patch('app.agent.finance.duplicate_payments', return_value={"suggestions": []}):
-            result = ways_to_save('owner', self.db)
-        self.assertEqual(result['price_rises'], [])
-        self.assertEqual(result['late_fees_total'], 0)
+        with patch("app.agent.finance.duplicate_payments", return_value={"suggestions": []}):
+            result = ways_to_save("owner", self.db)
+        self.assertEqual(result["price_rises"], [])
+        self.assertEqual(result["late_fees_total"], 0)

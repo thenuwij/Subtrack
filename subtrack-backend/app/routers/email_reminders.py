@@ -1,4 +1,5 @@
 """Email preferences use the authenticated account's signed email claim."""
+
 import secrets
 
 import jwt
@@ -14,17 +15,25 @@ from app.services.email_reminders import send_due
 
 router = APIRouter(prefix="/email-reminders", tags=["email reminders"])
 
+
 class EmailOptIn(BaseModel):
     enabled: bool
+
 
 @router.get("")
 def get_email_preferences(user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
     pref = db.get(EmailPreference, user_id)
-    return {"enabled": bool(pref and pref.enabled), "email": pref.email if pref else None,
-        "configured": bool(settings.resend_api_key and settings.reminder_email_from)}
+    return {
+        "enabled": bool(pref and pref.enabled),
+        "email": pref.email if pref else None,
+        "configured": bool(settings.resend_api_key and settings.reminder_email_from),
+    }
+
 
 @router.put("")
-def set_email_preferences(body: EmailOptIn, request: Request, user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+def set_email_preferences(
+    body: EmailOptIn, request: Request, user_id: str = Depends(verify_token), db: Session = Depends(get_db)
+):
     reject_demo_user(user_id, "Email reminders")
     pref = db.get(EmailPreference, user_id)
     if body.enabled:
@@ -43,6 +52,7 @@ def set_email_preferences(body: EmailOptIn, request: Request, user_id: str = Dep
         pref.enabled = body.enabled
     db.commit()
     return get_email_preferences(user_id, db)
+
 
 @router.post("/scheduled-send")
 def scheduled_send(x_cron_secret: str = Header(default=""), db: Session = Depends(get_db)):
