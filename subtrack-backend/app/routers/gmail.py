@@ -740,6 +740,50 @@ def _scan_is_stale(account: GmailAccount) -> bool:
     return now - heartbeat > timedelta(minutes=STALE_SCAN_MINUTES)
 
 
+VARIABLE_BILLS_AVERAGED = 3
+
+
+def _is_variable_bill_update(tracked: Subscription, found) -> bool:
+    return (
+        _enum_value(tracked.amount_type) == "variable"
+        and tracked.is_active
+        and not found.cancelled
+        and not found.trial_ends_at
+        and found.amount > 0
+        and found.last_successful_charge_at is not None
+    )
+
+
+def _record_variable_bill(db, sub: Subscription, found, bill_at: datetime) -> None:
+    """Add a bill to a variable payment and set its estimate to the recent average."""
+    from app.models import ChangeKind, UserPreference
+    from app.routers.rates import conversion_for_storage
+    from app.routers.subscriptions import log_change, rebill
+    from app.services.recurrence import monthly_equivalent
+
+    # Seed the history with the current estimate the first time, so one
+    # unusual bill doesn't replace it outright.
+    history = list(sub.bill_history or [_billed_amount(sub)])
+    history = (history + [round(float(found.amount), 2)])[-VARIABLE_BILLS_AVERAGED:]
+    estimate = round(sum(history) / len(history), 2)
+
+    before = monthly_equivalent(sub.amount, sub)
+    split = rebill(sub, estimate)
+    sub.amount = split.amount
+    sub.full_amount = split.full_amount
+    sub.share_ratio = split.share_ratio
+    sub.split_mode = split.split_mode
+    sub.bill_history = history
+    sub.last_bill_at = bill_at
+    if found.next_due is not None and utc_naive(found.next_due) > _utcnow():
+        sub.next_due = utc_naive(found.next_due)
+    preference = db.query(UserPreference).filter(UserPreference.user_id == sub.user_id).first()
+    sub.converted_amount, sub.exchange_rate, _quality = conversion_for_storage(
+        sub.amount, sub.currency, preference.base_currency if preference else "AUD", db,
+    )
+    log_change(db, sub, ChangeKind.price_change, before, monthly_equivalent(sub.amount, sub))
+
+
 def _apply_detections(db, user_id, subscriptions, existing_detections, detected, links=None):
     """Fold a batch of analyzer results into the review queue.
 
@@ -752,6 +796,15 @@ def _apply_detections(db, user_id, subscriptions, existing_detections, detected,
         linked_id = linked_subscription_id(links or {}, found.sender_domain, found.merchant)
         tracked = by_id.get(linked_id) if linked_id else None
         tracked = tracked or _match_subscription(subscriptions, found)
+
+        # A variable bill (electricity, water) is expected to change. A new
+        # bill updates its estimate and shows in What changed, instead of
+        # asking the user to approve a "price change" every month.
+        if tracked is not None and _is_variable_bill_update(tracked, found):
+            bill_at = utc_naive(found.last_successful_charge_at)
+            if tracked.last_bill_at is None or bill_at > utc_naive(tracked.last_bill_at):
+                _record_variable_bill(db, tracked, found, bill_at)
+            continue
         previous = _match_detection(existing_detections, found)
 
         # Dismissed means "stop suggesting this" — a rescan must not nag.

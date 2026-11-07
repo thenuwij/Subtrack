@@ -82,6 +82,13 @@ async function token() {
   return accessToken
 }
 
+/** Utilities and other variable bills almost always come monthly or quarterly. */
+function suggestedCadence(item: DetectedSubscription) {
+  return item.category === 'utilities' || item.amount_type === 'variable'
+    ? { interval_unit: 'month' as const, interval_count: 1 }
+    : null
+}
+
 export default function ReviewPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [tab, setTab] = useState<'pending' | 'dismissed'>('pending')
@@ -334,11 +341,12 @@ export default function ReviewPage() {
       const item = items.find(i => i.id === id)
       if (!item) throw new Error('This review item is no longer available.')
       const cadenceDraft = cadenceDrafts[id]
+      const suggested = suggestedCadence(item)
       const intervalUnit = cadenceDraft?.interval_unit ?? item.interval_unit
-        ?? item.current_interval_unit ?? item.similar_interval_unit
+        ?? item.current_interval_unit ?? item.similar_interval_unit ?? suggested?.interval_unit
       const intervalCount = Number(
         cadenceDraft?.interval_count ?? item.interval_count
-          ?? item.current_interval_count ?? item.similar_interval_count,
+          ?? item.current_interval_count ?? item.similar_interval_count ?? suggested?.interval_count,
       )
       if (!intervalUnit || !Number.isInteger(intervalCount)
           || intervalCount < 1 || intervalCount > 1200) {
@@ -644,11 +652,14 @@ export default function ReviewPage() {
                 : detectedTrialIsPast ? '' : storedDateKey(item.trial_ends_at)
               const trialWillBeSaved = Boolean(trialEndDateValue)
               const cadenceDraft = cadenceDrafts[item.id]
+              const suggested = suggestedCadence(item)
+              const usingSuggestion = !cadenceDraft && !item.interval_unit
+                && !item.current_interval_unit && !item.similar_interval_unit && suggested !== null
               const effectiveUnit = cadenceDraft?.interval_unit ?? item.interval_unit
-                ?? item.current_interval_unit ?? item.similar_interval_unit
+                ?? item.current_interval_unit ?? item.similar_interval_unit ?? suggested?.interval_unit
               const effectiveCount = Number(
                 cadenceDraft?.interval_count ?? item.interval_count
-                  ?? item.current_interval_count ?? item.similar_interval_count,
+                  ?? item.current_interval_count ?? item.similar_interval_count ?? suggested?.interval_count,
               )
               const cadenceKnown = Boolean(
                 effectiveUnit && Number.isInteger(effectiveCount) && effectiveCount > 0,
@@ -877,6 +888,13 @@ export default function ReviewPage() {
                           </div>
                         ) : null}
 
+                        {usingSuggestion ? (
+                          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                            Suggested: monthly. Energy and water bills usually come monthly or
+                            quarterly, so check your bill and change it if needed. Each new bill
+                            then updates the estimate on its own.
+                          </p>
+                        ) : null}
                         {cadenceNeedsChoice && !cadenceKnown ? (
                           <p role="alert" className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
                             Gmail could not infer this safely. Choose a frequency before approving.
