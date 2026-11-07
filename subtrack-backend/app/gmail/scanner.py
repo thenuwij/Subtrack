@@ -32,7 +32,7 @@ GMAIL_HTTP_TIMEOUT_SECONDS = 12
 # in Updates rather than Purchases).
 SEARCH_QUERY = (
     "(category:purchases OR subject:(receipt OR invoice OR payment OR "
-    "subscription OR renewal OR \"tax invoice\") OR trial OR \"free trial\" OR "
+    "subscription OR renewal OR bill OR statement OR \"tax invoice\") OR trial OR \"free trial\" OR "
     "\"trial ends\") {window}"
 )
 
@@ -70,6 +70,10 @@ class ReceiptCandidate:
     currency: str | None
     confidence: str          # "high" when the amount sat on a total-ish line
     excerpt: str = ""        # short cleaned snippet; names the product being billed
+    # Set when the email is a bill (invoice): what's owed and when.
+    bill_amount: float | None = None
+    bill_due_on: str | None = None
+    bill_late_fee: float | None = None
 
 
 @dataclass
@@ -250,7 +254,21 @@ def _to_candidate(message: dict) -> ReceiptCandidate:
         currency=currency,
         confidence=confidence,
         excerpt=_excerpt(body),
+        **_bill_fields(subject, body),
     )
+
+
+def _bill_fields(subject: str, body: str) -> dict:
+    from app.gmail.bills import read_bill
+
+    bill = read_bill(subject, body)
+    if bill is None:
+        return {}
+    return {
+        "bill_amount": bill.amount_due,
+        "bill_due_on": bill.due_on.isoformat() if bill.due_on else None,
+        "bill_late_fee": bill.late_fee,
+    }
 
 
 # Gmail allows 100 requests per batch, but rejects that many concurrent reads

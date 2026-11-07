@@ -365,6 +365,19 @@ export async function getPaidHistory(token: string, months = 3): Promise<PaidHis
   return request(`/subscriptions/paid?months=${months}`, token)
 }
 
+/** Fill in what a bill email didn't say: its due date or a late fee. */
+export async function updateBill(token: string, id: string, data: { due_on?: string | null; late_fee?: number | null }) {
+  return request(`/subscriptions/bills/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+/** Sort a charge above the plan price: a late fee, or not a fee. */
+export async function sortCharge(
+  token: string,
+  data: { subscription_id: string; date: string; amount: number; kind: 'late_fee' | 'not_fee' },
+) {
+  return request('/subscriptions/paid/sort', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
 /** One-off extra charges (like late fees) per payment over the last `days`. */
 export async function getPaymentExtras(token: string, days = 90): Promise<PaymentExtrasSummary[]> {
   return request(`/subscriptions/extras?days=${days}`, token)

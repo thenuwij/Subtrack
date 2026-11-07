@@ -11,6 +11,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
 from app.database import Base  # noqa: E402
 from app.models import (  # noqa: E402
+    Bill,
     BillingCycle,
     Category,
     GmailReceipt,
@@ -85,7 +86,8 @@ class PaidHistoryTests(unittest.TestCase):
                                merchant_key="anytime-fitness", subscription_id=gym.id))
         self.receipt("debitsuccess.com", date(2026, 10, 30), 32.45, merchant="Anytime Fitness membership")
         rows = [(r["name"], r["amount"], r["status"]) for r in self.history() if r["date"] == "2026-10-30"]
-        self.assertEqual(rows, [("Anytime Fitness", 32.45, "confirmed")])
+        # The extra $7.50 isn't assumed to be a late fee; it waits to be sorted.
+        self.assertEqual(sorted(rows), [("Anytime Fitness", 7.5, "unsorted"), ("Anytime Fitness", 24.95, "confirmed")])
 
     def test_late_fees_are_listed(self):
         self.db.add(PaymentExtra(user_id="owner", subscription_id=self.netflix.id, amount=7.5,
@@ -120,13 +122,56 @@ class PaidHistoryTests(unittest.TestCase):
         self.db.commit()
         return sub
 
-    def test_late_payment_covering_two_months_counts_the_extra_as_a_fee(self):
+    def bill(self, when, amount, due=None, fee=None, message=None):
+        self.db.add(Bill(
+            user_id="owner", gmail_message_id=message or f"bill-{when}", intermediary="mybill.vodafone.com.au",
+            merchant="Vodafone", amount=amount, currency="AUD", issued_on=when, due_on=due, late_fee=fee,
+        ))
+        self.db.commit()
+
+    def bills(self):
+        return paid_history(self.db, "owner", months=3, today=TODAY)
+
+    def test_receipt_marks_the_bill_paid_whatever_the_plan_price(self):
         self.phone()
+        self.bill(date(2026, 10, 18), 140.59, due=date(2026, 11, 3))
         self.receipt("mybill.vodafone.com.au", date(2026, 10, 25), 140.59)
-        result = paid_history(self.db, "owner", months=3, today=TODAY)
-        rows = [(r["date"], r["kind"], r["amount"]) for r in result["payments"] if r["name"] == "Vodafone"]
-        self.assertIn(("2026-10-25", "late_fee", 24.59), rows)
-        self.assertEqual(result["late_fees_total"], 24.59)
+        result = self.bills()
+        self.assertEqual([(b["status"], b["paid"]) for b in result["bills"]], [("paid", 140.59)])
+        self.assertEqual(result["late_fees_total"], 0)  # nothing guessed from what was paid
+
+    def test_part_paid_and_overdue_bills(self):
+        self.phone()
+        self.bill(date(2026, 9, 18), 58.0, due=date(2026, 10, 3))
+        self.bill(date(2026, 10, 18), 58.0, due=date(2026, 11, 20))
+        self.receipt("mybill.vodafone.com.au", date(2026, 10, 20), 30.0)
+        statuses = {b["issued_on"]: (b["status"], b["owing"]) for b in self.bills()["bills"]}
+        self.assertEqual(statuses["2026-09-18"], ("overdue", 58.0))
+        self.assertEqual(statuses["2026-10-18"], ("part_paid", 28.0))
+
+    def test_overpaying_leaves_credit(self):
+        self.phone()
+        self.bill(date(2026, 9, 18), 58.0, due=date(2026, 10, 3))
+        self.receipt("mybill.vodafone.com.au", date(2026, 9, 23), 68.0)
+        self.assertEqual(self.bills()["bills"][0]["status"], "credit")
+
+    def test_late_fee_only_when_the_bill_states_it(self):
+        self.phone()
+        self.bill(date(2026, 10, 18), 68.0, due=date(2026, 11, 3), fee=10.0)
+        self.assertEqual(self.bills()["late_fees_total"], 10.0)
+
+    def test_bill_without_a_due_date_is_left_for_the_user(self):
+        self.phone()
+        self.bill(date(2026, 10, 18), 58.0)
+        self.assertIsNone(self.bills()["bills"][0]["due_on"])
+
+    def test_user_confirmed_late_fee_counts_and_not_fee_does_not(self):
+        self.db.add(PaymentExtra(user_id="owner", subscription_id=self.netflix.id, amount=7.5,
+                                 currency="AUD", charged_at=datetime(2026, 10, 30), reason="late_fee"))
+        self.db.add(PaymentExtra(user_id="owner", subscription_id=self.netflix.id, amount=3.0,
+                                 currency="AUD", charged_at=datetime(2026, 9, 30), reason="not_fee"))
+        self.db.commit()
+        self.assertEqual(self.bills()["late_fees_total"], 7.5)
 
     def test_on_time_exact_payment_has_no_fee(self):
         self.phone()

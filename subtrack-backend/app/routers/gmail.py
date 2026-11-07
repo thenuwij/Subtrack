@@ -37,6 +37,7 @@ from app.gmail.crypto import (
 )
 from app.middleware.auth import reject_demo_user, verify_token
 from app.models import (
+    Bill,
     BillingCycle,
     DetectedSubscription,
     DetectionStatus,
@@ -943,6 +944,42 @@ def _is_payment_proof(candidate) -> bool:
     return not is_bill or bool(PROOF_OF_PAYMENT.search(text))
 
 
+def _save_bills(db, user_id: str, candidates) -> None:
+    """Keep each bill read from email (amount owing, due date, stated fees)."""
+    bills = [c for c in candidates if c.bill_amount is not None or c.bill_due_on is not None]
+    if not bills:
+        return
+    seen = {
+        message_id for (message_id,) in db.query(Bill.gmail_message_id).filter(
+            Bill.user_id == user_id, Bill.gmail_message_id.in_([c.message_id for c in bills]),
+        )
+    }
+    # The same bill can arrive twice (a copy in the same thread, a reminder).
+    same_bill = {
+        (bill.intermediary, float(bill.amount) if bill.amount is not None else None, bill.due_on)
+        for bill in db.query(Bill).filter(Bill.user_id == user_id)
+    }
+    for candidate in bills:
+        due = datetime.fromisoformat(candidate.bill_due_on).date() if candidate.bill_due_on else None
+        key = ((candidate.sender_domain or "")[:80], candidate.bill_amount, due)
+        if candidate.message_id in seen or (due is not None and key in same_bill):
+            continue
+        seen.add(candidate.message_id)
+        same_bill.add(key)
+        db.add(Bill(
+            user_id=user_id,
+            gmail_message_id=candidate.message_id[:64],
+            intermediary=(candidate.sender_domain or "")[:80],
+            merchant=(candidate.merchant or "")[:200] or None,
+            amount=candidate.bill_amount,
+            currency=(candidate.currency or "AUD").upper()[:3],
+            issued_on=datetime.fromisoformat(candidate.date[:10]).date(),
+            due_on=datetime.fromisoformat(candidate.bill_due_on).date() if candidate.bill_due_on else None,
+            late_fee=candidate.bill_late_fee,
+        ))
+    db.commit()
+
+
 def _save_receipts(db, user_id: str, candidates) -> None:
     """Keep each charge seen (sender, business, amount, date) for paid history.
 
@@ -1068,6 +1105,7 @@ def _run_scan(user_id: str, run_id: str):
             return
 
         _save_receipts(db, user_id, scan_result.candidates)
+        _save_bills(db, user_id, scan_result.candidates)
 
         subscriptions = db.query(Subscription).filter(
             Subscription.user_id == user_id

@@ -1,13 +1,18 @@
-"""What was actually paid: past due dates lined up with email receipts.
+"""What was actually paid, built from bills (what's owed) and receipts (what was paid).
 
-- confirmed: a receipt for this payment arrived within a few days of the due
-  date (or a receipt arrived that no due date explains, e.g. a moved date)
+Bills are the source of truth for payments that send invoices (Vodafone,
+Origin, water). Receipts only mark those bills as paid, part paid or still
+owing; nothing is worked out backwards from how much someone chose to pay.
+
+Payments without invoices (Netflix, Apple, the gym) are lined up against their
+schedule instead:
+
+- confirmed: a receipt arrived within a few days of the due date
 - expected: the schedule says it was due, but no receipt was seen
-- extra: a recorded one-off such as a late fee
+- above plan: a charge higher than the plan price that the user hasn't sorted
+  yet (late fee, or not a fee). It is never counted as a late fee on its own.
 
-Receipts are matched to a payment by sender (the payment's source domain or a
-saved "this is my X" link). When one sender bills several of the user's
-payments (Apple Music and iCloud), the closest amount wins.
+Late fees come only from a bill that states one, or from the user saying so.
 """
 from __future__ import annotations
 
@@ -17,12 +22,12 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.agent.finance import CurrencyContext
-from app.models import GmailReceipt, PaymentExtra, SenderLink, Subscription
+from app.models import Bill, GmailReceipt, PaymentExtra, SenderLink, Subscription
 from app.services.payment_links import merchant_key, name_words
 from app.services.recurrence import forecast_end_for, occurrences_between, rewind_anchor, utc_naive
 
 MATCH_WINDOW_DAYS = 4
-
+MIN_ABOVE_PLAN = 0.5
 
 # Parts of a sender address that say nothing about who it is.
 SENDER_NOISE = {
@@ -30,8 +35,6 @@ SENDER_NOISE = {
     "mybill", "billing", "bill", "info", "hello", "notifications", "news", "comms", "retail",
     "account", "accounts", "members", "receipts", "invoice", "statements",
 }
-
-
 # Products sold under a parent brand's sender.
 BRAND_SENDERS = {
     "icloud": "apple", "itunes": "apple", "youtube": "google", "claude": "anthropic",
@@ -41,56 +44,13 @@ BRAND_SENDERS = {
 CATEGORY_SENDERS = {
     "housing": ("property", "realestate", "realty", "rent", "strata", "lettings"),
 }
-
-
-# Bills that charge a late fee when paid late. Anything paid above the
-# regular price is a fee, and one late payment can cover several periods.
-FEE_CATEGORIES = {"phone_internet", "utilities", "fitness", "memberships", "housing", "insurance"}
-# How long after a due date a late payment can still be the one that paid it.
-LATE_WINDOW_DAYS = 70
-MIN_FEE = 0.5
-
-
 # Pay-later and payment platforms send a receipt for every purchase, so their
 # receipts only ever match a payment at its exact price.
 PAY_LATER_SENDERS = ("afterpay", "zip.co", "klarna", "paypal", "humm", "openpay", "laybuy")
 
 
-def _pay_later(receipt: GmailReceipt) -> bool:
-    return any(name in receipt.intermediary.lower() for name in PAY_LATER_SENDERS)
-
-
-def _charges_late_fees(sub: Subscription) -> bool:
-    return not _is_variable(sub) and getattr(sub.category, "value", sub.category) in FEE_CATEGORIES
-
-
-def _split_payment(sub: Subscription, amount: float) -> tuple[int, float]:
-    """How many periods a receipt paid for, and the late fee on top."""
-    regular = _regular(sub)
-    if not regular or not _charges_late_fees(sub) or amount < regular + MIN_FEE:
-        return 1, 0.0
-    periods = max(1, int(amount / regular + 0.05))
-    fee = round(amount - periods * regular, 2)
-    return periods, fee if fee >= MIN_FEE else 0.0
-
-
-def _is_variable(sub: Subscription) -> bool:
-    return getattr(sub.amount_type, "value", sub.amount_type) == "variable"
-
-
-def _amount_fits(sub: Subscription, amount: float, receipt: GmailReceipt | None = None) -> bool:
-    """Close to the regular (whole-bill) price, or to an intro price."""
-    tolerance = 0.6 if _is_variable(sub) else 0.1
-    if _close(sub, amount, tolerance):
-        return True
-    # A late payment: one or more periods plus fees.
-    regular = _regular(sub)
-    if receipt is not None and _pay_later(receipt):
-        return False
-    if _charges_late_fees(sub) and regular and regular * 0.9 <= amount <= regular * 3.2:
-        return True
-    intro = float(sub.intro_amount) if sub.intro_amount is not None else None
-    return intro is not None and abs(intro - amount) <= max(intro * tolerance, 0.05)
+def _value(field) -> str:
+    return getattr(field, "value", field)
 
 
 def _regular(sub: Subscription) -> float:
@@ -103,50 +63,137 @@ def _close(sub: Subscription, amount: float, tolerance: float) -> bool:
     return bool(regular) and abs(regular - amount) <= regular * tolerance
 
 
-def _named_in(sub: Subscription, receipt: GmailReceipt) -> bool:
+def _amount_fits(sub: Subscription, amount: float) -> bool:
+    """Close to the regular (whole-bill) price, or to an intro price."""
+    tolerance = 0.6 if _value(sub.amount_type) == "variable" else 0.1
+    if _close(sub, amount, tolerance):
+        return True
+    intro = float(sub.intro_amount) if sub.intro_amount is not None else None
+    return intro is not None and abs(intro - amount) <= max(intro * tolerance, 0.05)
+
+
+def _named_in(sub: Subscription, sender: str, merchant: str | None) -> bool:
     """The payment's name shows up in the sender's address or business name.
 
     "Vodafone" ↔ mybill.vodafone.com.au, "Origin Energy" ↔ originenergy.com.au.
     """
-    sender = [part for part in re.split(r"[.\-]", receipt.intermediary.lower()) if part not in SENDER_NOISE]
-    haystack = " ".join(sender + [(receipt.merchant or "").lower()])
+    parts = [part for part in re.split(r"[.\-]", sender.lower()) if part not in SENDER_NOISE]
+    haystack = " ".join(parts + [(merchant or "").lower()])
     words = [word for word in name_words(sub.name) if len(word) >= 4]
     if words and (words[0] in haystack or BRAND_SENDERS.get(words[0], "\0") in haystack):
         return True
-    category = getattr(sub.category, "value", sub.category)
-    return any(hint in haystack for hint in CATEGORY_SENDERS.get(category, ()))
+    return any(hint in haystack for hint in CATEGORY_SENDERS.get(_value(sub.category), ()))
 
 
-def _receipt_owner(
-    receipt: GmailReceipt, by_domain: dict, links: dict, active: list[Subscription],
-) -> Subscription | None:
-    linked = links.get((receipt.intermediary, merchant_key(receipt.merchant or "")))
-    if linked is not None:
-        return linked
-    # Billing platforms (Debitsuccess) put their own name on receipts, not the
-    # gym's. With only one saved link for that sender, it's that payment.
-    domain_links = {sub.id: sub for (domain, _key), sub in links.items() if domain == receipt.intermediary and sub}
-    if len(domain_links) == 1:
-        return next(iter(domain_links.values()))
-    amount = float(receipt.amount)
-    candidates = [sub for sub in by_domain.get(receipt.intermediary, []) if _amount_fits(sub, amount, receipt)]
-    if candidates:
-        return min(candidates, key=lambda sub: abs(_regular(sub) - amount))
-    # Payments added by hand have no sender on record, so fall back to the
-    # name. A name match alone is weaker, so the amount must be close too
-    # (variable bills such as electricity are allowed to move more).
-    named = [sub for sub in active if _named_in(sub, receipt) and _amount_fits(sub, amount, receipt)]
-    if not named:
-        return None
-    return min(named, key=lambda sub: abs(_regular(sub) - amount))
+class _Matcher:
+    """Finds which tracked payment a bill or receipt belongs to."""
+
+    def __init__(self, subs: list[Subscription], links: dict):
+        self.links = links
+        self.active = [sub for sub in subs if sub.is_active]
+        self.by_domain: dict[str, list[Subscription]] = {}
+        for sub in subs:
+            if sub.source_domain:
+                self.by_domain.setdefault(sub.source_domain.lower(), []).append(sub)
+        # Senders that send this user bills, and whose payment they're for.
+        self.bill_senders: dict[str, Subscription] = {}
+
+    def _linked(self, sender: str, merchant: str | None) -> Subscription | None:
+        linked = self.links.get((sender, merchant_key(merchant or "")))
+        if linked is not None:
+            return linked
+        # Billing platforms (Debitsuccess) put their own name on receipts, not
+        # the gym's. With only one saved link for that sender, it's that payment.
+        for_sender = {sub.id: sub for (domain, _key), sub in self.links.items() if domain == sender and sub}
+        return next(iter(for_sender.values())) if len(for_sender) == 1 else None
+
+    def bill_owner(self, bill: Bill) -> Subscription | None:
+        """Bill amounts vary (balances, usage), so they match on sender and name only."""
+        owner = self._linked(bill.intermediary, bill.merchant)
+        if owner is None:
+            by_domain = self.by_domain.get(bill.intermediary, [])
+            named = by_domain or [sub for sub in self.active if _named_in(sub, bill.intermediary, bill.merchant)]
+            owner = named[0] if len(named) == 1 else None
+        # A bill nowhere near the payment's price is a different bill from the
+        # same sender (a water invoice from the rent agent).
+        if owner is not None and bill.amount is not None and _value(owner.amount_type) != "variable":
+            regular = _regular(owner)
+            if regular and not regular * 0.5 <= float(bill.amount) <= regular * 3.5:
+                owner = None
+        if owner is not None:
+            self.bill_senders[bill.intermediary] = owner
+        return owner
+
+    def receipt_owner(self, receipt: GmailReceipt) -> Subscription | None:
+        sender, amount = receipt.intermediary, float(receipt.amount)
+        owner = self._linked(sender, receipt.merchant)
+        if owner is not None:
+            return owner
+        # A sender that bills this payment: its receipts pay those bills,
+        # whatever the amount (part payments, catching up, credit).
+        if sender in self.bill_senders:
+            return self.bill_senders[sender]
+        exact_only = any(name in sender.lower() for name in PAY_LATER_SENDERS)
+        candidates = [sub for sub in self.by_domain.get(sender, []) if _amount_fits(sub, amount)]
+        if not candidates:
+            # Payments added by hand have no sender on record, so fall back to
+            # the name, with the amount close too.
+            candidates = [
+                sub for sub in self.active
+                if _named_in(sub, sender, receipt.merchant) and _amount_fits(sub, amount)
+            ]
+        if exact_only:
+            candidates = [sub for sub in candidates if _close(sub, amount, 0.01)]
+        return min(candidates, key=lambda sub: abs(_regular(sub) - amount)) if candidates else None
 
 
-def _your_part(sub: Subscription, receipt: GmailReceipt) -> float:
+def _your_part(sub: Subscription, amount: float) -> float:
     """A receipt for a shared bill shows the whole bill; show the user's share."""
-    amount = float(receipt.amount)
     if sub.full_amount and _close(sub, amount, 0.1):
         return float(sub.amount)
     return amount
+
+
+def _bill_statuses(bills: list[Bill], receipts: list[GmailReceipt], today: date) -> list[dict]:
+    """Apply receipts to bills. A receipt pays the latest bill issued before it.
+
+    Bills like Vodafone's carry an unpaid balance into the next bill, so
+    everything paid between two bills counts towards the earlier one.
+    """
+    ordered = sorted(bills, key=lambda bill: bill.issued_on)
+    out = []
+    for index, bill in enumerate(ordered):
+        until = ordered[index + 1].issued_on if index + 1 < len(ordered) else date.max
+        paid_on = [r for r in receipts if bill.issued_on <= r.received_on < until]
+        paid = round(sum(float(r.amount) for r in paid_on), 2)
+        amount = float(bill.amount) if bill.amount is not None else None
+        if amount is None:
+            status = "paid" if paid else "unknown"
+        elif paid >= amount - 0.01:
+            status = "credit" if paid > amount + 0.01 else "paid"
+        elif bill.due_on and bill.due_on < today:
+            status = "overdue"
+        elif paid:
+            status = "part_paid"
+        else:
+            status = "due"
+        out.append({
+            "bill": bill,
+            "paid": paid,
+            "paid_on": max((r.received_on for r in paid_on), default=None),
+            "owing": round(max((amount or 0) - paid, 0), 2) if amount is not None else None,
+            "status": status,
+        })
+    # Unpaid balances carry into the next bill, so a later bill paid in full
+    # settles the ones before it.
+    settled = False
+    for state in reversed(out):
+        if state["status"] in ("paid", "credit"):
+            settled = True
+        elif settled and state["status"] in ("overdue", "part_paid", "due"):
+            state["status"] = "carried"
+            state["owing"] = 0.0
+    return out
 
 
 def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | None = None) -> dict:
@@ -156,110 +203,164 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
 
     subs = db.query(Subscription).filter(Subscription.user_id == user_id).all()
     by_id = {sub.id: sub for sub in subs}
-    by_domain: dict[str, list[Subscription]] = {}
-    for sub in subs:
-        if sub.source_domain:
-            by_domain.setdefault(sub.source_domain.lower(), []).append(sub)
-    active = [sub for sub in subs if sub.is_active]
     links = {
         (link.sender_domain, link.merchant_key): by_id.get(link.subscription_id)
         for link in db.query(SenderLink).filter(SenderLink.user_id == user_id)
     }
+    matcher = _Matcher(subs, links)
+
+    bills_by_sub: dict = {}
+    loose_bills: dict[str, list[Bill]] = {}
+    for bill in db.query(Bill).filter(Bill.user_id == user_id, Bill.issued_on >= start, Bill.issued_on <= today):
+        owner = matcher.bill_owner(bill)
+        if owner is not None:
+            bills_by_sub.setdefault(owner.id, []).append(bill)
+        else:
+            loose_bills.setdefault(bill.intermediary, []).append(bill)
 
     receipts: dict = {}
+    loose_receipts: dict[str, list[GmailReceipt]] = {}
     for receipt in db.query(GmailReceipt).filter(
         GmailReceipt.user_id == user_id,
         GmailReceipt.received_on >= start,
         GmailReceipt.received_on <= today,
     ):
-        owner = _receipt_owner(receipt, by_domain, links, active)
+        owner = matcher.receipt_owner(receipt)
         if owner is not None:
             receipts.setdefault(owner.id, []).append(receipt)
-
-    rows: list[dict] = []
-
-    def row(sub: Subscription, when: date, amount: float, native: str, status: str, kind: str) -> dict:
-        in_base, _ = currency.convert(amount, native)
-        return {
-            "subscription_id": str(sub.id),
-            "name": sub.name,
-            "category": getattr(sub.category, "value", sub.category),
-            "date": when.isoformat(),
-            "amount": round(amount, 2),
-            "currency": native,
-            "amount_in_base": None if in_base is None else round(in_base, 2),
-            "status": status,
-            "kind": kind,
-        }
+        else:
+            loose_receipts.setdefault(receipt.intermediary, []).append(receipt)
 
     window_start = datetime.combine(start, datetime.min.time())
     window_end = datetime.combine(today, datetime.max.time())
-    recorded_fees = [
-        extra for extra in db.query(PaymentExtra).filter(
-            PaymentExtra.user_id == user_id,
-            PaymentExtra.charged_at >= window_start,
+    extras = db.query(PaymentExtra).filter(
+        PaymentExtra.user_id == user_id, PaymentExtra.charged_at >= window_start,
+    ).all()
+
+    def in_base(amount: float, native: str) -> float | None:
+        value, _ = currency.convert(amount, native)
+        return None if value is None else round(value, 2)
+
+    def row(sub: Subscription, when: date, amount: float, native: str, status: str, kind: str, **more) -> dict:
+        return {
+            "subscription_id": str(sub.id),
+            "name": sub.name,
+            "category": _value(sub.category),
+            "date": when.isoformat(),
+            "amount": round(amount, 2),
+            "currency": native,
+            "amount_in_base": in_base(amount, native),
+            "status": status,
+            "kind": kind,
+            **more,
+        }
+
+    def sorted_near(sub: Subscription, when: date) -> bool:
+        """The user already said whether a charge near this date was a fee."""
+        return any(
+            extra.subscription_id == sub.id
+            and abs((utc_naive(extra.charged_at).date() - when).days) <= MATCH_WINDOW_DAYS
+            for extra in extras
         )
-    ]
+
+    rows: list[dict] = []
+    bill_rows: list[dict] = []
+    late_fees = 0.0
+
+    def add_bills(bills: list[Bill], paid_with: list[GmailReceipt], sub: Subscription | None) -> None:
+        nonlocal late_fees
+        for state in _bill_statuses(bills, paid_with, today):
+            bill = state["bill"]
+            fee = float(bill.late_fee) if bill.late_fee is not None else None
+            if fee:
+                late_fees += in_base(fee, bill.currency) or 0
+            bill_rows.append({
+                "id": str(bill.id),
+                "subscription_id": str(sub.id) if sub else None,
+                # "Ratika Arora - Whome Group" -> "Whome Group": the business, not the person.
+                "name": sub.name if sub else ((bill.merchant or bill.intermediary).split(" - ")[-1]),
+                "category": _value(sub.category) if sub else "other",
+                "issued_on": bill.issued_on.isoformat(),
+                "due_on": bill.due_on.isoformat() if bill.due_on else None,
+                "amount": float(bill.amount) if bill.amount is not None else None,
+                "currency": bill.currency,
+                "paid": state["paid"],
+                "paid_on": state["paid_on"].isoformat() if state["paid_on"] else None,
+                "owing": state["owing"],
+                "status": state["status"],
+                "late_fee": fee,
+                "tracked": sub is not None,
+            })
+
+    # Bills for payments not tracked yet (still in Inbox) still show. Their
+    # receipts can come from a sibling address (origin.com.au bills,
+    # originenergy.com.au receipts), so match on the sender's core name.
+    def core(sender: str) -> str:
+        parts = [part for part in re.split(r"[.\-]", sender.lower()) if part not in SENDER_NOISE]
+        return parts[0] if parts else sender
+
+    for sender, bills in loose_bills.items():
+        name = core(sender)
+        paid_with = [r for other, found in loose_receipts.items() if name in other.lower() for r in found]
+        add_bills(bills, paid_with, None)
 
     for sub in subs:
-        # Each receipt can pay one or more periods; track what's left on it.
-        left = []
-        for receipt in sorted(receipts.get(sub.id, []), key=lambda r: r.received_on):
-            periods, fee = _split_payment(sub, float(receipt.amount))
-            left.append([receipt, periods, fee])
+        sub_receipts = sorted(receipts.get(sub.id, []), key=lambda r: r.received_on)
+
+        if sub.id in bills_by_sub:
+            # Invoiced payments: bills say what was owed, receipts mark them paid.
+            add_bills(bills_by_sub[sub.id], sub_receipts, sub)
+            for receipt in sub_receipts:
+                rows.append(row(sub, receipt.received_on, float(receipt.amount), receipt.currency, "confirmed", "receipt"))
+            continue
+
+        # Payments without invoices: line receipts up with the schedule.
+        unused = list(sub_receipts)
         due_dates: list[date] = []
         if sub.next_due is not None:
             anchor = rewind_anchor(sub.next_due, sub, window_start)
             due_dates = [
                 due.date() for due in occurrences_between(
-                    anchor, sub, window_start, window_end,
-                    recurrence_end_at=forecast_end_for(sub),
+                    anchor, sub, window_start, window_end, recurrence_end_at=forecast_end_for(sub),
                 )
             ]
-        # Before the payment was added, a missing receipt proves nothing, so
-        # only receipts (not "expected" rows) are shown for that period.
+        # Before the payment was added, a missing receipt proves nothing.
         tracked_since = utc_naive(sub.created_at).date() if sub.created_at else start
-        late_ok = LATE_WINDOW_DAYS if _charges_late_fees(sub) else MATCH_WINDOW_DAYS
+        matched: list[GmailReceipt] = []
         for due in due_dates:
-            match = next(
-                (entry for entry in left
-                 if entry[1] > 0 and -MATCH_WINDOW_DAYS <= (entry[0].received_on - due).days <= late_ok),
-                None,
-            )
+            match = next((r for r in unused if abs((r.received_on - due).days) <= MATCH_WINDOW_DAYS), None)
             if match is not None:
-                receipt = match[0]
-                match[1] -= 1
-                # "Late" means it cost a fee, not just a few days' drift.
-                late = bool(match[2])
-                rows.append(row(sub, receipt.received_on, float(sub.amount) if late or match[2] else _your_part(sub, receipt),
-                                receipt.currency, "confirmed", "late" if late else "receipt"))
+                unused.remove(match)
+                matched.append(match)
             elif sub.is_active and due >= tracked_since:
                 rows.append(row(sub, due, float(sub.amount), sub.currency, "expected", "schedule"))
-        for receipt, periods, fee in left:
-            used = _split_payment(sub, float(receipt.amount))[0] - periods
-            if used == 0:
-                # No due date explains it (e.g. the schedule is off); still paid.
-                rows.append(row(sub, receipt.received_on, _your_part(sub, receipt) if not fee else float(sub.amount),
-                                receipt.currency, "confirmed", "receipt"))
-            already_recorded = any(
-                extra.subscription_id == sub.id
-                and abs((utc_naive(extra.charged_at).date() - receipt.received_on).days) <= MATCH_WINDOW_DAYS
-                for extra in recorded_fees
-            )
-            if fee and not already_recorded:
-                rows.append(row(sub, receipt.received_on, fee, receipt.currency, "confirmed", "late_fee"))
+        for receipt in matched + unused:
+            amount = float(receipt.amount)
+            above = round(amount - _regular(sub), 2)
+            fixed = _value(sub.amount_type) != "variable"
+            if fixed and above >= MIN_ABOVE_PLAN and not sorted_near(sub, receipt.received_on):
+                rows.append(row(sub, receipt.received_on, float(sub.amount), receipt.currency, "confirmed", "receipt"))
+                rows.append(row(sub, receipt.received_on, above, receipt.currency, "unsorted", "above_plan"))
+            else:
+                rows.append(row(sub, receipt.received_on, _your_part(sub, amount), receipt.currency, "confirmed", "receipt"))
 
-    for extra in recorded_fees:
+    for extra in extras:
         sub = by_id.get(extra.subscription_id)
-        if sub is not None:
-            rows.append(row(sub, utc_naive(extra.charged_at).date(), float(extra.amount),
-                            extra.currency, "confirmed", "late_fee" if extra.reason == "late_fee" else "extra"))
+        if sub is None or extra.reason == "not_fee":
+            continue
+        kind = "late_fee" if extra.reason == "late_fee" else "extra"
+        rows.append(row(sub, utc_naive(extra.charged_at).date(), float(extra.amount), extra.currency, "confirmed", kind))
+        if kind == "late_fee":
+            late_fees += in_base(float(extra.amount), extra.currency) or 0
 
     rows.sort(key=lambda r: (r["date"], r["name"].casefold()), reverse=True)
-    late_fees = round(sum(r["amount_in_base"] or 0 for r in rows if r["kind"] == "late_fee"), 2)
+    bill_rows.sort(key=lambda b: b["issued_on"], reverse=True)
+    above_plan = sum(r["amount_in_base"] or 0 for r in rows if r["kind"] == "above_plan")
     return {
         "base_currency": currency.base,
         "since": start.isoformat(),
-        "late_fees_total": late_fees,
+        "late_fees_total": round(late_fees, 2),
+        "above_plan_total": round(above_plan, 2),
+        "bills": bill_rows,
         "payments": rows,
     }

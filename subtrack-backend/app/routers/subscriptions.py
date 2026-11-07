@@ -1,5 +1,6 @@
+from datetime import date as date_type
 from datetime import datetime
-from typing import NamedTuple, Optional
+from typing import Literal, NamedTuple, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -435,6 +436,69 @@ def get_paid_history(
     from app.services.paid_history import paid_history
 
     return paid_history(db, user_id, months=months)
+
+
+class BillUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    due_on: date_type | None = None
+    late_fee: float | None = Field(default=None, ge=0)
+
+
+@router.patch("/bills/{bill_id}")
+def update_bill(
+    bill_id: UUID,
+    body: BillUpdate,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Fill in what the bill email didn't say: its due date, or a late fee on it."""
+    from app.models import Bill
+
+    bill = db.query(Bill).filter(Bill.id == bill_id, Bill.user_id == user_id).first()
+    if bill is None:
+        raise HTTPException(status_code=404, detail="Bill not found")
+    if "due_on" in body.model_fields_set:
+        bill.due_on = body.due_on
+    if "late_fee" in body.model_fields_set:
+        bill.late_fee = body.late_fee or None
+    db.commit()
+    return {"updated": True}
+
+
+class SortCharge(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subscription_id: UUID
+    date: date_type
+    amount: float = Field(gt=0)
+    kind: Literal["late_fee", "not_fee"]
+
+
+@router.post("/paid/sort")
+def sort_charge(
+    body: SortCharge,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """The user's answer for a charge above the plan price: late fee, or not a fee."""
+    from app.models import PaymentExtra
+
+    sub = db.query(Subscription).filter(
+        Subscription.id == body.subscription_id, Subscription.user_id == user_id,
+    ).first()
+    if sub is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    db.add(PaymentExtra(
+        user_id=user_id,
+        subscription_id=sub.id,
+        amount=round(body.amount, 2),
+        currency=sub.currency,
+        charged_at=datetime.combine(body.date, datetime.min.time()).replace(hour=12),
+        reason=body.kind,
+    ))
+    db.commit()
+    return {"sorted": True}
 
 
 @router.get("/extras")
