@@ -424,6 +424,18 @@ def get_calendar_month(
     return {**result, "year": year, "month": month, "extras": extra_rows}
 
 
+@router.get("/paid")
+def get_paid_history(
+    months: int = Query(default=3, ge=1, le=12),
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Past payments: confirmed by an email receipt, or expected from the schedule."""
+    from app.services.paid_history import paid_history
+
+    return paid_history(db, user_id, months=months)
+
+
 @router.get("/extras")
 def get_extras(
     days: int = Query(default=90, ge=1, le=730),

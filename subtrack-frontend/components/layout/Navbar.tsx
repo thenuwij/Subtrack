@@ -31,7 +31,7 @@ export default function Navbar() {
 
   function renderNavItems(mobile = false) {
     return links.map(({ href, label, icon: Icon }) => {
-      const active = pathname === href
+      const active = pathname === href || pathname.startsWith(`${href}/`)
       return (
         <Link
           key={href}

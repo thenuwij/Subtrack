@@ -299,6 +299,24 @@ export interface CalendarMonthCharges extends SubscriptionForecast {
   extras?: PaymentExtraRow[]
 }
 
+export interface PaidPayment {
+  subscription_id: string
+  name: string
+  category: Category
+  date: string
+  amount: number
+  currency: string
+  amount_in_base: number | null
+  status: 'confirmed' | 'expected'
+  kind: 'receipt' | 'schedule' | 'late_fee' | 'extra'
+}
+
+export interface PaidHistory {
+  base_currency: string
+  since: string
+  payments: PaidPayment[]
+}
+
 export interface PaymentExtrasSummary {
   subscription_id: string
   count: number

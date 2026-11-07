@@ -24,6 +24,7 @@ import { Button }                 from '@/components/ui/button'
 import { Skeleton }               from '@/components/ui/skeleton'
 import { Plus, CreditCard }       from 'lucide-react'
 import { useSWRConfig } from 'swr'
+import { PaymentsTabs } from '@/components/subscriptions/PaymentsTabs'
 import { useThisMonth } from '@/lib/hooks/useThisMonth'
 import { useCurrency }            from '@/lib/context/currency'
 import { formatCurrency }         from '@/lib/utils/currency'
@@ -417,7 +418,10 @@ export default function SubscriptionsPage() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
+            <PaymentsTabs />
+          </div>
           {!loading && subscriptions.length > 0 && (
             <p className="text-sm text-muted-foreground mt-1 tabular-nums xl:hidden">
               {paid.length} paid{trials.length ? ` · ${trials.length} free trial${trials.length === 1 ? '' : 's'}` : ''} ·{' '}

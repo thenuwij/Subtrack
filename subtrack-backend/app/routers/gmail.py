@@ -42,6 +42,7 @@ from app.models import (
     DetectionStatus,
     GmailAccount,
     GmailOAuthState,
+    GmailReceipt,
     PaymentStatus,
     Subscription,
 )
@@ -869,6 +870,40 @@ class ScanSuperseded(Exception):
     """The mailbox was disconnected or a newer run took ownership."""
 
 
+def _save_receipts(db, user_id: str, candidates) -> None:
+    """Keep each charge seen (sender, business, amount, date) for paid history.
+
+    No email text is stored. Already-saved messages are skipped.
+    """
+    rows = [c for c in candidates if c.amount and c.amount > 0 and c.currency and c.date]
+    if not rows:
+        return
+    seen = {
+        message_id for (message_id,) in db.query(GmailReceipt.gmail_message_id).filter(
+            GmailReceipt.user_id == user_id,
+            GmailReceipt.gmail_message_id.in_([c.message_id for c in rows]),
+        )
+    }
+    for candidate in rows:
+        if candidate.message_id in seen:
+            continue
+        try:
+            received = datetime.fromisoformat(candidate.date[:10]).date()
+        except ValueError:
+            continue
+        seen.add(candidate.message_id)
+        db.add(GmailReceipt(
+            user_id=user_id,
+            gmail_message_id=candidate.message_id[:64],
+            intermediary=(candidate.sender_domain or "")[:40],
+            merchant=(candidate.merchant or "")[:200] or None,
+            amount=round(float(candidate.amount), 2),
+            currency=candidate.currency.upper()[:3],
+            received_on=received,
+        ))
+    db.commit()
+
+
 def _run_scan(user_id: str, run_id: str):
     """Run one bounded scan in the dedicated executor.
 
@@ -925,6 +960,12 @@ def _run_scan(user_id: str, run_id: str):
             return
 
         cursor = account.scan_cursor_at
+        # Paid history needs receipts. An account scanned before receipts were
+        # kept gets one full look-back so its history isn't empty.
+        if cursor is not None and not db.query(GmailReceipt.id).filter(
+            GmailReceipt.user_id == user_id,
+        ).first():
+            cursor = None
         started_at = account.scan_started_at
         try:
             refresh_token = decrypt_token(account.refresh_token_encrypted)
@@ -949,6 +990,8 @@ def _run_scan(user_id: str, run_id: str):
             logger.warning("Gmail refresh token rejected for %s", user_id)
             fail("Google no longer accepts Subtrack's access to this inbox. Disconnect and connect again on the Account page.")
             return
+
+        _save_receipts(db, user_id, scan_result.candidates)
 
         subscriptions = db.query(Subscription).filter(
             Subscription.user_id == user_id
