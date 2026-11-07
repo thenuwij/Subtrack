@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Release builds must transform the current stylesheet rather than restore
+  // persisted compiler output from a previous deployment.
+  experimental: { turbopackFileSystemCacheForBuild: false },
   async headers() {
     return [{
       source: '/:path*',

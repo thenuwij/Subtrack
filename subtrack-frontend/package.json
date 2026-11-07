@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node scripts/check-production-css.mjs",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "check:production-css": "node scripts/check-production-css.mjs",
+    "test:production-css": "node --test scripts/check-production-css.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.9.0",
