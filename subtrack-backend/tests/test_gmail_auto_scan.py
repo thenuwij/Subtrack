@@ -14,7 +14,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 from app.database import Base  # noqa: E402
 from app.gmail.analyzer import AnalysisOutcome  # noqa: E402
 from app.gmail.scanner import SEARCH_QUERY, ScanResult  # noqa: E402
-from app.models import GmailAccount  # noqa: E402
+from app.models import GmailAccount, GmailReceipt  # noqa: E402
 from app.routers import gmail as gmail_router  # noqa: E402
 
 
@@ -85,10 +85,23 @@ class AutoScanTests(unittest.TestCase):
     def test_next_scan_reads_only_since_the_cursor(self):
         cursor = utcnow() - timedelta(days=1)
         self.start_running("run-2", utcnow(), cursor=cursor)
+        # Receipts already saved, so no one-off history look-back is needed.
+        db = self.Session()
+        db.add(GmailReceipt(user_id="owner", gmail_message_id="m1", intermediary="netflix.com",
+                            amount=20.99, currency="AUD", received_on=utcnow().date()))
+        db.commit()
+        db.close()
 
         after = self.run_scan("run-2")
 
         self.assertEqual(after, cursor)
+
+    def test_account_without_saved_receipts_gets_one_full_look_back(self):
+        self.start_running("run-6", utcnow(), cursor=utcnow() - timedelta(days=1))
+
+        after = self.run_scan("run-6")
+
+        self.assertIsNone(after)
 
     def test_cut_short_scan_keeps_the_cursor_so_no_email_is_skipped(self):
         cursor = utcnow() - timedelta(days=1)

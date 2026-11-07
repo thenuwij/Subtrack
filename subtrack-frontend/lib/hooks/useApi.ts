@@ -11,6 +11,7 @@ export const apiKeys = {
   forecast: (days: number) => `forecast:${days}`,
   calendarMonth: 'calendar-month',
   extras: (days: number) => `extras:${days}`,
+  paid: (months: number) => `paid:${months}`,
   reminders: (horizonDays: number) => `reminders:${horizonDays}`,
   preferences: 'preferences',
   safeToSpend: 'safe-to-spend',

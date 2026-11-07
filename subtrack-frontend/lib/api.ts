@@ -1,5 +1,6 @@
 import type {
   CalendarMonthCharges,
+  PaidHistory,
   PaymentExtrasSummary,
   ApiCapabilities,
   AmountType,
@@ -357,6 +358,11 @@ export async function getSubscriptionForecast(
 /** Every charge dated in the current calendar month, including ones already paid. */
 export async function getCalendarMonth(token: string): Promise<CalendarMonthCharges> {
   return request('/subscriptions/month', token)
+}
+
+/** Past payments: confirmed by an email receipt, or expected from the schedule. */
+export async function getPaidHistory(token: string, months = 3): Promise<PaidHistory> {
+  return request(`/subscriptions/paid?months=${months}`, token)
 }
 
 /** One-off extra charges (like late fees) per payment over the last `days`. */
