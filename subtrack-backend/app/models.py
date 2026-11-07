@@ -942,3 +942,29 @@ class AiCallTrace(Base):
     tool_ms = Column(Integer, nullable=True)
     error_code = Column(String(80), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class PaymentDecision(Base):
+    __tablename__ = "payment_decisions"
+    __table_args__ = (UniqueConstraint("user_id", "target", name="uq_payment_decision_target"),)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    target = Column(String(100), nullable=False)
+    decision = Column(String(16), nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class EmailPreference(Base):
+    __tablename__ = "email_preferences"
+    user_id = Column(String, primary_key=True)
+    email = Column(String(320), nullable=False)
+    enabled = Column(Boolean, nullable=False, default=False)
+
+
+class ReminderDelivery(Base):
+    __tablename__ = "reminder_deliveries"
+    key = Column(String(180), primary_key=True)
+    user_id = Column(String, nullable=False, index=True)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    sent_at = Column(DateTime, nullable=True)

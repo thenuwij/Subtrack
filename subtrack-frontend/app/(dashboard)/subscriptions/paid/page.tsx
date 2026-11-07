@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { CheckCircle2, Circle, CircleAlert } from 'lucide-react'
 import { toast } from 'sonner'
-import { getPaidHistory, sortCharge, updateBill } from '@/lib/api'
+import { decidePayment, getPaidHistory, sortCharge, updateBill } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth/session'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -23,6 +23,8 @@ function monthLabel(date: string) {
 }
 
 function rowNote(row: PaidPayment) {
+  if (row.manual === 'paid') return 'You marked this paid'
+  if (row.status === 'skipped') return 'You said this didn’t happen'
   if (row.kind === 'late_fee') return 'Late fee'
   if (row.kind === 'extra') return 'Extra charge'
   if (row.kind === 'above_plan') return 'Charged above your plan'
@@ -30,6 +32,7 @@ function rowNote(row: PaidPayment) {
 }
 
 const BILL_STATUS: Record<PaidBill['status'], { label: string; className: string }> = {
+  carried: { label: 'Carried into next bill', className: 'bg-muted text-muted-foreground' },
   paid: { label: 'Paid', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
   credit: { label: 'Paid, in credit', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
   part_paid: { label: 'Part paid', className: 'bg-amber-500/10 text-amber-700 dark:text-amber-300' },
@@ -86,6 +89,7 @@ function BillRow({ bill, onChanged }: { bill: PaidBill; onChanged: () => void })
           </span>
         </span>
       </div>
+      {bill.target ? <DecisionButtons target={bill.target} manual={bill.manual} bill onChanged={onChanged} /> : null}
       {!bill.due_on ? (
         <div className="mt-2 flex flex-wrap items-center gap-2 pl-11">
           <span className="text-[13px] text-muted-foreground">The email didn&apos;t say when this is due.</span>
@@ -131,11 +135,11 @@ export default function PaidPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+    <div className="mx-auto w-full max-w-4xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Paid</h1>
-          <p className="mt-1 text-sm text-muted-foreground">The last 3 months, newest first.</p>
+          <p className="eyebrow mb-2">Your payment record</p><h1 className="page-heading">Payment history</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Receipts, bills and expected payments from the last 3 months.</p>
         </div>
         <PaymentsTabs />
       </div>
@@ -182,7 +186,7 @@ export default function PaidPage() {
 
           <div className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" /> Confirmed by a receipt
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" /> Confirmed by a receipt or you
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Circle className="h-4 w-4" aria-hidden="true" /> Expected from the schedule
@@ -197,7 +201,7 @@ export default function PaidPage() {
               </p>
             </section>
           ) : months.map(([key, rows]) => {
-            const total = rows.filter(row => row.status !== 'unsorted').reduce((sum, row) => sum + (row.amount_in_base ?? 0), 0)
+            const total = rows.filter(row => row.status !== 'unsorted' && row.status !== 'skipped').reduce((sum, row) => sum + (row.amount_in_base ?? 0), 0)
             const confirmed = rows.filter(row => row.status === 'confirmed').length
             return (
               <section key={key} className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
@@ -216,7 +220,7 @@ export default function PaidPage() {
                           ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-label="Confirmed" />
                           : row.status === 'unsorted'
                             ? <CircleAlert className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-label="Needs sorting" />
-                            : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Expected" />}
+                            : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" aria-label={row.status === 'skipped' ? 'Skipped' : 'Expected'} />}
                         <BrandLogo name={row.name} category={row.category} className="h-8 w-8" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[15px] font-medium text-foreground">{row.name}</span>
@@ -225,12 +229,13 @@ export default function PaidPage() {
                           </span>
                         </span>
                         <span className={`shrink-0 text-[15px] font-semibold tabular-nums ${
-                          row.kind === 'late_fee' || row.kind === 'above_plan' ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'
+                          row.status === 'skipped' ? 'line-through text-muted-foreground' : row.kind === 'late_fee' || row.kind === 'above_plan' ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'
                         }`}>
                           {row.status === 'expected' ? '≈ ' : row.kind === 'above_plan' ? '+' : ''}
                           {formatCurrency(row.amount, row.currency)}
                         </span>
                       </div>
+                      {row.target ? <DecisionButtons target={row.target} manual={row.manual} onChanged={refresh} /> : null}
                       {row.kind === 'above_plan' ? (
                         <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-[3.25rem]">
                           <span className="text-[13px] text-muted-foreground">Was this extra a late fee?</span>
@@ -250,4 +255,15 @@ export default function PaidPage() {
       )}
     </div>
   )
+}
+
+function DecisionButtons({ target, manual, bill = false, onChanged }: { target: string; manual?: string | null; bill?: boolean; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false)
+  async function save(decision: 'paid' | 'skipped' | 'undo') {
+    setBusy(true)
+    try { await withToken(token => decidePayment(token, target, decision)); onChanged() }
+    catch (error) { toast.error(errorMessage(error, 'Could not save your answer.')) }
+    finally { setBusy(false) }
+  }
+  return <div className="mt-2 flex flex-wrap gap-2 pl-11">{manual ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save('undo')}>Undo your answer</Button> : <><Button size="sm" variant="outline" disabled={busy} onClick={() => void save('paid')}>{bill ? 'Paid another way' : 'Paid'}</Button>{!bill ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save('skipped')}>Didn&apos;t happen</Button> : null}</>}</div>
 }

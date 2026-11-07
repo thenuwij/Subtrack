@@ -1,85 +1,17 @@
-function Bar({ className }: { className?: string }) {
-  return <div className={`animate-pulse rounded-md bg-muted ${className ?? ''}`} />
+function Bar({ className = '' }: { className?: string }) {
+  return <div className={`animate-pulse rounded-lg bg-muted ${className}`} />
 }
 
-/** Mirrors the real dashboard's structure and spacing.
- *
- * A generic stack of grey rectangles causes a visible jolt when the content
- * lands in a different shape — matching the layout means the page settles
- * instead of rearranging itself. */
 export function DashboardSkeleton() {
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="space-y-10" aria-busy="true" aria-live="polite">
-        <span className="sr-only">Loading your dashboard</span>
-
-        {/* Hero */}
-        <div className="space-y-4">
-          <Bar className="h-4 w-40" />
-          <Bar className="h-14 w-72" />
-          <div className="flex flex-wrap gap-3">
-            <Bar className="h-4 w-32" />
-            <Bar className="h-4 w-28" />
-            <Bar className="h-4 w-36" />
-          </div>
-          <Bar className="h-3 w-full rounded-full" />
-        </div>
-
-        <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start xl:gap-8">
-        <div className="hidden space-y-6 xl:col-start-2 xl:row-start-1 xl:block">
-          {[...Array(2)].map((_, i) => (
-            <div key={i} className="space-y-3 rounded-2xl bg-card p-5 shadow-sm sm:p-6">
-              <Bar className="h-5 w-36" />
-              <Bar className="h-4 w-full" />
-              <Bar className="h-4 w-3/4" />
-            </div>
-          ))}
-        </div>
-
-        <div className="min-w-0 space-y-10 xl:col-start-1 xl:row-start-1 xl:space-y-8">
-        {/* Breakdown */}
-        <div className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-2">
-              <Bar className="h-5 w-48" />
-              <Bar className="h-3.5 w-32" />
-            </div>
-            <Bar className="h-8 w-48 rounded-lg" />
-          </div>
-          <Bar className="mt-6 h-3 w-full rounded-full" />
-          <div className="mt-5 space-y-3">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <Bar className="h-2.5 w-2.5 rounded-full" />
-                <Bar className="h-4 flex-1" />
-                <Bar className="h-4 w-10" />
-                <Bar className="h-4 w-20" />
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Changes */}
-        <div className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
-          <div className="space-y-2">
-            <Bar className="h-5 w-36" />
-            <Bar className="h-3.5 w-64" />
-          </div>
-          <div className="mt-5 space-y-3">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <Bar className="h-9 w-9 rounded-lg" />
-                <div className="flex-1 space-y-1.5">
-                  <Bar className="h-4 w-32" />
-                  <Bar className="h-3 w-44" />
-                </div>
-                <Bar className="h-4 w-20" />
-              </div>
-            ))}
-          </div>
-        </div>
-        </div>
-        </div>
+    <div className="page-shell space-y-8" aria-busy="true" role="status">
+      <span className="sr-only">Loading your overview</span>
+      <div className="space-y-3"><Bar className="h-3 w-36" /><Bar className="h-10 w-64 max-w-full" /><Bar className="h-4 w-80 max-w-full" /></div>
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        {[0, 1].map(index => <div key={index} className="min-h-72 space-y-6 rounded-3xl bg-card p-6 shadow-sm sm:p-8"><Bar className="h-4 w-32" /><Bar className="h-14 w-52 max-w-full" /><Bar className="h-4 w-full" /><Bar className="h-10 w-40" /></div>)}
+      </div>
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        {[0, 1].map(index => <div key={index} className="space-y-5 rounded-2xl bg-card p-6 shadow-sm"><Bar className="h-5 w-40" />{[0, 1, 2].map(row => <div key={row} className="flex items-center gap-3"><Bar className="h-9 w-9" /><Bar className="h-4 flex-1" /><Bar className="h-4 w-16" /></div>)}</div>)}
       </div>
     </div>
   )

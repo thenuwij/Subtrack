@@ -18,7 +18,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <PaymentEditorProvider>
         <div className="flex min-h-screen flex-col">
           <Navbar />
-          <main className="min-w-0 flex-1 bg-background pb-20 pt-14 md:pb-0 md:pt-0">
+          <main id="main-content" className="app-main min-w-0 flex-1 bg-background pb-[calc(5rem+env(safe-area-inset-bottom))] pt-16 md:pb-8 md:pt-0 md:pl-56 lg:pl-60">
             <DemoBanner />
             {children}
           </main>

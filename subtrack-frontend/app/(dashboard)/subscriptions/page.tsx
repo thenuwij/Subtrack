@@ -413,18 +413,19 @@ export default function SubscriptionsPage() {
   // ─── render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="mx-auto w-full max-w-[1360px] space-y-6 px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
+    <div className="mx-auto w-full max-w-6xl space-y-7 px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
+          <p className="eyebrow mb-2">Everything you pay for</p>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold tracking-tight">Payments</h1>
+            <h1 className="page-heading">Payments</h1>
             <PaymentsTabs />
           </div>
           {!loading && subscriptions.length > 0 && (
             <p className="text-sm text-muted-foreground mt-1 tabular-nums xl:hidden">
-              {paid.length} paid{trials.length ? ` · ${trials.length} free trial${trials.length === 1 ? '' : 's'}` : ''} ·{' '}
+              {paid.length} recurring{trials.length ? ` · ${trials.length} free trial${trials.length === 1 ? '' : 's'}` : ''} ·{' '}
               {ratesLoading ? 'updating exchange rates…' : (
                 <>
                   {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(totalMonthly, baseCurrency)} in {monthShort} ·{' '}
@@ -635,7 +636,7 @@ export default function SubscriptionsPage() {
               {ratesLoading ? 'Updating exchange rates…' : `${hasVariableAmounts ? '≈ ' : ''}${formatCurrency(totalYearly, baseCurrency)} a year`}
             </p>
             <p className="mt-3 text-xs text-muted-foreground tabular-nums">
-              {paid.length} paid{trials.length ? ` · ${trials.length} free trial${trials.length === 1 ? '' : 's'}` : ''}
+              {paid.length} recurring{trials.length ? ` · ${trials.length} free trial${trials.length === 1 ? '' : 's'}` : ''}
               {unconvertedCurrent ? ` · ${unconvertedCurrent} excluded (FX unavailable)` : ''}
             </p>
             {ratesStale ? (

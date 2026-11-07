@@ -30,14 +30,17 @@ from app.models import (
     DetectedSubscription,
     DetectionStatus,
     DuplicateDismissal,
+    EmailPreference,
     ExchangeRateSnapshot,
     GmailAccount,
     GmailOAuthState,
     GmailReceipt,
     MoneyGoal,
     MoneyRule,
+    PaymentDecision,
     PaymentExtra,
     PaymentReminder,
+    ReminderDelivery,
     SafeToSpendProfile,
     SenderLink,
     StatementImport,
@@ -250,6 +253,9 @@ class AccountPrivacyTests(unittest.TestCase):
         )
         self.db.add_all(
             [
+                PaymentDecision(user_id=user_id, target=f"payment:{subscription.id}:2026-08-01", decision="paid"),
+                EmailPreference(user_id=user_id, email=f"{user_id}@example.com", enabled=True),
+                ReminderDelivery(key=f"delivery-{user_id}", user_id=user_id, payload={"to": [f"{user_id}@example.com"]}),
                 payment_extra,
                 sender_link,
                 bill,

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { ChevronRight, Pencil } from 'lucide-react'
+import { ArrowUpRight, ChevronRight, Pencil, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Preferences, SafeToSpend, SafeToSpendProfileInput } from '@/types'
 import { getPreferences, getSafeToSpend, saveSafeToSpendProfile, updatePreferences } from '@/lib/api'
@@ -10,7 +10,7 @@ import { useCurrency } from '@/lib/context/currency'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatStoredDate } from '@/lib/utils/dates'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useEditPayment } from '@/components/subscriptions/PaymentEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -240,12 +240,19 @@ export function SafeToSpendCard() {
 
   if (position.status === 'needs_setup') {
     return (
-      <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
-        <h2 className="text-[17px] font-semibold text-foreground">How much can you safely spend?</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Add your balance and payday, and we&apos;ll set aside your tracked payments.
-        </p>
-        <ProfileForm position={position} onSaved={handleSaved} />
+      <section className="money-hero flex h-full min-h-72 flex-col items-start justify-center">
+        <span className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Wallet className="h-5 w-5" strokeWidth={1.7} /></span>
+        <p className="eyebrow text-primary">Until next payday</p>
+        <h2 className="mt-3 max-w-xs text-[28px] font-semibold leading-tight tracking-tight">Know what&apos;s yours to spend.</h2>
+        <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">Start with your balance. We&apos;ll set aside your bills and a little buffer.</p>
+        <Button className="mt-6" onClick={() => setEditing(true)}>Set up safe to spend <ArrowUpRight className="h-4 w-4" /></Button>
+        <Dialog open={editing} onOpenChange={setEditing}>
+          <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader><DialogTitle>Your balance & payday</DialogTitle></DialogHeader>
+            <DialogDescription>Your balance is entered by you. Subtrack doesn&apos;t connect to your bank.</DialogDescription>
+            <ProfileForm position={position} onSaved={handleSaved} onCancel={() => setEditing(false)} />
+          </DialogContent>
+        </Dialog>
       </section>
     )
   }
@@ -263,9 +270,9 @@ export function SafeToSpendCard() {
   const isCurrent = position.balance_date === localDateKey()
 
   return (
-    <section className="h-full rounded-2xl bg-card p-5 shadow-sm sm:p-6">
+    <section className="money-hero h-full">
       <div className="flex items-start justify-between gap-4">
-        <p className="text-sm font-medium text-muted-foreground">Safe to spend</p>
+        <h2 className="text-sm font-semibold text-foreground">Safe to spend</h2>
         {!editing ? (
           <button type="button" onClick={() => setEditing(true)} className="shrink-0 text-sm font-medium text-primary hover:underline">
             {isCurrent ? 'Update balance' : 'Edit details'}
@@ -276,10 +283,10 @@ export function SafeToSpendCard() {
       {hasNumber ? (
         <div className={isCurrent ? '' : 'opacity-60'}>
           <p className={`mt-3 font-semibold tracking-tight tabular-nums ${
-            isCurrent ? 'text-5xl sm:text-6xl' : 'text-3xl'
+            isCurrent ? 'text-[clamp(2rem,5vw,3.75rem)]' : 'text-3xl'
           } ${position.shortfall ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
             {formatCurrency(position.shortfall || position.safe_to_spend || 0, currency)}
-            <span className="ml-2 text-lg font-medium tracking-normal text-muted-foreground">
+            <span className="ml-2 whitespace-nowrap text-lg font-medium tracking-normal text-muted-foreground">
               {position.shortfall ? 'short' : 'to spend'}
             </span>
           </p>
@@ -293,6 +300,9 @@ export function SafeToSpendCard() {
         </p>
       )}
 
+      {hasNumber && isCurrent && !position.shortfall ? (
+        <p className="mt-4 inline-flex items-center rounded-full bg-foreground/5 px-3 py-1.5 text-xs font-medium text-foreground">{formatCurrency(position.per_day ?? 0, currency)} a day until payday</p>
+      ) : null}
       {!editing && !isCurrent ? (
         <QuickBalance position={position} onSaved={handleSaved} />
       ) : null}

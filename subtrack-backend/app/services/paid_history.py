@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.agent.finance import CurrencyContext
-from app.models import Bill, GmailReceipt, PaymentExtra, SenderLink, Subscription
+from app.models import Bill, GmailReceipt, PaymentDecision, PaymentExtra, SenderLink, Subscription
 from app.services.payment_links import merchant_key, name_words
 from app.services.recurrence import forecast_end_for, occurrences_between, rewind_anchor, utc_naive
 
@@ -202,6 +202,7 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
     currency = CurrencyContext.for_user(db, user_id)
 
     subs = db.query(Subscription).filter(Subscription.user_id == user_id).all()
+    decisions = {d.target: d.decision for d in db.query(PaymentDecision).filter(PaymentDecision.user_id == user_id)}
     by_id = {sub.id: sub for sub in subs}
     links = {
         (link.sender_domain, link.merchant_key): by_id.get(link.subscription_id)
@@ -274,7 +275,12 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
             fee = float(bill.late_fee) if bill.late_fee is not None else None
             if fee:
                 late_fees += in_base(fee, bill.currency) or 0
+            target = f"bill:{bill.id}"
+            manual = decisions.get(target)
+            if manual == "paid" and state["status"] not in ("paid", "credit", "carried"):
+                state.update(status="paid", paid=amount if (amount := bill.amount) is not None else 0, owing=0)
             bill_rows.append({
+                "target": target, "manual": manual,
                 "id": str(bill.id),
                 "subscription_id": str(sub.id) if sub else None,
                 # "Ratika Arora - Whome Group" -> "Whome Group": the business, not the person.
@@ -333,7 +339,11 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
                 unused.remove(match)
                 matched.append(match)
             elif sub.is_active and due >= tracked_since:
-                rows.append(row(sub, due, float(sub.amount), sub.currency, "expected", "schedule"))
+                target = f"payment:{sub.id}:{due.isoformat()}"
+                manual = decisions.get(target)
+                rows.append(row(sub, due, float(sub.amount), sub.currency,
+                    "confirmed" if manual == "paid" else "skipped" if manual == "skipped" else "expected",
+                    "schedule", target=target, manual=manual))
         for receipt in matched + unused:
             amount = float(receipt.amount)
             above = round(amount - _regular(sub), 2)

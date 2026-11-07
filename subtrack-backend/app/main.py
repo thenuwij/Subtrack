@@ -18,6 +18,7 @@ from app.routers import (
     agent,
     demo,
     detected,
+    email_reminders,
     gmail,
     meta,
     preferences,
@@ -73,6 +74,7 @@ app.include_router(agent.router)
 app.include_router(gmail.router)
 app.include_router(detected.router)
 app.include_router(reminders.router)
+app.include_router(email_reminders.router)
 app.include_router(safe_to_spend.router)
 app.include_router(meta.router)
 app.include_router(demo.router)

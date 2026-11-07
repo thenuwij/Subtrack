@@ -83,7 +83,7 @@ export function BackendGate({ children }: { children: ReactNode }) {
           <>
             <h1 className="mt-6 text-[17px] font-semibold text-foreground">Starting Subtrack…</h1>
             <p className="mt-2 text-[15px] text-muted-foreground">
-              The server was asleep to save resources. Waking it can take up to a minute.
+              Getting things ready. This can take up to a minute on your first visit.
             </p>
             <div
               className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-muted"

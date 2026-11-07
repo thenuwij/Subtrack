@@ -1,0 +1,22 @@
+name: Email reminders
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch: {}
+permissions: {}
+concurrency:
+  group: email-reminders
+  cancel-in-progress: false
+jobs:
+  deliver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Deliver due reminders
+        env:
+          API_URL: ${{ secrets.SUBTRACK_API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          curl --fail-with-body --retry 3 --retry-delay 20 --max-time 120 -X POST -H "X-Cron-Secret: $CRON_SECRET" "$API_URL/email-reminders/scheduled-send" > result.json
+          cat result.json
+          jq -e '.configured == true and .failed == 0 and .expired == 0' result.json

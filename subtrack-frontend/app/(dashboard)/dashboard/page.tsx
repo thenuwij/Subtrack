@@ -278,8 +278,16 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1360px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
-      <div className="space-y-6">
+    <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
+      <div className="space-y-6 sm:space-y-8">
+        <header className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="eyebrow mb-2">Your money, at a glance</p>
+            <h1 className="page-heading">A little more clarity.</h1>
+            <p className="page-description">Make room for life. Keep an eye on what&apos;s coming.</p>
+          </div>
+          <Button asChild variant="outline" className="bg-card"><Link href="/subscriptions">View payments <ArrowRight className="h-4 w-4" /></Link></Button>
+        </header>
 
         {loadError && (
           <div className="flex flex-col gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -288,7 +296,8 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <SafeToSpendCard />
         <ComingUp
           forecast={forecast}
           error={forecastError}
@@ -296,35 +305,7 @@ export default function DashboardPage() {
           onRetry={() => void forecastQuery.mutate()}
         />
 
-        <SafeToSpendCard />
         </div>
-
-        <GettingStarted
-          gmailConnected={Boolean(gmail?.connected)}
-          hasPayments={hasPayments}
-          hasIncome={monthlyIncome !== null}
-        />
-        <ReminderCenter
-          reminders={reminders}
-          onDismiss={handleDismissReminder}
-        />
-        {reminderError ? (
-          <section className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Reminders are unavailable</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{reminderError}</p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={remindersRetrying}
-              onClick={() => void remindersQuery.mutate()}
-              className="self-start sm:self-center"
-            >
-              {remindersRetrying ? 'Trying again…' : 'Try again'}
-            </Button>
-          </section>
-        ) : null}
 
         <NeedsAttention
           detections={pendingDetections}
@@ -361,7 +342,7 @@ export default function DashboardPage() {
         )}
 
 
-        <div className={`grid gap-6 lg:items-start ${changesError || changes.length > 0 ? 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : ''}`}>
+        <div className={`grid grid-cols-1 gap-6 lg:items-start ${changesError || changes.length > 0 ? 'xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : ''}`}>
         <div className="min-w-0 space-y-6">
 
 
@@ -507,6 +488,33 @@ export default function DashboardPage() {
         </>
         ) : null}
         </div>
+        <ReminderCenter
+          reminders={reminders}
+          onDismiss={handleDismissReminder}
+        />
+        {reminderError ? (
+          <section className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Reminders are unavailable</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{reminderError}</p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={remindersRetrying}
+              onClick={() => void remindersQuery.mutate()}
+              className="self-start sm:self-center"
+            >
+              {remindersRetrying ? 'Trying again…' : 'Try again'}
+            </Button>
+          </section>
+        ) : null}
+        <GettingStarted
+          gmailConnected={Boolean(gmail?.connected)}
+          hasPayments={hasPayments}
+          hasIncome={monthlyIncome !== null}
+        />
+
       </div>
     </div>
   )

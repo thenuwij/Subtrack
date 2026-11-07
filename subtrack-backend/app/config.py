@@ -125,6 +125,8 @@ class Settings(BaseSettings):
     token_encryption_key: str = ""
     # Shared secret for the daily scheduled scan (sent by GitHub Actions).
     # Empty disables the endpoint.
+    resend_api_key: str = ""
+    reminder_email_from: str = ""
     cron_secret: str = ""
     demo_token_secret: str = ""
     demo_session_hours: int = Field(default=24, ge=1, le=72)

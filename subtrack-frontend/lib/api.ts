@@ -716,3 +716,25 @@ export function dismissReminder(token: string, id: string) {
 export function restoreReminder(token: string, id: string) {
   return request(`/reminders/${id}/restore`, token, { method: 'POST' })
 }
+
+export async function decidePayment(token: string, target: string, decision: 'paid' | 'skipped' | 'undo') {
+  const response = await request('/subscriptions/paid/decision', token, { method: 'POST', body: JSON.stringify({ target, decision }) })
+  return response
+}
+
+export async function getEmailReminders(token: string) {
+  return request('/email-reminders', token) as Promise<{enabled: boolean; email: string | null; configured: boolean}>
+}
+export async function setEmailReminders(token: string, enabled: boolean) {
+  return request('/email-reminders', token, {method: 'PUT', body: JSON.stringify({enabled})})
+}
+
+export interface SavingsOverview {
+  base_currency: string; monthly_income: number | null; monthly_total: number; income_share: number | null; unconverted_count: number
+  price_rises: {id: string; name: string; old_monthly_native: number; new_monthly_native: number; native_currency: string}[]
+  trials: {id: string; name: string; trial_ends_at: string; price_after_trial: number; currency: string}[]
+  late_fees_total: number; above_plan_total: number
+}
+export async function getWaysToSave(token: string): Promise<SavingsOverview> {
+  return request('/subscriptions/ways-to-save', token)
+}

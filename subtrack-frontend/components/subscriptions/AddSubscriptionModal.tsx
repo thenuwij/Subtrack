@@ -13,7 +13,7 @@ import type {
   Subscription,
   SubscriptionInput,
 } from '@/types'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -425,7 +425,8 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-xl">
         <form onSubmit={handleSubmit} noValidate>
           <DialogHeader>
-            <DialogTitle>{isEditing ? 'Edit recurring payment' : 'Add recurring payment'}</DialogTitle>
+            <DialogTitle>{isEditing ? 'Edit payment' : 'Add a payment'}</DialogTitle>
+            <DialogDescription>Set the amount and schedule. Shared bills and other options are below.</DialogDescription>
           </DialogHeader>
 
           <div className="grid gap-5 py-4">
@@ -483,7 +484,9 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
             </div>
 
             {supportsVariableAmounts ? (
-              <div className="grid gap-3 rounded-xl border border-border bg-muted/25 p-3 sm:grid-cols-2">
+              <details className="rounded-xl border border-border p-3" open={form.amount_type === 'variable' || form.spending_type !== 'unspecified' || undefined}>
+                <summary className="cursor-pointer text-sm font-medium text-muted-foreground">Bill type & budgeting</summary>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="sub-amount-type">Amount behaviour</Label>
                   <Select value={form.amount_type} onValueChange={value => set('amount_type', value as AmountType)} disabled={loading}>
@@ -505,11 +508,13 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
+                </div>
+              </details>
             ) : null}
 
-            <div className="grid gap-1.5">
-              <Label>Split</Label>
+            <details className="rounded-xl border border-border p-3" open={isShared || undefined}>
+              <summary className="cursor-pointer text-sm font-medium text-muted-foreground">{isShared ? 'Shared bill · your share' : 'Sharing this bill?'}</summary>
+              <div className="mt-4 grid gap-3">
               <div className="flex flex-wrap items-center gap-1.5">
                 {[
                   { label: 'I pay all', ratio: 1 },
@@ -560,7 +565,8 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
                   {hasFixed ? ' · stays fixed if the bill changes' : ' · scales if the bill changes'}
                 </p>
               ) : null}
-            </div>
+              </div>
+            </details>
 
             {form.currency !== baseCurrency ? (
               <div className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground" aria-live="polite">

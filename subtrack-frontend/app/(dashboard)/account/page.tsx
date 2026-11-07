@@ -1,4 +1,5 @@
 'use client'
+import { EmailReminders } from '@/components/reminders/EmailReminders'
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -340,8 +341,8 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
-      <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
+    <div className="mx-auto w-full max-w-3xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
+      <header><p className="eyebrow mb-2">Make yourself at home</p><h1 className="page-heading">Account & settings</h1><p className="page-description">Your preferences, connections and privacy. All in one place.</p></header>
 
       <section className="flex flex-col gap-5 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center">
         <UserAvatar
@@ -376,6 +377,10 @@ export default function AccountPage() {
         </Button>
       </section>
 
+      <nav aria-label="Settings sections" className="flex flex-wrap gap-2">
+        {[['preferences', 'Preferences'], ['inbox', 'Email connection'], ['privacy', 'Your data']].map(([id, label]) => <a key={id} href={`#${id}`} className="inline-flex min-h-10 items-center rounded-full border border-border bg-card px-4 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary">{label}</a>)}
+      </nav>
+      <div id="preferences" className="scroll-mt-20">
       <Section title="Preferences">
         <Row title="Appearance">
           <ThemeToggle />
@@ -442,6 +447,7 @@ export default function AccountPage() {
           </div>
         </Row>
       </Section>
+      </div>
 
       {gmail && (
         <div id="inbox" className="scroll-mt-6 rounded-2xl bg-card shadow-sm p-6 space-y-4">
@@ -596,6 +602,7 @@ export default function AccountPage() {
         </div>
       )}
 
+      <EmailReminders />
       <Section title="Help">
         <Row title="Guided tour">
           <Button
@@ -608,6 +615,7 @@ export default function AccountPage() {
         </Row>
       </Section>
 
+      <div id="privacy" className="scroll-mt-20">
       <Section title="Your data">
         <Row
           title="Download your data"
@@ -618,6 +626,7 @@ export default function AccountPage() {
           </Button>
         </Row>
       </Section>
+      </div>
 
       <Section title="Danger zone" tone="danger">
         <Row

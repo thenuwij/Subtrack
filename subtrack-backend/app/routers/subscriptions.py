@@ -983,3 +983,63 @@ def delete_subscription(
     db.delete(sub)
     db.commit()
     return {"message": "Deleted successfully"}
+
+
+class PaymentDecisionInput(BaseModel):
+    target: str = Field(max_length=100)
+    decision: Literal["paid", "skipped", "undo"]
+
+
+@router.post("/paid/decision")
+def decide_payment(body: PaymentDecisionInput, user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import PaymentDecision
+    from app.services.paid_history import paid_history
+    history = paid_history(db, user_id, months=24)
+    item = next((item for item in history["payments"] + history["bills"] if item.get("target") == body.target), None)
+    existing = db.query(PaymentDecision).filter_by(user_id=user_id, target=body.target).first()
+    if body.decision == "undo":
+        if existing:
+            db.delete(existing)
+    else:
+        if not item:
+            raise HTTPException(404, "Payment occurrence not found")
+        if body.target.startswith("bill:") and body.decision == "skipped":
+            raise HTTPException(422, "Bills can be marked paid; their invoiced amount remains owed otherwise")
+        if existing:
+            existing.decision = body.decision
+        else:
+            db.add(PaymentDecision(user_id=user_id, target=body.target, decision=body.decision))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.query(PaymentDecision).filter_by(user_id=user_id, target=body.target).one()
+        existing.decision = body.decision
+        db.commit()
+    return {"saved": True}
+
+
+@router.get("/ways-to-save")
+def ways_to_save(user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+    from datetime import timedelta
+
+    from app.agent.finance import commitment_changes, financial_overview
+    from app.services.paid_history import paid_history
+    overview = financial_overview(db, user_id)
+    changes = commitment_changes(db, user_id, "last_90_days")
+    history = paid_history(db, user_id)
+    soon = datetime.utcnow().date() + timedelta(days=30)
+    return {
+        "base_currency": overview["base_currency"],
+        "monthly_income": overview["monthly_income"],
+        "monthly_total": overview["monthly_recurring_total"],
+        "income_share": overview["recurring_share_of_income_percent"],
+        "currency_conversion": overview["currency_conversion"],
+        "unconverted_count": len(overview["unconverted_payments"]),
+        "price_rises": [c for c in changes["changes"] if c["kind"] == "price_change" and c["old_monthly_native"] is not None and c["new_monthly_native"] is not None and c["new_monthly_native"] > c["old_monthly_native"]],
+        "trials": [t for t in overview["active_trials"] if datetime.fromisoformat(t["trial_ends_at"]).date() <= soon],
+        "late_fees_total": history["late_fees_total"],
+        "above_plan_total": history["above_plan_total"],
+    }
