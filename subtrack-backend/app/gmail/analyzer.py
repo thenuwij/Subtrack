@@ -410,7 +410,7 @@ def _normalise_due_date(
     """
     now = utc_naive(now or datetime.now(timezone.utc))
 
-    if sub.trial_ends_at:
+    if sub.trial_ends_at and sub.intro_amount is None:
         trial_end = utc_naive(sub.trial_ends_at)
         if trial_end.date() >= now.date():
             sub.next_due = trial_end

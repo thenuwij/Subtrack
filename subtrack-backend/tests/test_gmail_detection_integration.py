@@ -50,6 +50,56 @@ class GmailDetectionIntegrationTests(unittest.TestCase):
         self.Session = sessionmaker(bind=self.engine)
         self.db = self.Session()
 
+    def test_intro_offer_keeps_discounted_payment_schedule_on_approval(self):
+        from app.agent.finance import upcoming_charges
+        from app.services.trials import active_trial
+        detection = DetectedSubscription(
+            id=uuid4(), user_id="owner", merchant="Google One 100GB", sender_domain="google.com",
+            category=Category.cloud, cycle=BillingCycle.monthly, interval_unit="month", interval_count=1,
+            amount=32.99, intro_amount=2.99, currency="AUD", trial_ends_at=datetime(2030, 1, 30),
+            next_due=datetime(2029, 11, 25), confidence="high", charge_count=2,
+            cadence_confidence="high", status=DetectionStatus.pending,
+        )
+        self.db.add(detection)
+        self.db.commit()
+        result = approve(detection.id, ApproveOverrides(), user_id="owner", db=self.db)
+        sub = self.db.get(Subscription, UUID(result["subscription_id"]))
+        self.assertEqual(sub.next_due, datetime(2029, 11, 25))
+        self.assertEqual(float(sub.intro_amount), 2.99)
+        self.assertFalse(active_trial(sub, datetime(2029, 11, 20)))
+        charges = upcoming_charges(self.db, "owner", 10, now=datetime(2029, 11, 20))["charges"]
+        self.assertEqual(len(charges), 1)
+        self.assertEqual(charges[0]["amount"], 2.99)
+        self.assertEqual(charges[0]["charge_kind"], "intro")
+
+    def test_intro_offer_updates_existing_payment_without_immediate_price_rise(self):
+        from app.models import SubscriptionChange
+        sub = Subscription(id=uuid4(), user_id="owner", name="Google One 100GB",
+            category=Category.cloud, amount=2.99, currency="AUD", cycle=BillingCycle.monthly,
+            interval_unit="month", interval_count=1, next_due=datetime(2029, 11, 25), is_active=True)
+        self.db.add(sub)
+        self.db.flush()
+        detection = DetectedSubscription(id=uuid4(), user_id="owner", merchant=sub.name,
+            sender_domain="google.com", category=Category.cloud, cycle=BillingCycle.monthly,
+            interval_unit="month", interval_count=1, amount=32.99, intro_amount=2.99,
+            currency="AUD", trial_ends_at=datetime(2030, 1, 30), next_due=datetime(2029, 11, 25),
+            confidence="high", charge_count=2, cadence_confidence="high",
+            existing_subscription_id=sub.id, status=DetectionStatus.pending)
+        self.db.add(detection)
+        self.db.commit()
+        approve(detection.id, ApproveOverrides(), user_id="owner", db=self.db)
+        self.assertEqual(self.db.query(Subscription).count(), 1)
+        self.assertEqual(self.db.query(SubscriptionChange).count(), 0)
+        self.assertEqual(sub.next_due, datetime(2029, 11, 25))
+        self.assertEqual(float(sub.intro_amount), 2.99)
+        self.assertEqual(sub.amount, 32.99)
+
+    def test_intro_end_does_not_replace_next_discounted_due_in_analyzer(self):
+        found = self.analyzed(next_due=datetime(2029, 11, 25), intro_amount=2.99,
+            trial_ends_at=datetime(2030, 1, 30))
+        _normalise_due_date(found, now=datetime(2029, 11, 20))
+        self.assertEqual(found.next_due, datetime(2029, 11, 25))
+
     def tearDown(self):
         self.db.close()
         self.engine.dispose()

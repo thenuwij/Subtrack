@@ -21,7 +21,7 @@ def active_trial(subscription: Subscription, now: datetime | None = None) -> boo
     place prevents the dashboard and assistant from counting that future price
     as money already being paid.
     """
-    if not subscription.trial_ends_at:
+    if not subscription.trial_ends_at or subscription.intro_amount is not None:
         return False
     today = utc_naive(now or utcnow()).date()
     return utc_naive(subscription.trial_ends_at).date() >= today
