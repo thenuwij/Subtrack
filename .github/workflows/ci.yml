@@ -57,6 +57,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Production CSS regression tests
+        run: npm run test:production-css
+
       - name: Build
         # Placeholder values only. These are build-time public variables; the
         # build never contacts either service.
