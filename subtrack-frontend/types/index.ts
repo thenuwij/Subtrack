@@ -49,6 +49,7 @@ export interface Subscription {
   next_expected_source: 'recorded' | 'projected_from_recorded_cycle' | 'missing' | 'ended' | 'inactive' | 'paused_without_resume'
   recurrence_end_at: string | null
   trial_ends_at: string | null       // post-trial price is stored in `amount`
+  intro_amount?: number | null       // discounted price charged until trial_ends_at
   status: PaymentStatus
   paused_until: string | null
   cancellation_effective_at: string | null
@@ -72,6 +73,7 @@ export interface SubscriptionInput {
   next_due?: string | null
   recurrence_end_at?: string | null
   trial_ends_at?: string | null
+  intro_amount?: number | null
   status?: PaymentStatus
   paused_until?: string | null
   cancellation_effective_at?: string | null
@@ -96,6 +98,8 @@ export interface GmailStatus {
   scan_total?: number
   scan_partial?: boolean
   scan_message?: string | null
+  auto_scan_enabled?: boolean
+  scan_cursor_at?: string | null
 }
 
 export interface DetectedSubscription {
@@ -254,7 +258,7 @@ export interface ForecastCharge {
   base_currency: string
   charge_amount_in_base: number | null
   charge_amount_is_estimate: boolean
-  charge_kind: 'renewal' | 'trial_conversion'
+  charge_kind: 'renewal' | 'trial_conversion' | 'intro'
   days_until_due: number
   due_date_source: 'recorded' | 'projected_from_recorded_cycle'
 }
@@ -280,6 +284,28 @@ export interface SubscriptionForecast {
   }
 }
 
+export interface PaymentExtraRow {
+  subscription_id: string
+  amount: number
+  currency: string
+  amount_in_base: number | null
+  charged_at: string
+  reason: 'late_fee' | 'extra'
+}
+
+export interface CalendarMonthCharges extends SubscriptionForecast {
+  year: number
+  month: number
+  extras?: PaymentExtraRow[]
+}
+
+export interface PaymentExtrasSummary {
+  subscription_id: string
+  count: number
+  total_in_base: number
+  base_currency: string
+}
+
 export type PayIntervalUnit = 'week' | 'month'
 
 export interface SafeToSpendProfileInput {
@@ -289,6 +315,7 @@ export interface SafeToSpendProfileInput {
   pay_interval_unit: PayIntervalUnit
   pay_interval_count: number
   buffer: number
+  payday_bills_after_pay: boolean
 }
 
 export interface SafeToSpend {
@@ -304,7 +331,7 @@ export interface SafeToSpend {
   balance?: number
   buffer?: number
   committed?: number
-  commitments?: { name: string; due_at: string; amount: number; is_estimate: boolean }[]
+  commitments?: { id: string; name: string; due_at: string; amount: number; is_estimate: boolean }[]
   profile?: Omit<SafeToSpendProfileInput, 'next_payday'>
   warnings?: string[]
 }

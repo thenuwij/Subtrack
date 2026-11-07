@@ -33,7 +33,7 @@ GMAIL_HTTP_TIMEOUT_SECONDS = 12
 SEARCH_QUERY = (
     "(category:purchases OR subject:(receipt OR invoice OR payment OR "
     "subscription OR renewal OR \"tax invoice\") OR trial OR \"free trial\" OR "
-    "\"trial ends\") newer_than:{months}m"
+    "\"trial ends\") {window}"
 )
 
 CURRENCY_SYMBOLS = {
@@ -255,7 +255,9 @@ def _to_candidate(message: dict) -> ReceiptCandidate:
 
 # Gmail allows 100 requests per batch, but rejects that many concurrent reads
 # for one user with 429s. 25 keeps the speedup without tripping the limit.
-BATCH_SIZE = 25
+# Full messages are large; smaller batches keep each request well under the
+# HTTP timeout on a slow connection.
+BATCH_SIZE = 10
 MAX_RETRIES = 2
 
 
@@ -290,7 +292,14 @@ def _fetch_batch(service, message_ids: list[str]) -> tuple[list[ReceiptCandidate
             service.users().messages().get(userId="me", id=message_id, format="full"),
             request_id=message_id,
         )
-    batch.execute()
+    try:
+        batch.execute()
+    except (TimeoutError, OSError, httplib2.HttpLib2Error) as exc:
+        # A slow or dropped connection loses the whole round-trip, not the
+        # messages. Retry everything not yet fetched instead of failing the scan.
+        logger.warning("Gmail batch request failed (%s); retrying it", type(exc).__name__)
+        done = {candidate.message_id for candidate in fetched}
+        retry = [message_id for message_id in message_ids if message_id not in done]
 
     return fetched, retry
 
@@ -337,6 +346,9 @@ def _fetch_all(
 
     if pending:
         logger.warning("Gave up on %d messages after %d retries", len(pending), MAX_RETRIES)
+        # Report it as incomplete, so the daily-scan cursor doesn't move past
+        # emails that were never read.
+        timed_out = True
 
     return candidates, timed_out
 
@@ -347,6 +359,7 @@ def scan(
     max_messages: int = 200,
     on_progress=None,
     deadline: float | None = None,
+    after: datetime | None = None,
 ) -> ScanResult:
     credentials = build_credentials(refresh_token)
     http = AuthorizedHttp(
@@ -354,7 +367,10 @@ def scan(
         http=httplib2.Http(timeout=GMAIL_HTTP_TIMEOUT_SECONDS),
     )
     service = build("gmail", "v1", http=http, cache_discovery=False)
-    query = SEARCH_QUERY.format(months=months)
+    # Daily scans read only mail since the last complete scan; the first scan
+    # looks back ``months``.
+    window = f"after:{int(after.replace(tzinfo=timezone.utc).timestamp())}" if after else f"newer_than:{months}m"
+    query = SEARCH_QUERY.format(window=window)
 
     # List first — ids only, and cheap — so we know the total before fetching.
     message_ids: list[str] = []

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronRight, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Preferences, SafeToSpend, SafeToSpendProfileInput } from '@/types'
 import { getPreferences, getSafeToSpend, saveSafeToSpendProfile, updatePreferences } from '@/lib/api'
@@ -10,6 +10,8 @@ import { useCurrency } from '@/lib/context/currency'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { formatCurrency } from '@/lib/utils/currency'
 import { formatStoredDate } from '@/lib/utils/dates'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { useEditPayment } from '@/components/subscriptions/PaymentEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -38,6 +40,7 @@ function ProfileForm({ position, onSaved, onCancel }: {
   const [nextPayday, setNextPayday] = useState(position?.next_payday ?? '')
   const [schedule, setSchedule] = useState<PaySchedule>(scheduleOf(position))
   const [buffer, setBuffer] = useState(position?.profile ? String(position.profile.buffer) : '50')
+  const [billsAfterPay, setBillsAfterPay] = useState(position?.profile?.payday_bills_after_pay ?? false)
   const [saving, setSaving] = useState(false)
 
   async function handleSubmit(event: FormEvent) {
@@ -54,6 +57,7 @@ function ProfileForm({ position, onSaved, onCancel }: {
         pay_interval_unit,
         pay_interval_count,
         buffer: Number(buffer),
+        payday_bills_after_pay: billsAfterPay,
       }
       onSaved(await saveSafeToSpendProfile(token, input))
     } catch (error) {
@@ -90,6 +94,20 @@ function ProfileForm({ position, onSaved, onCancel }: {
         <Label htmlFor="safe-buffer">Buffer to keep untouched</Label>
         <Input id="safe-buffer" type="number" step="0.01" min="0" inputMode="decimal" required value={buffer} onChange={event => setBuffer(event.target.value)} />
       </div>
+      <label className="flex items-start gap-2 text-sm sm:col-span-2">
+        <input
+          type="checkbox"
+          className="mt-0.5 h-4 w-4 accent-primary"
+          checked={billsAfterPay}
+          onChange={event => setBillsAfterPay(event.target.checked)}
+        />
+        <span>
+          My pay arrives before bills due on payday
+          <span className="block text-xs text-muted-foreground">
+            Bills due on payday will come out of your next pay instead of this balance.
+          </span>
+        </span>
+      </label>
       <div className="flex gap-2 sm:col-span-2">
         <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
         {onCancel ? <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button> : null}
@@ -98,7 +116,23 @@ function ProfileForm({ position, onSaved, onCancel }: {
   )
 }
 
-function Row({ label, value }: { label: string; value: string }) {
+function Row({ label, value, onClick }: { label: string; value: string; onClick?: () => void }) {
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        title="Edit this payment"
+        className="group -mx-2 flex w-[calc(100%+1rem)] items-center justify-between gap-4 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted"
+      >
+        <span className="min-w-0 truncate text-muted-foreground group-hover:text-foreground">{label}</span>
+        <span className="flex shrink-0 items-center gap-2 font-medium tabular-nums text-foreground">
+          {value}
+          <Pencil className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+        </span>
+      </button>
+    )
+  }
   return (
     <div className="flex items-center justify-between gap-4 py-1.5 text-sm">
       <span className="min-w-0 truncate text-muted-foreground">{label}</span>
@@ -112,6 +146,7 @@ export function SafeToSpendCard() {
   const preferences = useApi<Preferences>(apiKeys.preferences, getPreferences)
   const [editing, setEditing] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
+  const editPayment = useEditPayment()
   const { mutate: refreshPosition } = query
   const { mutate: refreshPreferences } = preferences
   const savedTimezone = preferences.data?.timezone
@@ -136,9 +171,9 @@ export function SafeToSpendCard() {
 
   if (query.error && !position) {
     return (
-      <section className="flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <section className="flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Safe to spend</h2>
+          <h2 className="text-[17px] font-semibold text-foreground">Safe to spend</h2>
           <p className="mt-1 text-sm text-muted-foreground">We couldn&apos;t work this out right now.</p>
         </div>
         <Button size="sm" variant="outline" disabled={query.isValidating} onClick={() => void query.mutate()}>
@@ -151,8 +186,8 @@ export function SafeToSpendCard() {
 
   if (position.status === 'needs_setup') {
     return (
-      <section className="rounded-2xl bg-card p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-foreground">How much can you safely spend?</h2>
+      <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
+        <h2 className="text-[17px] font-semibold text-foreground">How much can you safely spend?</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Add your balance and payday, and we&apos;ll set aside your tracked payments.
         </p>
@@ -171,7 +206,7 @@ export function SafeToSpendCard() {
   const hasNumber = position.safe_to_spend !== null && position.per_day != null
 
   return (
-    <section className="rounded-2xl bg-card p-6 shadow-sm">
+    <section className="h-full rounded-2xl bg-card p-5 shadow-sm sm:p-6">
       <div className="flex items-start justify-between gap-4">
         <p className="text-sm font-medium text-muted-foreground">Safe to spend</p>
         {!editing ? (
@@ -181,61 +216,79 @@ export function SafeToSpendCard() {
         ) : null}
       </div>
 
-      {hasNumber ? (
+      {hasNumber && position.shortfall ? (
         <>
-          <p className="mt-2 text-5xl font-semibold tracking-tight tabular-nums text-foreground sm:text-6xl">
+          <p className="mt-3 text-5xl font-semibold tracking-tight tabular-nums text-amber-600 dark:text-amber-400 sm:text-6xl">
+            {formatCurrency(position.shortfall, currency)}
+            <span className="ml-2 text-lg font-medium tracking-normal text-muted-foreground">short</span>
+          </p>
+          <p className="mt-2 text-[15px] text-muted-foreground">
+            Your balance won&apos;t cover your payments and buffer before payday, {payday}.
+          </p>
+          {balanceDate ? (
+            <p className="mt-1 text-[13px] text-muted-foreground">Balance from {balanceDate}</p>
+          ) : null}
+        </>
+      ) : hasNumber ? (
+        <>
+          <p className="mt-3 text-5xl font-semibold tracking-tight tabular-nums text-foreground sm:text-6xl">
             {formatCurrency(position.per_day ?? 0, currency)}
             <span className="ml-2 text-lg font-medium tracking-normal text-muted-foreground">a day</span>
           </p>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="mt-2 text-[15px] text-muted-foreground">
             {formatCurrency(position.safe_to_spend ?? 0, currency)} until {payday}
             {balanceDate ? ` · balance from ${balanceDate}` : ''}
           </p>
-          {position.shortfall ? (
-            <p className="mt-2 text-sm font-medium text-amber-700 dark:text-amber-300">
-              You&apos;re {formatCurrency(position.shortfall, currency)} short of covering your payments and buffer.
-            </p>
-          ) : null}
         </>
       ) : (
         <p className="mt-2 text-lg font-medium text-foreground">
           {position.status === 'balance_outdated' ? 'Update your balance to see this' : 'We can’t give you a number yet'}
         </p>
       )}
-
-      {position.warnings?.map(warning => (
+      {!hasNumber ? position.warnings?.map(warning => (
         <p key={warning} className="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300">{warning}</p>
-      ))}
+      )) : null}
+
 
       {editing ? (
         <ProfileForm position={position} onSaved={handleSaved} onCancel={() => setEditing(false)} />
       ) : null}
 
       {hasNumber && !editing ? (
-        <div className="mt-4">
+        <div className="mt-5 border-t border-border pt-4">
           <button
             type="button"
-            aria-expanded={showBreakdown}
-            onClick={() => setShowBreakdown(value => !value)}
-            className="flex items-center gap-1 text-sm font-medium text-muted-foreground hover:text-foreground"
+            onClick={() => setShowBreakdown(true)}
+            className="flex min-h-11 items-center gap-1 text-sm font-medium text-primary hover:underline"
           >
             How this is worked out
-            {showBreakdown ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </button>
-          {showBreakdown ? (
-            <div className="mt-3 divide-y divide-border border-t border-border">
+          <Dialog open={showBreakdown} onOpenChange={setShowBreakdown}>
+            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+              <DialogHeader>
+                <DialogTitle>How safe to spend is worked out</DialogTitle>
+              </DialogHeader>
+            <div className="divide-y divide-border">
               <Row label="Balance" value={formatCurrency(position.balance ?? 0, currency)} />
               {position.commitments?.map(item => (
                 <Row
-                  key={`${item.name}-${item.due_at}`}
+                  key={`${item.id}-${item.due_at}`}
+                  onClick={() => { setShowBreakdown(false); editPayment(item.id) }}
                   label={`${item.name} · ${formatStoredDate(item.due_at, { day: 'numeric', month: 'short' })}`}
                   value={`${item.is_estimate ? '≈ ' : ''}−${formatCurrency(item.amount, currency)}`}
                 />
               ))}
               <Row label="Buffer" value={`−${formatCurrency(position.buffer ?? 0, currency)}`} />
-              <p className="pt-3 text-xs leading-5 text-muted-foreground">{position.scope}</p>
+              {position.warnings?.map(warning => (
+                <p key={warning} className="pt-3 text-[13px] leading-5 text-muted-foreground">{warning}</p>
+              ))}
+              <p className="pt-3 text-xs leading-5 text-muted-foreground">
+                Click a payment to change its date or amount. {position.scope}
+              </p>
             </div>
-          ) : null}
+            </DialogContent>
+          </Dialog>
         </div>
       ) : null}
     </section>

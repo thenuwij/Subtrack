@@ -17,6 +17,8 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
+    true,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
@@ -157,6 +159,10 @@ class Subscription(Base):
     # remains the price that will be charged after the trial; dashboards omit
     # future trials from current paid totals until this date passes.
     trial_ends_at = Column(DateTime, nullable=True)
+    # A discounted intro price (e.g. A$2.99 a month for 3 months). When set,
+    # charges before ``trial_ends_at`` cost this instead of nothing; ``amount``
+    # is still the full price from that date on.
+    intro_amount = Column(Numeric(12, 2), nullable=True)
     status = Column(String(24), nullable=False, default="active")
     paused_until = Column(DateTime, nullable=True)
     cancellation_effective_at = Column(DateTime, nullable=True)
@@ -263,6 +269,11 @@ class GmailAccount(Base):
     scan_total = Column(Integer, nullable=False, default=0)
     scan_partial = Column(Boolean, nullable=False, default=False)
     scan_message = Column(String(300), nullable=True)
+    # Daily automatic scans. ``scan_cursor_at`` is when the last *complete*
+    # scan started: the next scan reads only email after it, and it only moves
+    # forward on success, so a failed or cut-short run never skips email.
+    auto_scan_enabled = Column(Boolean, nullable=False, default=True, server_default=true())
+    scan_cursor_at = Column(DateTime, nullable=True)
 
 
 class GmailOAuthState(Base):
@@ -372,9 +383,57 @@ class DetectedSubscription(Base):
     # Only a suggestion: the user chooses replace or keep both.
     similar_subscription_id = Column(UUID(as_uuid=True), nullable=True)
     similar_reason = Column(String, nullable=True)
+    # Date of the latest charge seen in email, so a one-off extra can be
+    # recorded on the day it actually happened.
+    last_charge_at = Column(DateTime, nullable=True)
     status = Column(Enum(DetectionStatus), default=DetectionStatus.pending, index=True)
     detected_at = Column(DateTime, server_default=func.now())
     resolved_at = Column(DateTime, nullable=True)
+
+class PaymentExtra(Base):
+    """A one-off charge on top of a payment's regular price, such as a late fee.
+
+    Recorded from an email receipt with one tap in review. The regular price
+    stays unchanged; these show up in that month's real cost.
+    """
+    __tablename__ = "payment_extras"
+    __table_args__ = (
+        CheckConstraint("amount > 0", name="ck_payment_extras_amount"),
+        Index("ix_payment_extras_user_charged", "user_id", "charged_at"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False)
+    subscription_id = Column(
+        UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="CASCADE"), nullable=False,
+    )
+    amount = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(3), nullable=False)
+    charged_at = Column(DateTime, nullable=False)
+    reason = Column(String(24), nullable=False, default="extra")   # late_fee | extra
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class SenderLink(Base):
+    """The user's answer to "is this your X payment?", remembered.
+
+    Keyed on sender domain *and* the business name, because billing platforms
+    like Debitsuccess send receipts for many different gyms and clubs.
+    """
+    __tablename__ = "sender_links"
+    __table_args__ = (
+        UniqueConstraint("user_id", "sender_domain", "merchant_key", name="uq_sender_links_sender"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    sender_domain = Column(String, nullable=False)
+    merchant_key = Column(String, nullable=False)
+    subscription_id = Column(
+        UUID(as_uuid=True), ForeignKey("subscriptions.id", ondelete="CASCADE"), nullable=False,
+    )
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
 
 class UserPreference(Base):
     __tablename__ = "user_preferences"
@@ -821,6 +880,9 @@ class SafeToSpendProfile(Base):
     pay_interval_unit = Column(String(12), nullable=False)
     pay_interval_count = Column(Integer, nullable=False)
     buffer = Column(Numeric(12, 2), nullable=False, default=0)
+    # When true, pay lands before bills due on payday, so those bills belong
+    # to the next pay period rather than this one.
+    payday_bills_after_pay = Column(Boolean, nullable=False, default=False, server_default=false())
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 

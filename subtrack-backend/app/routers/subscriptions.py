@@ -118,6 +118,7 @@ def subscription_payload(sub: Subscription) -> dict:
             sub.recurrence_end_at.isoformat() if sub.recurrence_end_at else None
         ),
         "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None,
+        "intro_amount": float(sub.intro_amount) if sub.intro_amount is not None else None,
         "status": status,
         "paused_until": sub.paused_until.isoformat() if sub.paused_until else None,
         "cancellation_effective_at": (
@@ -218,6 +219,7 @@ class SubscriptionCreate(BaseModel):
     next_due: Optional[datetime] = None
     recurrence_end_at: Optional[datetime] = None
     trial_ends_at: Optional[datetime] = None
+    intro_amount: Optional[float] = Field(default=None, ge=0)
     status: PaymentStatus = PaymentStatus.active
     paused_until: Optional[datetime] = None
     cancellation_effective_at: Optional[datetime] = None
@@ -271,6 +273,7 @@ class SubscriptionUpdate(BaseModel):
     next_due: Optional[datetime] = None
     recurrence_end_at: Optional[datetime] = None
     trial_ends_at: Optional[datetime] = None
+    intro_amount: Optional[float] = Field(default=None, ge=0)
     status: Optional[PaymentStatus] = None
     paused_until: Optional[datetime] = None
     cancellation_effective_at: Optional[datetime] = None
@@ -367,6 +370,89 @@ def get_upcoming_forecast(
 
     return upcoming_charges(db, user_id, days=days)
 
+@router.get("/month")
+def get_calendar_month(
+    year: int | None = Query(default=None, ge=2000, le=2100),
+    month: int | None = Query(default=None, ge=1, le=12),
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Every charge dated in one calendar month, including ones already paid.
+
+    Totals here are what that month actually costs (a weekly payment counts 4
+    or 5 times), not a yearly figure divided by 12. Defaults to the current
+    month in the user's timezone.
+    """
+    import calendar
+    from datetime import time
+
+    from app.agent.finance import CurrencyContext, upcoming_charges
+    from app.services.safe_to_spend import _user_zone
+
+    today = datetime.now(_user_zone(db, user_id)).date()
+    year = year or today.year
+    month = month or today.month
+    last_day = calendar.monthrange(year, month)[1]
+    result = upcoming_charges(
+        db,
+        user_id,
+        start_at=datetime(year, month, 1),
+        end_at=datetime.combine(datetime(year, month, last_day).date(), time.max),
+        include_past=True,
+    )
+    from app.models import PaymentExtra
+
+    month_start = datetime(year, month, 1)
+    month_end = datetime.combine(datetime(year, month, last_day).date(), time.max)
+    extras = db.query(PaymentExtra).filter(
+        PaymentExtra.user_id == user_id,
+        PaymentExtra.charged_at >= month_start,
+        PaymentExtra.charged_at <= month_end,
+    ).all()
+    currency = CurrencyContext.for_user(db, user_id)
+    extra_rows = []
+    for extra in extras:
+        in_base, _ = currency.convert(float(extra.amount), extra.currency)
+        extra_rows.append({
+            "subscription_id": str(extra.subscription_id),
+            "amount": float(extra.amount),
+            "currency": extra.currency,
+            "amount_in_base": in_base,
+            "charged_at": extra.charged_at.isoformat(),
+            "reason": extra.reason,
+        })
+    return {**result, "year": year, "month": month, "extras": extra_rows}
+
+
+@router.get("/extras")
+def get_extras(
+    days: int = Query(default=90, ge=1, le=730),
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """One-off extra charges (like late fees) per payment over the last ``days``."""
+    from datetime import timedelta
+
+    from app.agent.finance import CurrencyContext
+    from app.models import PaymentExtra
+
+    since = datetime.utcnow() - timedelta(days=days)
+    currency = CurrencyContext.for_user(db, user_id)
+    totals: dict[str, dict] = {}
+    for extra in db.query(PaymentExtra).filter(
+        PaymentExtra.user_id == user_id, PaymentExtra.charged_at >= since,
+    ).all():
+        in_base, _ = currency.convert(float(extra.amount), extra.currency)
+        row = totals.setdefault(str(extra.subscription_id), {
+            "subscription_id": str(extra.subscription_id), "count": 0,
+            "total_in_base": 0.0, "base_currency": currency.base,
+        })
+        row["count"] += 1
+        if in_base is not None:
+            row["total_in_base"] = round(row["total_in_base"] + in_base, 2)
+    return list(totals.values())
+
+
 @router.get("/changes")
 def get_changes(
     days: int = Query(default=30, ge=1, le=730),
@@ -433,6 +519,8 @@ def create_subscription(
     trial_end = fields.get("trial_ends_at")
     if trial_end and utc_naive(trial_end).date() < utcnow().date():
         raise HTTPException(status_code=422, detail="The trial end date has already passed")
+    if fields.get("intro_amount") is not None and not trial_end:
+        raise HTTPException(status_code=422, detail="An intro price needs the date it ends")
     if trial_end and fields.get("next_due") is None:
         fields["next_due"] = trial_end
     recurrence_end = fields.get("recurrence_end_at")
@@ -515,6 +603,8 @@ def update_subscription(
             sub.cycle = requested_cycle
     trial_changed = "trial_ends_at" in supplied
     trial_end = supplied.pop("trial_ends_at", None)
+    # Like the trial date, an intro price can be cleared with null.
+    supplied.pop("intro_amount", None)
     if trial_end and utc_naive(trial_end).date() < utcnow().date():
         raise HTTPException(status_code=422, detail="The trial end date has already passed")
     # Existing update semantics intentionally ignore null for ordinary fields;
@@ -576,6 +666,13 @@ def update_subscription(
             status_code=422,
             detail="The pause-until date must be in the future",
         )
+
+    if "intro_amount" in data.model_fields_set:
+        sub.intro_amount = data.intro_amount
+    if trial_changed and not trial_end:
+        sub.intro_amount = None
+    if sub.intro_amount is not None and not (trial_end if trial_changed else sub.trial_ends_at):
+        raise HTTPException(status_code=422, detail="An intro price needs the date it ends")
 
     if trial_changed:
         sub.trial_ends_at = trial_end

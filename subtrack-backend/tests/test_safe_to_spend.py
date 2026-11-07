@@ -93,6 +93,28 @@ class SafeToSpendTests(unittest.TestCase):
 
         self.assertEqual(result["committed"], 100.0)
 
+    def test_payment_due_on_payday_is_left_for_next_pay_when_pay_lands_first(self):
+        self.add_profile(payday_bills_after_pay=True)
+        self.add_payment("Day before payday", 100, datetime(2026, 11, 9, 23, 0))
+        self.add_payment("On payday", 100, datetime(2026, 11, 10))
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        self.assertEqual(result["committed"], 100.0)
+        self.assertIn("left for your next pay", result["scope"])
+
+    def test_intro_price_is_charged_until_the_offer_ends(self):
+        self.add_profile(balance=Decimal("100.00"), buffer=Decimal("0"), pay_anchor_on=date(2026, 12, 20))
+        self.add_payment(
+            "Google One", 32.99, datetime(2026, 11, 8),
+            intro_amount=Decimal("2.99"), trial_ends_at=datetime(2026, 12, 8),
+        )
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        # 8 Nov is an intro charge; 8 Dec is the first full-price charge.
+        self.assertEqual([c["amount"] for c in result["commitments"]], [2.99, 32.99])
+
     def test_payday_bill_stored_at_noon_utc_counts_in_new_zealand(self):
         self.db.get(UserPreference, "owner").timezone = "Pacific/Auckland"
         self.add_profile()

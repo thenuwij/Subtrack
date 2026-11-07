@@ -21,9 +21,11 @@ import {
   getReminders,
   getSubscriptionChanges,
   getSubscriptionForecast,
+  getCalendarMonth,
   getSubscriptions,
 } from '@/lib/api'
 import type {
+  CalendarMonthCharges,
   GmailStatus,
   DetectedSubscription,
   PaymentReminder,
@@ -34,21 +36,19 @@ import type {
 } from '@/types'
 import { useCurrency } from '@/lib/context/currency'
 import { formatCurrency } from '@/lib/utils/currency'
-import { categoryColor } from '@/lib/utils/categories'
 import { SpendBreakdown } from '@/components/dashboard/SpendBreakdown'
 import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton'
 import { Button } from '@/components/ui/button'
 import { ReminderCenter } from '@/components/reminders/ReminderCenter'
 import { useRegisterAgentPageContext } from '@/lib/agent/page-context'
 import { toast } from 'sonner'
-import { isActiveTrial } from '@/lib/utils/trials'
 import {
   contributesToCommitment,
   monthlyEquivalentNative,
   yearlyEquivalentNative,
 } from '@/lib/utils/recurrence'
 import { SafeToSpendCard } from '@/components/dashboard/SafeToSpendCard'
-import { UpcomingCharges } from '@/components/dashboard/UpcomingCharges'
+import { ComingUp } from '@/components/dashboard/ComingUp'
 import { NeedsAttention } from '@/components/dashboard/NeedsAttention'
 import { GettingStarted } from '@/components/onboarding/GettingStarted'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
@@ -61,7 +61,7 @@ function formatDate(date: string) {
 export default function DashboardPage() {
   const [changesExpanded, setChangesExpanded] = useState(false)
   const {
-    baseCurrency, canConvert, convertAmount, ratesLoading, ratesStale, ratesAsOf,
+    baseCurrency, canConvert, convertAmount, ratesLoading,
   } = useCurrency()
 
   const subscriptionsQuery = useApi<Subscription[]>(
@@ -78,13 +78,14 @@ export default function DashboardPage() {
   const forecastQuery = useApi<SubscriptionForecast>(
     apiKeys.forecast(14), token => getSubscriptionForecast(token, 14),
   )
+  const calendarMonthQuery = useApi<CalendarMonthCharges>(apiKeys.calendarMonth, getCalendarMonth)
   const detectionsQuery = useApi<DetectedSubscription[]>(
     apiKeys.detected('pending'), token => getDetected(token, 'pending'),
   )
 
   const queries = [
     subscriptionsQuery, changesQuery, preferencesQuery, gmailQuery,
-    remindersQuery, forecastQuery, detectionsQuery,
+    remindersQuery, forecastQuery, detectionsQuery, calendarMonthQuery,
   ]
   const loading = queries.some(query => query.isLoading)
 
@@ -129,32 +130,46 @@ export default function DashboardPage() {
 
   // Everything is normalised to a monthly figure in the base currency so the
   // numbers on this page are actually comparable to each other.
+  // "Monthly" means this calendar month: a weekly payment counts 4 or 5
+  // times depending on the month, not its yearly cost divided by 12.
+  const thisMonth = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const charge of calendarMonthQuery.data?.charges ?? []) {
+      if (charge.charge_amount_in_base === null) continue
+      totals.set(charge.id, (totals.get(charge.id) ?? 0) + charge.charge_amount_in_base)
+    }
+    for (const extra of calendarMonthQuery.data?.extras ?? []) {
+      if (extra.amount_in_base === null) continue
+      totals.set(extra.subscription_id, (totals.get(extra.subscription_id) ?? 0) + extra.amount_in_base)
+    }
+    return totals
+  }, [calendarMonthQuery.data])
+  const monthName = calendarMonthQuery.data
+    ? new Date(calendarMonthQuery.data.year, calendarMonthQuery.data.month - 1, 1)
+      .toLocaleDateString('en-AU', { month: 'long' })
+    : 'this month'
+
   const ranked = useMemo(() => {
     return subscriptions
       .filter(contributesToCommitment)
       .filter(subscription => canConvert(subscription.currency))
       .map((s) => ({
         subscription: s,
-        monthly: convertAmount(monthlyEquivalentNative(s), s.currency) ?? 0,
+        monthly: calendarMonthQuery.data
+          ? thisMonth.get(s.id) ?? 0
+          : convertAmount(monthlyEquivalentNative(s), s.currency) ?? 0,
         yearly: convertAmount(yearlyEquivalentNative(s), s.currency) ?? 0,
       }))
+      .filter(entry => entry.monthly > 0)
       .sort((a, b) => b.monthly - a.monthly)
-  }, [subscriptions, canConvert, convertAmount])
-
-  const activeTrials = useMemo(
-    () => subscriptions.filter(subscription =>
-      (subscription.status === 'active' || subscription.status === 'cancelling')
-      && isActiveTrial(subscription)
-    ),
-    [subscriptions]
-  )
+  }, [subscriptions, canConvert, convertAmount, calendarMonthQuery.data, thisMonth])
 
   const contributingPayments = useMemo(
     () => subscriptions.filter(contributesToCommitment),
     [subscriptions],
   )
 
-  const unavailableCurrencies = contributingPayments.length - ranked.length
+  const unavailableCurrencies = contributingPayments.filter(payment => !canConvert(payment.currency)).length
   const hasVariableAmounts = ranked.some(entry => entry.subscription.amount_type === 'variable')
 
   const monthlyTotal = useMemo(
@@ -162,29 +177,8 @@ export default function DashboardPage() {
     [ranked]
   )
 
-  const yearlyTotal = useMemo(
-    () => ranked.reduce((sum, r) => sum + r.yearly, 0),
-    [ranked],
-  )
-
   const shareOfIncome =
     monthlyIncome && monthlyIncome > 0 ? (monthlyTotal / monthlyIncome) * 100 : null
-
-  // The hero bar, in the same colours as the breakdown below it, so the two
-  // read as one system rather than two unrelated charts.
-  const heroSegments = useMemo(() => {
-    const totals = new Map<string, number>()
-    for (const { subscription, monthly } of ranked) {
-      const key = subscription.category ?? 'other'
-      totals.set(key, (totals.get(key) ?? 0) + monthly)
-    }
-    return [...totals.entries()]
-      .map(([category, total]) => ({
-        category,
-        share: monthlyTotal > 0 ? (total / monthlyTotal) * 100 : 0,
-      }))
-      .sort((a, b) => b.share - a.share)
-  }, [ranked, monthlyTotal])
 
   async function handleDismissReminder(id: string) {
     const accessToken = await getAccessToken()
@@ -284,8 +278,8 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="space-y-10">
+    <div className="mx-auto w-full max-w-[1360px] px-4 py-6 sm:px-6 sm:py-8 lg:px-10">
+      <div className="space-y-6">
 
         {loadError && (
           <div className="flex flex-col gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -294,86 +288,17 @@ export default function DashboardPage() {
           </div>
         )}
 
+        <div className="grid gap-6 lg:grid-cols-2">
+        <ComingUp
+          forecast={forecast}
+          error={forecastError}
+          retrying={forecastRetrying}
+          onRetry={() => void forecastQuery.mutate()}
+        />
+
         <SafeToSpendCard />
+        </div>
 
-        {/* ── Hero ────────────────────────────────────────────────────────
-            No card, no border, no icon chip. One number, given the room to
-            be the thing you look at first. */}
-        <section>
-          <div className="flex items-start justify-between gap-4">
-            <p className="text-sm font-medium text-muted-foreground">
-              {hasVariableAmounts ? 'Estimated monthly commitment' : 'Your monthly commitment'}
-            </p>
-            <Link
-              href="/subscriptions"
-              className="shrink-0 text-sm font-medium text-primary hover:underline"
-            >
-              Manage
-            </Link>
-          </div>
-
-          <p className="mt-2 text-3xl font-semibold tracking-tight tabular-nums text-foreground sm:text-4xl">
-            {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(monthlyTotal, baseCurrency)}
-          </p>
-
-          <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-sm text-muted-foreground">
-            <span className="tabular-nums">
-              {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(yearlyTotal, baseCurrency)} annual equivalent
-            </span>
-            <span className="tabular-nums">
-              {contributingPayments.length} paid payment{contributingPayments.length === 1 ? '' : 's'}
-              {activeTrials.length > 0
-                ? ` · ${activeTrials.length} free trial${activeTrials.length === 1 ? '' : 's'}`
-                : ''}
-            </span>
-            {shareOfIncome !== null ? (
-              // Stated plainly. Colouring this red would be scolding someone
-              // for their rent, which is not a judgement this app should make.
-              <span className="tabular-nums">
-                <span className="font-medium text-foreground">
-                  {shareOfIncome.toFixed(0)}%
-                </span>{' '}
-                of your income
-              </span>
-            ) : (
-              <Link href="/account" className="text-primary hover:underline">
-                Add your income to see this as a share
-              </Link>
-            )}
-          </div>
-
-          {heroSegments.length > 0 && (
-            <div
-              className="mt-6 flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full"
-              aria-hidden="true"
-            >
-              {heroSegments.map(segment => (
-                <div
-                  key={segment.category}
-                  className="h-full first:rounded-l-full last:rounded-r-full"
-                  style={{
-                    width: `${Math.max(segment.share, 0.8)}%`,
-                    backgroundColor: categoryColor(segment.category),
-                  }}
-                />
-              ))}
-            </div>
-          )}
-
-          {unavailableCurrencies > 0 ? (
-            <p className="mt-4 text-xs leading-5 text-amber-700 dark:text-amber-300">
-              {unavailableCurrencies} payment{unavailableCurrencies === 1 ? ' is' : 's are'} excluded from these totals because a reliable exchange rate is unavailable.
-            </p>
-          ) : null}
-          {ratesStale ? (
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              Foreign-currency totals use the latest available cached rates{ratesAsOf ? ` from ${formatDate(ratesAsOf)}` : ''} and are estimates.
-            </p>
-          ) : null}
-        </section>
-
-        <div className="grid gap-10 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start xl:gap-8">
-        <div className="min-w-0 space-y-10 xl:col-start-2 xl:row-start-1 xl:space-y-6">
         <GettingStarted
           gmailConnected={Boolean(gmail?.connected)}
           hasPayments={hasPayments}
@@ -406,18 +331,15 @@ export default function DashboardPage() {
           forecast={forecast}
           gmail={gmail}
           gmailScanStale={gmailScanStale}
+          undatedPayments={subscriptions
+            .filter(subscription => !subscription.next_due && ['active', 'cancelling'].includes(subscription.status))
+            .map(({ id, name }) => ({ id, name }))}
         />
 
-        <UpcomingCharges
-          forecast={forecast}
-          error={forecastError}
-          retrying={forecastRetrying}
-          onRetry={() => void forecastQuery.mutate()}
-        />
 
         {/* ── Inbox nudge — only while there's something to act on ─────── */}
         {gmail && !gmail.connected && !isDemo && (
-          <section className="flex flex-col gap-4 rounded-2xl bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+          <section className="flex flex-col gap-4 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                 <Mail className="h-4 w-4" />
@@ -438,22 +360,42 @@ export default function DashboardPage() {
           </section>
         )}
 
-        </div>
 
-        <div className="min-w-0 space-y-10 xl:col-start-1 xl:row-start-1 xl:space-y-8">
+        <div className={`grid gap-6 lg:items-start ${changesError || changes.length > 0 ? 'lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : ''}`}>
+        <div className="min-w-0 space-y-6">
+
+
         {/* ── Where your money goes ───────────────────────────────────── */}
         <SpendBreakdown
           ranked={ranked}
           monthlyTotal={monthlyTotal}
           baseCurrency={baseCurrency}
           unavailableCount={unavailableCurrencies}
+          summary={
+            <p className="mt-1 text-sm text-muted-foreground">
+              <span className="font-semibold tabular-nums text-foreground">
+                {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(monthlyTotal, baseCurrency)}
+              </span>{' '}
+              in {monthName}
+              {' · '}
+              <Link href="/account#income" className="font-medium text-primary hover:underline">
+                {shareOfIncome !== null ? `${shareOfIncome.toFixed(0)}% of your income` : 'Add your income'}
+              </Link>
+              {' · '}
+              <Link href="/subscriptions" className="text-primary hover:underline">Manage</Link>
+            </p>
+          }
         />
 
+
+        </div>
+        {changesError || changes.length > 0 ? (
+        <>
         {/* ── What changed ────────────────────────────────────────────── */}
-        <section className="rounded-2xl bg-card p-6 shadow-sm">
+        <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-base font-semibold text-foreground">What changed</h2>
+              <h2 className="text-[17px] font-semibold text-foreground">What changed</h2>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 Last 30 days
               </p>
@@ -562,7 +504,8 @@ export default function DashboardPage() {
             </p>
           ) : null}
         </section>
-        </div>
+        </>
+        ) : null}
         </div>
       </div>
     </div>

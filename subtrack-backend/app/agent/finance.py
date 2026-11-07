@@ -33,6 +33,7 @@ from app.services.recurrence import (
     forecast_end_for,
     monthly_equivalent,
     occurrences_between,
+    rewind_anchor,
     utc_naive,
 )
 from app.services.reminders import list_user_reminders
@@ -330,6 +331,7 @@ def upcoming_charges(
     now: datetime | None = None,
     start_at: datetime | None = None,
     end_at: datetime | None = None,
+    include_past: bool = False,
 ) -> dict:
     now = now or datetime.now(timezone.utc).replace(tzinfo=None)
     start = utc_naive(start_at or now)
@@ -365,8 +367,13 @@ def upcoming_charges(
             continue
         payload, quality = _payment_payload(sub, currency)
         qualities.append(quality)
+        anchor = (
+            rewind_anchor(sub.next_due, sub, occurrence_start)
+            if include_past
+            else sub.next_due
+        )
         due_dates = occurrences_between(
-            sub.next_due,
+            anchor,
             sub,
             occurrence_start,
             end,
@@ -379,11 +386,18 @@ def upcoming_charges(
             sub.currency,
             stored_amount=sub.converted_amount,
         )
+        intro_end = utc_naive(sub.trial_ends_at).date() if sub.trial_ends_at else None
+        converted_intro = None
+        if sub.intro_amount is not None:
+            converted_intro, _ = currency.convert(float(sub.intro_amount), sub.currency)
         for due in due_dates:
-            if converted_charge is None:
+            # Charges before an intro offer ends cost the intro price.
+            is_intro = sub.intro_amount is not None and intro_end is not None and due.date() < intro_end
+            charge_base = converted_intro if is_intro else converted_charge
+            if charge_base is None:
                 unconverted_occurrence_count += 1
             else:
-                total_in_base += converted_charge
+                total_in_base += charge_base
             trial_conversion = bool(
                 sub.trial_ends_at
                 and due.date() == utc_naive(sub.trial_ends_at).date()
@@ -391,6 +405,7 @@ def upcoming_charges(
             )
             rows.append({
                 **payload,
+                **({"amount": float(sub.intro_amount)} if is_intro else {}),
                 "due_at": due.isoformat(),
                 "days_until_due": max(0, (due.date() - now.date()).days),
                 "due_date_source": (
@@ -398,8 +413,10 @@ def upcoming_charges(
                     if due == utc_naive(sub.next_due)
                     else "projected_from_recorded_cycle"
                 ),
-                "charge_kind": "trial_conversion" if trial_conversion else "renewal",
-                "charge_amount_in_base": _money(converted_charge),
+                "charge_kind": (
+                    "intro" if is_intro else "trial_conversion" if trial_conversion else "renewal"
+                ),
+                "charge_amount_in_base": _money(charge_base),
                 "charge_amount_is_estimate": payload["amount_is_estimate"],
             })
     rows.sort(key=lambda row: (row["due_at"], row["name"].casefold()))

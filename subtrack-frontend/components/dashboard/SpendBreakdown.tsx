@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, useSyncExternalStore } from 'react'
+import { useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import type { Subscription } from '@/types'
@@ -71,9 +71,10 @@ interface Props {
   monthlyTotal: number
   baseCurrency: string
   unavailableCount?: number
+  summary?: ReactNode
 }
 
-export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailableCount = 0 }: Props) {
+export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailableCount = 0, summary }: Props) {
   const view = useSyncExternalStore(subscribeToView, readStoredView, () => 'chart' as View)
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
   const [showAllPayments, setShowAllPayments] = useState(false)
@@ -110,8 +111,8 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
 
   if (ranked.length === 0) {
     return (
-      <section className="rounded-2xl bg-card p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-foreground">Where your money goes</h2>
+      <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
+        <h2 className="text-[17px] font-semibold text-foreground">Where your money goes</h2>
         <div className="mt-6 flex flex-col items-center justify-center py-10 text-center">
           <p className="text-sm font-medium text-foreground">Nothing to break down yet</p>
           <p className="mt-1 max-w-xs text-sm text-muted-foreground">
@@ -133,10 +134,11 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
   const visiblePayments = showAllPayments ? ranked : ranked.slice(0, 6)
 
   return (
-    <section className="rounded-2xl bg-card p-6 shadow-sm">
+    <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Where your money goes</h2>
+          <h2 className="text-[17px] font-semibold text-foreground">Where your money goes</h2>
+          {summary}
         </div>
 
         {/* Segmented control. Same pattern as iOS: one visible group, the
@@ -296,7 +298,7 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
                         </span>
                         <span className="shrink-0 text-sm tabular-nums text-muted-foreground">
                           {subscription.amount_type === 'variable' ? '≈ ' : ''}
-                          {formatCurrency(monthly, baseCurrency)}/mo
+                          {formatCurrency(monthly, baseCurrency)}
                         </span>
                       </li>
                     ))}

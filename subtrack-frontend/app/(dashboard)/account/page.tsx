@@ -14,6 +14,7 @@ import {
   getGmailStatus,
   getPreferences,
   startGmailScan,
+  updateGmailSettings,
   updatePreferences,
 } from '@/lib/api'
 import type { GmailStatus } from '@/types'
@@ -146,6 +147,18 @@ export default function AccountPage() {
       const message = e instanceof Error ? e.message : 'Could not start the Gmail connection.'
       setGmailError(message)
       toast.error(message)
+    }
+  }
+
+  async function handleAutoScan(enabled: boolean) {
+    try {
+      await withToken(async token => {
+        await updateGmailSettings(token, { auto_scan_enabled: enabled })
+        void gmailQuery.mutate(g => (g ? { ...g, auto_scan_enabled: enabled } : g), { revalidate: false })
+        toast.success(enabled ? 'Daily inbox check turned on' : 'Daily inbox check turned off')
+      })
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not change this setting.')
     }
   }
 
@@ -327,10 +340,10 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-8">
+    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="text-2xl font-semibold tracking-tight">Account</h1>
 
-      <section className="flex flex-col gap-5 rounded-2xl bg-card p-6 shadow-sm sm:flex-row sm:items-center">
+      <section className="flex flex-col gap-5 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center">
         <UserAvatar
           name={currentUser.name}
           email={currentUser.email}
@@ -383,6 +396,7 @@ export default function AccountPage() {
         </Row>
 
         <Row
+          id="income"
           title="Monthly income"
           description="Used to show what share of your income goes to recurring payments"
           note={incomeStatus === 'cleared' ? (
@@ -432,7 +446,7 @@ export default function AccountPage() {
       {gmail && (
         <div id="inbox" className="scroll-mt-6 rounded-2xl bg-card shadow-sm p-6 space-y-4">
           <div>
-            <h2 className="text-lg font-semibold">Email connection</h2>
+            <h2 className="text-[17px] font-semibold text-foreground">Email connection</h2>
           </div>
 
           {currentUser.isDemo ? (
@@ -454,27 +468,45 @@ export default function AccountPage() {
                   <p className="text-sm font-medium truncate">{gmail.email_address}</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {gmail.scan_status === 'running'
-                      ? 'Scanning your inbox…'
+                      ? 'Checking your inbox…'
                       : gmail.last_scanned_at
-                        ? `Last scanned ${new Date(gmail.last_scanned_at).toLocaleDateString('en-AU', {
-                            day: 'numeric', month: 'short', year: 'numeric',
+                        ? `Last checked ${new Date(gmail.last_scanned_at).toLocaleString('en-AU', {
+                            day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit',
                           })}`
-                        : 'Not scanned yet'}
+                        : 'First check starting soon'}
                   </p>
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <Button
+                    variant="outline"
                     onClick={handleScan}
                     disabled={gmailBusy || gmail.scan_status === 'running' || gmail.configured === false}
                   >
-                    {gmail.scan_status === 'running' ? 'Scanning' : 'Scan inbox'}
+                    {gmail.scan_status === 'running' ? 'Checking…' : 'Check now'}
                   </Button>
                 </div>
               </div>
 
               {gmail.scan_error && (
-                <p className="text-xs text-destructive">Last scan failed: {gmail.scan_error}</p>
+                <p className="text-xs text-destructive">Last check failed: {gmail.scan_error}</p>
               )}
+
+              <label className="flex cursor-pointer items-start justify-between gap-4 border-t border-border pt-4">
+                <span>
+                  <span className="block text-sm font-medium">Check my inbox every day</span>
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Each morning Subtrack reads new receipts only. Anything it finds waits in Inbox for your OK.
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
+                  checked={gmail.auto_scan_enabled ?? true}
+                  disabled={gmailBusy}
+                  onChange={event => void handleAutoScan(event.target.checked)}
+                />
+              </label>
 
               {gmail.configured === false ? (
                 <p className="text-xs text-amber-700 dark:text-amber-300">
@@ -531,7 +563,8 @@ export default function AccountPage() {
                 <div>
                   <p className="text-sm font-medium">Connect Gmail</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Read-only. Nothing is added without your approval.
+                    Read-only. Subtrack checks your last 3 months straight away, then new receipts
+                    once a day. Nothing is added without your approval, and you can turn daily checks off.
                   </p>
                   {/* Google renders read access to Gmail as its own tickbox and
                       leaves it unticked. Continuing past it returns a valid
@@ -668,10 +701,10 @@ function Section({
       className={
         tone === 'danger'
           ? 'rounded-2xl border border-destructive/30 bg-card p-6 shadow-sm'
-          : 'rounded-2xl bg-card p-6 shadow-sm'
+          : 'rounded-2xl bg-card p-5 shadow-sm sm:p-6'
       }
     >
-      <h2 className={tone === 'danger' ? 'text-lg font-semibold text-destructive' : 'text-lg font-semibold'}>
+      <h2 className={tone === 'danger' ? 'text-[17px] font-semibold text-destructive' : 'text-[17px] font-semibold text-foreground'}>
         {title}
       </h2>
       <div className="mt-2 divide-y divide-border">{children}</div>
@@ -680,18 +713,20 @@ function Section({
 }
 
 function Row({
+  id,
   title,
   description,
   note,
   children,
 }: {
+  id?: string
   title: string
   description?: string
   note?: React.ReactNode
   children: React.ReactNode
 }) {
   return (
-    <div className="flex flex-col gap-3 py-4 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+    <div id={id} className="flex scroll-mt-20 flex-col gap-3 py-4 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <p className="text-sm font-medium">{title}</p>
         {description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}

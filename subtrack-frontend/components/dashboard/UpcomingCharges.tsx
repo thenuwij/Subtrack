@@ -28,9 +28,9 @@ export function UpcomingCharges({ forecast, error, retrying, onRetry }: Props) {
   const [showAll, setShowAll] = useState(false)
   if (error && !forecast) {
     return (
-      <section className="flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <section className="flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-foreground">Upcoming charges</h2>
+          <h2 className="text-[17px] font-semibold text-foreground">Upcoming charges</h2>
           <p className="mt-1 text-sm text-muted-foreground">We couldn&apos;t calculate the next 2 weeks.</p>
         </div>
         <Button type="button" size="sm" variant="outline" disabled={retrying} onClick={onRetry}>
@@ -47,10 +47,10 @@ export function UpcomingCharges({ forecast, error, retrying, onRetry }: Props) {
   const totalIsEstimate = conversionEstimated || hasVariableEstimates
 
   return (
-    <section className="rounded-2xl bg-card p-6 shadow-sm" aria-labelledby="upcoming-charges-heading">
+    <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6" aria-labelledby="upcoming-charges-heading">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h2 id="upcoming-charges-heading" className="text-base font-semibold text-foreground">Upcoming charges</h2>
+          <h2 id="upcoming-charges-heading" className="text-[17px] font-semibold text-foreground">Upcoming charges</h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
             Next 2 weeks ·{' '}
             <span className="tabular-nums">

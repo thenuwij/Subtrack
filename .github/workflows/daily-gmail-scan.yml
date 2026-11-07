@@ -1,0 +1,57 @@
+# Once a day, ask the API to scan every connected inbox that has automatic
+# scanning switched on. The API starts as many scans as it has free slots and
+# reports how many are still waiting, so this keeps calling until none are.
+#
+# Needs two repository secrets:
+#   SUBTRACK_API_URL  e.g. https://subtrack-api.onrender.com
+#   CRON_SECRET       the same value as the API's CRON_SECRET
+name: Daily Gmail scan
+
+on:
+  schedule:
+    - cron: "0 19 * * *" # 19:00 UTC = 6am Sydney (AEDT)
+  workflow_dispatch: {}
+
+permissions: {}
+
+concurrency:
+  group: daily-gmail-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Wake the API
+        env:
+          API_URL: ${{ secrets.SUBTRACK_API_URL }}
+        run: |
+          # The free Render plan sleeps when idle; waking can take a minute.
+          for attempt in $(seq 1 12); do
+            if curl -fsS --max-time 20 "$API_URL/" > /dev/null; then
+              echo "API is awake"; exit 0
+            fi
+            echo "Waiting for the API (attempt $attempt)..."; sleep 10
+          done
+          echo "API did not wake up"; exit 1
+
+      - name: Start scans until none are waiting
+        env:
+          API_URL: ${{ secrets.SUBTRACK_API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          for round in $(seq 1 15); do
+            response=$(curl -fsS --max-time 30 -X POST \
+              -H "X-Cron-Secret: $CRON_SECRET" \
+              "$API_URL/gmail/scheduled-scan")
+            echo "Round $round: $response"
+            remaining=$(echo "$response" | jq '.remaining')
+            running=$(echo "$response" | jq '.running')
+            if [ "$remaining" -eq 0 ] && [ "$running" -eq 0 ]; then
+              echo "All due inboxes scanned"; exit 0
+            fi
+            # A scan takes up to two minutes; check again after that.
+            sleep 120
+          done
+          echo "Stopped after 15 rounds; the next daily run continues."

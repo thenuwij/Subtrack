@@ -35,8 +35,10 @@ from app.models import (
     GmailReceipt,
     MoneyGoal,
     MoneyRule,
+    PaymentExtra,
     PaymentReminder,
     SafeToSpendProfile,
+    SenderLink,
     StatementImport,
     Subscription,
     SubscriptionChange,
@@ -233,8 +235,18 @@ class AccountPrivacyTests(unittest.TestCase):
             pay_interval_count=2,
             buffer=50,
         )
+        payment_extra = PaymentExtra(
+            user_id=user_id, subscription_id=subscription.id, amount=7.5,
+            currency="AUD", charged_at=datetime(2026, 8, 1), reason="late_fee",
+        )
+        sender_link = SenderLink(
+            user_id=user_id, sender_domain="debitsuccess.com",
+            merchant_key="anytime-fitness", subscription_id=subscription.id,
+        )
         self.db.add_all(
             [
+                payment_extra,
+                sender_link,
                 bank_account,
                 statement_import,
                 bank_transaction,

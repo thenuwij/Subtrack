@@ -29,7 +29,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
         </span>
         {!compact && (
           <span className="mt-1 text-[11px] leading-none text-muted-foreground">
-            Recurring payments
+            Track your payments
           </span>
         )}
       </span>

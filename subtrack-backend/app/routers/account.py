@@ -34,8 +34,10 @@ from app.models import (
     GmailReceipt,
     MoneyGoal,
     MoneyRule,
+    PaymentExtra,
     PaymentReminder,
     SafeToSpendProfile,
+    SenderLink,
     StatementImport,
     Subscription,
     SubscriptionChange,
@@ -244,6 +246,18 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ),
         ("created_at",),
     ),
+    ExportResource(
+        "payment_extras",
+        PaymentExtra,
+        ("id", "subscription_id", "amount", "currency", "charged_at", "reason", "created_at"),
+        ("charged_at", "id"),
+    ),
+    ExportResource(
+        "sender_links",
+        SenderLink,
+        ("id", "sender_domain", "merchant_key", "subscription_id", "created_at"),
+        ("created_at", "id"),
+    ),
 )
 
 
@@ -268,6 +282,8 @@ DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("gmail_detections", DetectedSubscription),
     ("duplicate_dismissals", DuplicateDismissal),
     ("subscription_changes", SubscriptionChange),
+    ("payment_extras", PaymentExtra),
+    ("sender_links", SenderLink),
     ("subscriptions", Subscription),
     ("gmail_connection", GmailAccount),
     ("preferences", UserPreference),

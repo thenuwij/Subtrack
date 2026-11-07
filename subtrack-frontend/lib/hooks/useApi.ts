@@ -9,6 +9,8 @@ export const apiKeys = {
   subscriptions: (scope: 'current' | 'all') => `subscriptions:${scope}`,
   subscriptionChanges: (days: number) => `subscription-changes:${days}`,
   forecast: (days: number) => `forecast:${days}`,
+  calendarMonth: 'calendar-month',
+  extras: (days: number) => `extras:${days}`,
   reminders: (horizonDays: number) => `reminders:${horizonDays}`,
   preferences: 'preferences',
   safeToSpend: 'safe-to-spend',
