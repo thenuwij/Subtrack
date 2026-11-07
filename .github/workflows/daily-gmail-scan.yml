@@ -41,7 +41,7 @@ jobs:
           API_URL: ${{ secrets.SUBTRACK_API_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
-          for round in $(seq 1 15); do
+          for round in $(seq 1 40); do
             response=$(curl -fsS --max-time 30 -X POST \
               -H "X-Cron-Secret: $CRON_SECRET" \
               "$API_URL/gmail/scheduled-scan")
@@ -51,7 +51,7 @@ jobs:
             if [ "$remaining" -eq 0 ] && [ "$running" -eq 0 ]; then
               echo "All due inboxes scanned"; exit 0
             fi
-            # A scan takes up to two minutes; check again after that.
-            sleep 120
+            # Scans take up to two minutes; check often so a quick one ends the run quickly.
+            sleep 20
           done
-          echo "Stopped after 15 rounds; the next daily run continues."
+          echo "Stopped after 40 rounds; the next daily run continues."

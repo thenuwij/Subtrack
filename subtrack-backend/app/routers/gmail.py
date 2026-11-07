@@ -1193,7 +1193,12 @@ def run_scheduled_scans(
             break
         except HTTPException:
             continue
-    running = db.query(GmailAccount).filter(GmailAccount.scan_status == "running").count()
+    # A scan that died without cleaning up still says "running"; don't make
+    # the caller wait for it.
+    running = sum(
+        1 for account in db.query(GmailAccount).filter(GmailAccount.scan_status == "running").all()
+        if not _scan_is_stale(account)
+    )
     return {"started": started, "running": running, "remaining": len(due_ids) - started}
     if not _scan_slots.acquire(blocking=False):
         raise HTTPException(
