@@ -134,6 +134,7 @@ def _serialize(
         "confidence": d.confidence,
         "charge_count": d.charge_count,
         "trial_ends_at": d.trial_ends_at.isoformat() if d.trial_ends_at else None,
+        "intro_amount": float(d.intro_amount) if d.intro_amount is not None else None,
         "next_due": d.next_due.isoformat() if d.next_due else None,
         "due_date_confidence": d.due_date_confidence,
         "due_date_evidence": d.due_date_evidence,
@@ -473,6 +474,7 @@ def apply_approval(
         )
         if trial_supplied:
             sub.trial_ends_at = trial_end
+            sub.intro_amount = detection.intro_amount if trial_end else None
         if next_due_supplied:
             sub.next_due = next_due
         # Bind the subscription to its source so later scans recognise it even
@@ -542,6 +544,7 @@ def apply_approval(
             interval_count=cadence.count,
             next_due=None if detection.cancelled else next_due,
             trial_ends_at=trial_end,
+            intro_amount=detection.intro_amount if trial_end else None,
             status=(
                 PaymentStatus.cancelled.value
                 if detection.cancelled else PaymentStatus.active.value

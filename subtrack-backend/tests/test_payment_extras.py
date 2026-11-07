@@ -145,3 +145,17 @@ class SamePaymentTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SameFindingTests(unittest.TestCase):
+    def test_same_items_written_differently(self):
+        from app.services.payment_links import is_same_finding
+        self.assertTrue(is_same_finding("Google One 100 GB", "google-one-100-gb", "Google One 100GB", "google-one-100gb"))
+        self.assertTrue(is_same_finding("ChatGPT Plus", "chatgpt-plus", "ChatGPT Plus", "openai-chatgpt-plus"))
+        self.assertTrue(is_same_finding("Origin Energy", "origin-energy", "Origin Energy electricity", "origin-energy-electricity"))
+
+    def test_different_items_stay_apart(self):
+        from app.services.payment_links import is_same_finding
+        self.assertFalse(is_same_finding("Apple", "apple-music", "Apple", "apple-icloud"))
+        self.assertFalse(is_same_finding("TikTok LIVE Super Fan", "tiktok-live-super-fan", "TikTok Sarah", "tiktok-sarah"))
+        self.assertFalse(is_same_finding("Google One", None, "Netflix", None))

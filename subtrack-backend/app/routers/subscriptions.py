@@ -1,5 +1,6 @@
+from datetime import date as date_type
 from datetime import datetime
-from typing import NamedTuple, Optional
+from typing import Literal, NamedTuple, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -36,6 +37,7 @@ from app.services.duplicates import (
     duplicate_suggestions,
     persist_duplicate_dismissal,
 )
+from app.services.payment_links import name_words
 from app.services.recurrence import (
     Cadence,
     annual_equivalent,
@@ -436,6 +438,69 @@ def get_paid_history(
     return paid_history(db, user_id, months=months)
 
 
+class BillUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    due_on: date_type | None = None
+    late_fee: float | None = Field(default=None, ge=0)
+
+
+@router.patch("/bills/{bill_id}")
+def update_bill(
+    bill_id: UUID,
+    body: BillUpdate,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Fill in what the bill email didn't say: its due date, or a late fee on it."""
+    from app.models import Bill
+
+    bill = db.query(Bill).filter(Bill.id == bill_id, Bill.user_id == user_id).first()
+    if bill is None:
+        raise HTTPException(status_code=404, detail="Bill not found")
+    if "due_on" in body.model_fields_set:
+        bill.due_on = body.due_on
+    if "late_fee" in body.model_fields_set:
+        bill.late_fee = body.late_fee or None
+    db.commit()
+    return {"updated": True}
+
+
+class SortCharge(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subscription_id: UUID
+    date: date_type
+    amount: float = Field(gt=0)
+    kind: Literal["late_fee", "not_fee"]
+
+
+@router.post("/paid/sort")
+def sort_charge(
+    body: SortCharge,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """The user's answer for a charge above the plan price: late fee, or not a fee."""
+    from app.models import PaymentExtra
+
+    sub = db.query(Subscription).filter(
+        Subscription.id == body.subscription_id, Subscription.user_id == user_id,
+    ).first()
+    if sub is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    db.add(PaymentExtra(
+        user_id=user_id,
+        subscription_id=sub.id,
+        amount=round(body.amount, 2),
+        currency=sub.currency,
+        charged_at=datetime.combine(body.date, datetime.min.time()).replace(hour=12),
+        reason=body.kind,
+    ))
+    db.commit()
+    return {"sorted": True}
+
+
 @router.get("/extras")
 def get_extras(
     days: int = Query(default=90, ge=1, le=730),
@@ -640,6 +705,14 @@ def update_subscription(
         sub.full_amount = split.full_amount
         sub.share_ratio = split.share_ratio
         sub.split_mode = split.split_mode
+
+    # Renaming a payment into a different one (e.g. "Claude Pro" -> "iCloud")
+    # must drop the old Gmail source, or the old sender's receipts and
+    # findings keep landing on it.
+    new_name = fields.get("name")
+    if new_name and sub.source_domain and not (name_words(new_name) & name_words(sub.name)):
+        sub.source_domain = None
+        sub.source_key = None
 
     for key, value in fields.items():
         if hasattr(value, "value"):

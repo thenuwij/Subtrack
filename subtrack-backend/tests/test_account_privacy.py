@@ -23,6 +23,7 @@ from app.models import (
     AgentThread,
     BankAccount,
     BankTransaction,
+    Bill,
     BillingCycle,
     Category,
     ChangeKind,
@@ -239,6 +240,10 @@ class AccountPrivacyTests(unittest.TestCase):
             user_id=user_id, subscription_id=subscription.id, amount=7.5,
             currency="AUD", charged_at=datetime(2026, 8, 1), reason="late_fee",
         )
+        bill = Bill(
+            user_id=user_id, gmail_message_id=f"{user_id}-bill", intermediary="vodafone.com.au",
+            amount=58, currency="AUD", issued_on=date(2026, 8, 1),
+        )
         sender_link = SenderLink(
             user_id=user_id, sender_domain="debitsuccess.com",
             merchant_key="anytime-fitness", subscription_id=subscription.id,
@@ -247,6 +252,7 @@ class AccountPrivacyTests(unittest.TestCase):
             [
                 payment_extra,
                 sender_link,
+                bill,
                 bank_account,
                 statement_import,
                 bank_transaction,

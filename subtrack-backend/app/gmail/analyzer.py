@@ -208,6 +208,10 @@ class DetectedSubscription(BaseModel):
                     "medium = plausible but thin evidence (e.g. only 1-2 charges)."
     )
     charge_count: int = Field(description="Number of distinct successful charges observed (not emails)")
+    intro_amount: float | None = Field(
+        default=None,
+        description="Leave null. Filled in by the server from the email's wording.",
+    )
     trial_ends_at: datetime | None = Field(
         default=None,
         description="The explicit free-trial end date in ISO 8601 form, or null "

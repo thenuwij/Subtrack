@@ -27,6 +27,7 @@ from app.models import (
     AgentThread,
     BankAccount,
     BankTransaction,
+    Bill,
     DetectedSubscription,
     DuplicateDismissal,
     GmailAccount,
@@ -247,6 +248,12 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ("created_at",),
     ),
     ExportResource(
+        "bills",
+        Bill,
+        ("id", "intermediary", "merchant", "amount", "currency", "issued_on", "due_on", "late_fee", "created_at"),
+        ("issued_on", "id"),
+    ),
+    ExportResource(
         "payment_extras",
         PaymentExtra,
         ("id", "subscription_id", "amount", "currency", "charged_at", "reason", "created_at"),
@@ -282,6 +289,7 @@ DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("gmail_detections", DetectedSubscription),
     ("duplicate_dismissals", DuplicateDismissal),
     ("subscription_changes", SubscriptionChange),
+    ("bills", Bill),
     ("payment_extras", PaymentExtra),
     ("sender_links", SenderLink),
     ("subscriptions", Subscription),

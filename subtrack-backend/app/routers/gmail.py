@@ -37,6 +37,7 @@ from app.gmail.crypto import (
 )
 from app.middleware.auth import reject_demo_user, verify_token
 from app.models import (
+    Bill,
     BillingCycle,
     DetectedSubscription,
     DetectionStatus,
@@ -47,7 +48,7 @@ from app.models import (
     Subscription,
 )
 from app.services.gmail_access import revoke_encrypted_refresh_token
-from app.services.payment_links import linked_subscription_id, load_links
+from app.services.payment_links import is_same_finding, linked_subscription_id, load_links
 from app.services.recurrence import Cadence, cadence_for, legacy_cycle_for, utc_naive
 
 logger = logging.getLogger(__name__)
@@ -687,6 +688,17 @@ def _match_detection(rows: list[DetectedSubscription], found) -> DetectedSubscri
                 and abs(row.amount - found.previous_amount) <= AMOUNT_TOLERANCE \
                 and row.status == DetectionStatus.pending:
             return row
+    # The analyzer named the same item a little differently this time
+    # ("Google One 100GB" vs "Google One 100 GB"). Only pending suggestions are
+    # merged, and only when the amounts agree (or the bill varies anyway).
+    for row in rows:
+        if row.status != DetectionStatus.pending or not is_same_finding(
+            row.merchant, row.product_key, found.merchant, found.product_key,
+        ):
+            continue
+        variable = _enum_value(row.amount_type) == "variable" or found.amount_type == "variable"
+        if variable or abs(row.amount - found.amount) <= max(AMOUNT_TOLERANCE, row.amount * 0.1):
+            return row
     return None
 
 
@@ -899,6 +911,7 @@ def _apply_detections(db, user_id, subscriptions, existing_detections, detected,
         row.confidence = found.confidence
         row.charge_count = found.charge_count
         row.trial_ends_at = utc_naive(found.trial_ends_at) if found.trial_ends_at else None
+        row.intro_amount = found.intro_amount
         if found.cancelled:
             row.next_due = None
             row.due_date_confidence = "unknown"
@@ -923,12 +936,133 @@ class ScanSuperseded(Exception):
     """The mailbox was disconnected or a newer run took ownership."""
 
 
+# A bill, invoice or reminder says money is owed; only a receipt says it was paid.
+NOT_PROOF_OF_PAYMENT = re.compile(
+    r"(?i)(overdue|unsuccessful|declined|failed|reminder|payment problem|billing problem|"
+    r"invoice due|new invoice|bill is now|amount due|will be charged|refund)"
+)
+PROOF_OF_PAYMENT = re.compile(
+    r"(?i)(receipt|thanks for your payment|payment received|payment has been|"
+    r"tax invoice|order receipt|you've been charged|has been funded|successful)"
+)
+
+
+def _is_payment_proof(candidate) -> bool:
+    text = f"{candidate.subject} {candidate.excerpt}"
+    if NOT_PROOF_OF_PAYMENT.search(candidate.subject or ""):
+        return False
+    # A plain "Your electricity bill" is a request to pay, not proof of payment.
+    is_bill = re.search(r"(?i)\bbill\b", candidate.subject or "")
+    return not is_bill or bool(PROOF_OF_PAYMENT.search(text))
+
+
+def _terms_by_domain(candidates) -> dict:
+    """The latest email per sender that states its billing terms in words."""
+    found: dict = {}
+    for candidate in sorted(candidates, key=lambda c: c.date):
+        if candidate.intro_amount is not None or candidate.stated_next_due:
+            found[candidate.sender_domain] = candidate
+    return found
+
+
+def _apply_stated_terms(findings, terms_by_domain: dict) -> None:
+    """What an email says outright beats what the analyzer inferred."""
+    for found in findings:
+        source = terms_by_domain.get(found.sender_domain)
+        if source is None:
+            continue
+        if source.intro_amount is not None and source.intro_ends_on:
+            ends = datetime.fromisoformat(source.intro_ends_on)
+            if ends.date() > _utcnow().date():
+                found.intro_amount = source.intro_amount
+                found.amount = source.full_amount or found.amount
+                found.trial_ends_at = ends.replace(hour=12)
+        if source.stated_next_due:
+            found.next_due = datetime.fromisoformat(source.stated_next_due).replace(hour=12)
+            found.due_date_confidence = "high"
+            found.due_date_evidence = "The email states the debit day each month."
+            if found.interval_unit is None:
+                found.interval_unit, found.interval_count = "month", 1
+                found.cadence_confidence = "medium"
+                found.cadence_evidence = "Billed on a set weekday each month."
+
+
+def remove_duplicate_findings(db, user_id: str) -> int:
+    """Delete pending findings that repeat another pending finding.
+
+    Keeps the most recent one of each item; dismissed and approved findings
+    are left alone so their history (and "don't suggest again") stays.
+    """
+    pending = db.query(DetectedSubscription).filter(
+        DetectedSubscription.user_id == user_id,
+        DetectedSubscription.status == DetectionStatus.pending,
+    ).order_by(DetectedSubscription.detected_at.desc()).all()
+    kept: list[DetectedSubscription] = []
+    removed = 0
+    for row in pending:
+        same = next((
+            keep for keep in kept
+            if is_same_finding(keep.merchant, keep.product_key, row.merchant, row.product_key)
+            and (
+                "variable" in (_enum_value(keep.amount_type), _enum_value(row.amount_type))
+                or abs(keep.amount - row.amount) <= max(AMOUNT_TOLERANCE, keep.amount * 0.1)
+            )
+        ), None)
+        if same is None:
+            kept.append(row)
+        else:
+            db.delete(row)
+            removed += 1
+    if removed:
+        db.commit()
+    return removed
+
+
+def _save_bills(db, user_id: str, candidates) -> None:
+    """Keep each bill read from email (amount owing, due date, stated fees)."""
+    bills = [c for c in candidates if c.bill_amount is not None or c.bill_due_on is not None]
+    if not bills:
+        return
+    seen = {
+        message_id for (message_id,) in db.query(Bill.gmail_message_id).filter(
+            Bill.user_id == user_id, Bill.gmail_message_id.in_([c.message_id for c in bills]),
+        )
+    }
+    # The same bill can arrive twice (a copy in the same thread, a reminder).
+    same_bill = {
+        (bill.intermediary, float(bill.amount) if bill.amount is not None else None, bill.due_on)
+        for bill in db.query(Bill).filter(Bill.user_id == user_id)
+    }
+    for candidate in bills:
+        due = datetime.fromisoformat(candidate.bill_due_on).date() if candidate.bill_due_on else None
+        key = ((candidate.sender_domain or "")[:80], candidate.bill_amount, due)
+        if candidate.message_id in seen or (due is not None and key in same_bill):
+            continue
+        seen.add(candidate.message_id)
+        same_bill.add(key)
+        db.add(Bill(
+            user_id=user_id,
+            gmail_message_id=candidate.message_id[:64],
+            intermediary=(candidate.sender_domain or "")[:80],
+            merchant=(candidate.merchant or "")[:200] or None,
+            amount=candidate.bill_amount,
+            currency=(candidate.currency or "AUD").upper()[:3],
+            issued_on=datetime.fromisoformat(candidate.date[:10]).date(),
+            due_on=datetime.fromisoformat(candidate.bill_due_on).date() if candidate.bill_due_on else None,
+            late_fee=candidate.bill_late_fee,
+        ))
+    db.commit()
+
+
 def _save_receipts(db, user_id: str, candidates) -> None:
     """Keep each charge seen (sender, business, amount, date) for paid history.
 
     No email text is stored. Already-saved messages are skipped.
     """
-    rows = [c for c in candidates if c.amount and c.amount > 0 and c.currency and c.date]
+    rows = [
+        c for c in candidates
+        if c.amount and c.amount > 0 and c.currency and c.date and _is_payment_proof(c)
+    ]
     if not rows:
         return
     seen = {
@@ -1045,6 +1179,7 @@ def _run_scan(user_id: str, run_id: str):
             return
 
         _save_receipts(db, user_id, scan_result.candidates)
+        _save_bills(db, user_id, scan_result.candidates)
 
         subscriptions = db.query(Subscription).filter(
             Subscription.user_id == user_id
@@ -1054,9 +1189,11 @@ def _run_scan(user_id: str, run_id: str):
         ).all()
 
         links = load_links(db, user_id)
+        terms_by_domain = _terms_by_domain(scan_result.candidates)
 
         def apply_batch(found):
             ensure_current()
+            _apply_stated_terms(found, terms_by_domain)
             _apply_detections(db, user_id, subscriptions, existing_detections, found, links)
             account.scan_heartbeat_at = _utcnow()
             db.commit()
@@ -1094,6 +1231,7 @@ def _run_scan(user_id: str, run_id: str):
                     pending[i].similar_subscription_id = active[j].id
                     pending[i].similar_reason = reason[:300]
 
+        remove_duplicate_findings(db, user_id)
         ensure_current()
         partial = bool(scan_result.truncated or outcome.truncated)
         account.scan_status = "done"

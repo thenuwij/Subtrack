@@ -391,6 +391,8 @@ class DetectedSubscription(Base):
     # Date of the latest charge seen in email, so a one-off extra can be
     # recorded on the day it actually happened.
     last_charge_at = Column(DateTime, nullable=True)
+    # A discounted intro price read from the email; trial_ends_at is when it ends.
+    intro_amount = Column(Numeric(12, 2), nullable=True)
     status = Column(Enum(DetectionStatus), default=DetectionStatus.pending, index=True)
     detected_at = Column(DateTime, server_default=func.now())
     resolved_at = Column(DateTime, nullable=True)
@@ -779,6 +781,31 @@ class GmailReceipt(Base):
     instalment_number = Column(Integer, nullable=True)
     instalment_count = Column(Integer, nullable=True)
     received_on = Column(Date, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class Bill(Base):
+    """A bill (invoice) read from email: the source of truth for what's owed.
+
+    Receipts are applied to bills to mark them paid. Fields the email didn't
+    state (often the due date) stay empty until the user fills them in.
+    """
+    __tablename__ = "bills"
+    __table_args__ = (
+        UniqueConstraint("user_id", "gmail_message_id", name="uq_bills_user_message"),
+        Index("ix_bills_user_issued", "user_id", "issued_on"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False)
+    gmail_message_id = Column(String(64), nullable=False)
+    intermediary = Column(String(80), nullable=False)       # sender domain
+    merchant = Column(String(200), nullable=True)
+    amount = Column(Numeric(12, 2), nullable=True)          # amount owing, if stated
+    currency = Column(String(3), nullable=False, default="AUD")
+    issued_on = Column(Date, nullable=False)
+    due_on = Column(Date, nullable=True)
+    late_fee = Column(Numeric(12, 2), nullable=True)        # only when stated or confirmed
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 

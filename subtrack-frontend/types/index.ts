@@ -121,6 +121,7 @@ export interface DetectedSubscription {
   confidence: 'high' | 'medium'
   charge_count: number
   trial_ends_at: string | null
+  intro_amount?: number | null
   next_due: string | null
   due_date_confidence: 'high' | 'medium' | 'unknown'
   due_date_evidence: string | null
@@ -307,13 +308,32 @@ export interface PaidPayment {
   amount: number
   currency: string
   amount_in_base: number | null
-  status: 'confirmed' | 'expected'
-  kind: 'receipt' | 'schedule' | 'late_fee' | 'extra'
+  status: 'confirmed' | 'expected' | 'unsorted'
+  kind: 'receipt' | 'schedule' | 'late_fee' | 'extra' | 'above_plan'
+}
+
+export interface PaidBill {
+  id: string
+  subscription_id: string
+  name: string
+  category: Category
+  issued_on: string
+  due_on: string | null
+  amount: number | null
+  currency: string
+  paid: number
+  paid_on: string | null
+  owing: number | null
+  status: 'paid' | 'credit' | 'part_paid' | 'overdue' | 'due' | 'unknown'
+  late_fee: number | null
 }
 
 export interface PaidHistory {
   base_currency: string
   since: string
+  late_fees_total: number
+  above_plan_total: number
+  bills: PaidBill[]
   payments: PaidPayment[]
 }
 
