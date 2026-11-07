@@ -55,11 +55,11 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, un
         onClick={() => setOpen(value => !value)}
         className="flex min-h-11 w-full items-center gap-3 py-2 text-left"
       >
-        <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-muted px-1.5 text-[13px] font-semibold tabular-nums text-foreground">
+        <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-amber-500/15 px-1.5 text-[13px] font-semibold tabular-nums text-amber-700 dark:text-amber-300">
           {count}
         </span>
         <h2 id="needs-attention-heading" className="flex-1 text-[15px] font-medium text-foreground">
-          {count === 1 ? 'Thing needs' : 'Things need'} your attention
+          Needs your attention
         </h2>
         <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
@@ -67,26 +67,26 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, un
         {uncertainDetections > 0 ? (
           <li className="flex items-center justify-between gap-4 py-3">
             <span className="flex items-center gap-2.5 text-foreground">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
-              Check the frequency or next date on {uncertainDetections} inbox finding{uncertainDetections === 1 ? '' : 's'}.
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+              {uncertainDetections} finding{uncertainDetections === 1 ? '' : 's'} to check in Inbox
             </span>
-            <Link href="/review" className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted">Review</Link>
+            <Link href="/review" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Review</Link>
           </li>
         ) : null}
         {unknownTrialPrices > 0 ? (
           <li className="flex items-center justify-between gap-4 py-3">
             <span className="flex items-center gap-2.5 text-foreground">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
-              Add the post-trial price for {unknownTrialPrices} free trial{unknownTrialPrices === 1 ? '' : 's'}.
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+              {unknownTrialPrices} trial{unknownTrialPrices === 1 ? '' : 's'} need a price
             </span>
-            <Link href="/review" className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted">Review</Link>
+            <Link href="/review" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Review</Link>
           </li>
         ) : null}
         {missingDates > 0 ? (
           <li className="py-3">
             <span className="flex items-center gap-2.5 text-foreground">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
-              {missingDates} payment{missingDates === 1 ? ' needs' : 's need'} a next date
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+              {missingDates} payment{missingDates === 1 ? ' needs' : 's need'} a date
             </span>
             {undatedPayments.length > 0 ? (
               <span className="mt-2 flex flex-wrap gap-2 pl-[18px]">
@@ -95,9 +95,11 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, un
                     key={payment.id}
                     type="button"
                     onClick={() => editPayment(payment.id)}
-                    className="min-h-9 rounded-full border border-border px-3 text-[13px] font-medium text-foreground transition-colors hover:bg-muted"
+                    title={`Add a date for ${payment.name}`}
+                    className="inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full bg-primary/10 px-3 text-[13px] font-medium text-primary transition-colors hover:bg-primary/20"
                   >
-                    {payment.name} · Add date
+                    <span className="truncate">{payment.name}</span>
+                    <span aria-hidden="true">+</span>
                   </button>
                 ))}
               </span>
@@ -109,45 +111,45 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, un
         {pausedWithoutResume > 0 ? (
           <li className="flex items-center justify-between gap-4 py-3">
             <span className="flex items-center gap-2.5 text-foreground">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
-              {pausedWithoutResume} paused payment{pausedWithoutResume === 1 ? ' has' : 's have'} no resume date.
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+              {pausedWithoutResume} paused payment{pausedWithoutResume === 1 ? ' needs' : 's need'} a resume date
             </span>
-            <Link href="/subscriptions" className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted">Payments</Link>
+            <Link href="/subscriptions" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Payments</Link>
           </li>
         ) : null}
         {unconverted > 0 ? (
           <li className="flex items-center justify-between gap-4 py-3">
             <span className="flex items-center gap-2.5 text-foreground">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
-              {unconverted} upcoming occurrence{unconverted === 1 ? '' : 's'} cannot be converted to your base currency yet.
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+              {unconverted} charge{unconverted === 1 ? '' : 's'} can&apos;t be converted yet
             </span>
-            <Link href="/subscriptions" className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted">Payments</Link>
+            <Link href="/subscriptions" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Payments</Link>
           </li>
         ) : null}
         {estimatedPayments > 0 ? (
           <li className="flex items-center justify-between gap-4 py-3">
             <span className="flex items-center gap-2.5 text-foreground">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
-              {estimatedPayments} variable payment{estimatedPayments === 1 ? ' uses' : 's use'} the latest saved estimate.
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+              {estimatedPayments} bill{estimatedPayments === 1 ? ' is' : 's are'} an estimate
             </span>
-            <Link href="/subscriptions" className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted">Payments</Link>
+            <Link href="/subscriptions" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Payments</Link>
           </li>
         ) : null}
         {scanIsPartial ? (
           <li className="flex items-center justify-between gap-4 py-3">
             <span className="flex items-center gap-2.5 text-foreground">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
-              The latest inbox scan ended early. Findings saved so far are ready to review.
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+              Last inbox check didn&apos;t finish
             </span>
-            <Link href="/review" className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted">Review</Link>
+            <Link href="/review" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Review</Link>
           </li>
         ) : gmailScanStale ? (
           <li className="flex items-center justify-between gap-4 py-3">
             <span className="flex items-center gap-2.5 text-foreground">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden="true" />
-              Gmail has not been scanned in over 30 days, so recent changes may be missing.
+              <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
+              Inbox not checked in 30+ days
             </span>
-            <Link href="/review" className="shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:bg-muted">Scan</Link>
+            <Link href="/review" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Scan</Link>
           </li>
         ) : null}
       </ul>
