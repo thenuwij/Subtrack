@@ -1,4 +1,5 @@
 'use client'
+import { EmailReminders } from '@/components/reminders/EmailReminders'
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -601,6 +602,7 @@ export default function AccountPage() {
         </div>
       )}
 
+      <EmailReminders />
       <Section title="Help">
         <Row title="Guided tour">
           <Button

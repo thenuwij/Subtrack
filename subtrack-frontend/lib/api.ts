@@ -722,6 +722,13 @@ export async function decidePayment(token: string, target: string, decision: 'pa
   return response.json()
 }
 
+export async function getEmailReminders(token: string) {
+  return (await request('/email-reminders', token)).json() as Promise<{enabled: boolean; email: string | null; configured: boolean}>
+}
+export async function setEmailReminders(token: string, enabled: boolean) {
+  return (await request('/email-reminders', token, {method: 'PUT', body: JSON.stringify({enabled})})).json()
+}
+
 export interface SavingsOverview {
   base_currency: string; monthly_income: number | null; monthly_total: number; income_share: number | null; unconverted_count: number
   price_rises: {id: string; name: string; old_monthly_native: number; new_monthly_native: number; native_currency: string}[]

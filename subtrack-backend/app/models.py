@@ -953,3 +953,18 @@ class PaymentDecision(Base):
     decision = Column(String(16), nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
+
+class EmailPreference(Base):
+    __tablename__ = "email_preferences"
+    user_id = Column(String, primary_key=True)
+    email = Column(String(320), nullable=False)
+    enabled = Column(Boolean, nullable=False, default=False)
+
+
+class ReminderDelivery(Base):
+    __tablename__ = "reminder_deliveries"
+    key = Column(String(180), primary_key=True)
+    user_id = Column(String, nullable=False, index=True)
+    payload = Column(JSON, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    sent_at = Column(DateTime, nullable=True)

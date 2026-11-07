@@ -30,6 +30,7 @@ from app.models import (
     Bill,
     DetectedSubscription,
     DuplicateDismissal,
+    EmailPreference,
     GmailAccount,
     GmailOAuthState,
     GmailReceipt,
@@ -38,6 +39,7 @@ from app.models import (
     PaymentDecision,
     PaymentExtra,
     PaymentReminder,
+    ReminderDelivery,
     SafeToSpendProfile,
     SenderLink,
     StatementImport,
@@ -267,6 +269,8 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ("created_at", "id"),
     ),
     ExportResource("payment_decisions", PaymentDecision, ("id", "target", "decision", "created_at"), ("created_at", "id")),
+    ExportResource("email_preferences", EmailPreference, ("email", "enabled"), ("user_id",)),
+    ExportResource("reminder_deliveries", ReminderDelivery, ("key", "created_at", "sent_at"), ("key",)),
 
 )
 
@@ -276,6 +280,8 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
 # one database transaction.
 DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("payment_decisions", PaymentDecision),
+    ("email_preferences", EmailPreference),
+    ("reminder_deliveries", ReminderDelivery),
     ("gmail_oauth_states", GmailOAuthState),
     ("transaction_links", TransactionLink),
     ("gmail_receipts", GmailReceipt),
