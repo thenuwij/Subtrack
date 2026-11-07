@@ -131,11 +131,11 @@ export default function PaidPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6 sm:px-6 sm:py-8">
+    <div className="mx-auto w-full max-w-4xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Paid</h1>
-          <p className="mt-1 text-sm text-muted-foreground">The last 3 months, newest first.</p>
+          <p className="eyebrow mb-2">Your payment record</p><h1 className="page-heading">Payment history</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Receipts, bills and expected payments from the last 3 months.</p>
         </div>
         <PaymentsTabs />
       </div>

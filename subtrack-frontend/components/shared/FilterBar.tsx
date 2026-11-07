@@ -28,7 +28,7 @@ const PERIODS: { value: Period; label: string }[] = [
 const SCOPES: { value: RecordScope; label: string }[] = [
   { value: 'current', label: 'Current' },
   { value: 'paused',  label: 'Paused' },
-  { value: 'history', label: 'History' },
+  { value: 'history', label: 'Ended' },
   { value: 'all',     label: 'All' },
 ]
 
@@ -98,7 +98,7 @@ function OptionRow({
       role="radio"
       aria-checked={selected}
       onClick={onSelect}
-      className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-muted"
+      className="flex w-full items-center justify-between rounded-lg px-2 py-3 text-left text-sm transition-colors hover:bg-muted"
     >
       {label}
       {selected ? <Check className="h-4 w-4 text-primary" /> : null}
@@ -162,7 +162,7 @@ export function FilterBar({
               value={searchQuery}
               onChange={e => onSearchChange(e.target.value)}
               placeholder="Search payments…"
-              className="h-8 pl-8 text-xs md:text-xs"
+              className="h-11 rounded-xl bg-card pl-8 text-sm"
             />
           </div>
 
@@ -170,7 +170,7 @@ export function FilterBar({
             <PopoverTrigger asChild>
               <button
                 type="button"
-                className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors ${
+                className={`flex h-11 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-medium transition-colors ${
                   activeFilterCount
                     ? 'bg-primary/10 text-primary hover:bg-primary/15'
                     : 'bg-muted text-foreground hover:bg-muted/70'
@@ -233,7 +233,7 @@ export function FilterBar({
                         type="button"
                         aria-pressed={selectedCategory === cat}
                         onClick={() => onCategoryChange(cat)}
-                        className={`h-7 rounded-full px-3 text-xs font-medium transition-colors ${
+                        className={`min-h-9 rounded-full px-3 text-xs font-medium transition-colors ${
                           selectedCategory === cat
                             ? 'bg-primary text-primary-foreground'
                             : 'bg-muted text-muted-foreground hover:bg-muted/70'
@@ -253,7 +253,7 @@ export function FilterBar({
               <button
                 type="button"
                 aria-label={`Sort: ${SORT_OPTIONS.find(option => option.value === sortBy)?.label}`}
-                className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-muted px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted/70"
+                className="flex h-11 shrink-0 items-center gap-1.5 rounded-lg bg-muted px-3 text-xs font-medium text-foreground transition-colors hover:bg-muted/70"
               >
                 <ArrowUpDown className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">

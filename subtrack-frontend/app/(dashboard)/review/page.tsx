@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ArrowUpRight, Check, Clock3, Mail, RotateCcw, Trash2, X } from 'lucide-react'
+import { ArrowUpRight, Check, ChevronDown, Clock3, Mail, RotateCcw, Trash2, X } from 'lucide-react'
 import {
   approveDetected,
   clearAllDismissedDetected,
@@ -465,7 +465,7 @@ export default function ReviewPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-10">
         <div className="space-y-6">
           <Skeleton className="h-9 w-56" />
           <Skeleton className="h-24 rounded-2xl" />
@@ -478,7 +478,7 @@ export default function ReviewPage() {
   const scanning = gmail?.scan_status === 'running'
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-10">
       <div className="space-y-6">
         {loadError && (
           <div className="flex flex-col gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -489,7 +489,7 @@ export default function ReviewPage() {
 
         <section className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            <p className="eyebrow">Found in your email</p><h1 className="page-heading">
               Inbox
             </h1>
             <p className="max-w-2xl text-sm text-muted-foreground">
@@ -545,19 +545,7 @@ export default function ReviewPage() {
         )}
 
         {isDemo ? (
-          <div className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Mail className="h-5 w-5" />
-              </div>
-              <div>
-                <p className="font-medium text-foreground">Sample inbox findings</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  In a real account these come from your Gmail receipts. Add or dismiss them to see how review works.
-                </p>
-              </div>
-            </div>
-          </div>
+          <p className="flex items-center gap-2 text-xs leading-5 text-muted-foreground"><Mail className="h-4 w-4 shrink-0 text-primary" />Sample findings. Try adding or dismissing a payment.</p>
         ) : gmail && !gmail.connected ? (
           <div className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
             <div className="flex items-start gap-3">
@@ -698,7 +686,7 @@ export default function ReviewPage() {
                   className="rounded-2xl bg-card p-5 shadow-sm sm:p-6"
                 >
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0 space-y-2">
+                    <div className="min-w-0 flex-1 space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-foreground">{item.merchant}</p>
                         {item.intro_amount != null && item.trial_ends_at ? (
@@ -820,6 +808,15 @@ export default function ReviewPage() {
                         </div>
                       ) : null}
 
+                      <details className="group/schedule rounded-xl border border-border p-3" open={cadenceNeedsChoice || detectedDueIsPast || item.due_date_confidence === 'unknown' || undefined}>
+                        <summary className="-m-3 flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 rounded-xl p-3 text-primary transition-colors hover:bg-primary/5 [&::-webkit-details-marker]:hidden">
+                          <span>
+                            <span className="block text-sm font-medium">Review details & schedule</span>
+                            {item.next_due && !detectedDueIsPast ? <span className="mt-1 block text-xs text-muted-foreground">Next payment {formatStoredDate(item.next_due, { day: 'numeric', month: 'short' })}</span> : null}
+                          </span>
+                          <ChevronDown className="h-5 w-5 shrink-0 transition-transform group-open/schedule:rotate-180" aria-hidden="true" />
+                        </summary>
+                        <div className="mt-4 space-y-3">
                       <div className="rounded-xl border border-border bg-muted/20 p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div>
@@ -976,6 +973,9 @@ export default function ReviewPage() {
                           </div>
                         </div>
                       ) : null}
+
+                        </div>
+                      </details>
 
                       {/* The evidence. You're being asked to trust a guess, so
                           show what it's based on. */}
@@ -1180,7 +1180,12 @@ export default function ReviewPage() {
 
                       {/* Receipts show the whole bill. Shared costs — rent,
                           household utilities — need only the user's portion. */}
-                      <div className={`flex-wrap items-center gap-1.5 pt-1 ${
+                      <details className={tab === 'dismissed' || item.amount <= 0 ? 'hidden' : 'group/sharing rounded-xl border border-border p-3'} open={isShared || undefined}>
+                        <summary className="-m-3 flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-xl p-3 text-sm font-medium text-primary transition-colors hover:bg-primary/5 [&::-webkit-details-marker]:hidden">
+                          <span>{isShared ? 'Edit your share of this bill' : 'Split this bill'}</span>
+                          <ChevronDown className="h-5 w-5 shrink-0 transition-transform group-open/sharing:rotate-180" aria-hidden="true" />
+                        </summary>
+                      <div className={`mt-4 flex-wrap items-center gap-1.5 pt-1 ${
                         tab === 'dismissed' || item.amount <= 0 ? 'hidden' : 'flex'
                       }`}>
                         <span className="mr-1 text-xs text-muted-foreground">
@@ -1227,6 +1232,7 @@ export default function ReviewPage() {
                           </span>
                         )}
                       </div>
+                      </details>
                     </div>
 
                     <div className="flex shrink-0 gap-2">

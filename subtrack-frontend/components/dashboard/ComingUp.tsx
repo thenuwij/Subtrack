@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { CalendarDays, ChevronRight } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import type { ForecastCharge, SubscriptionForecast } from '@/types'
 import { Button } from '@/components/ui/button'
@@ -102,17 +102,17 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
   const next = forecast.charges.find(charge => charge.days_until_due > (leadIsTomorrow ? 1 : 0))
 
   return (
-    <section className="h-full rounded-2xl bg-card p-5 shadow-sm sm:p-6" aria-labelledby="coming-up-heading">
+    <section className="h-full rounded-3xl bg-card p-6 shadow-sm sm:p-8" aria-labelledby="coming-up-heading">
       <div className="flex items-baseline justify-between gap-4">
-        <h2 id="coming-up-heading" className="text-[17px] font-semibold text-foreground">Coming up</h2>
+        <h2 id="coming-up-heading" className="flex items-center gap-2.5 text-[17px] font-semibold tracking-tight text-foreground"><CalendarDays className="h-[18px] w-[18px] text-primary" strokeWidth={1.7} />Coming up</h2><span className="text-xs text-muted-foreground">Next 14 days</span>
       </div>
 
       <div className="mt-5 space-y-4">
         <Group title={leadLabel} charges={lead} estimated={estimated} empty="Nothing due today." />
         {next ? (
           <Group
-            title="Next payment"
-            charges={[next]}
+            title="Next on your calendar"
+            charges={later.filter(charge => charge.days_until_due > (leadIsTomorrow ? 1 : 0)).slice(0, 3)}
             estimated={estimated}
             empty=""
             showDate
@@ -128,7 +128,7 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
           onClick={() => setShowLater(true)}
           className="mt-3 flex min-h-11 items-center gap-1 px-2 text-sm font-medium text-primary hover:underline"
         >
-          See all {later.length} in the next 2 weeks
+          View all upcoming ({later.length})
           <ChevronRight className="h-4 w-4" aria-hidden="true" />
         </button>
       ) : null}

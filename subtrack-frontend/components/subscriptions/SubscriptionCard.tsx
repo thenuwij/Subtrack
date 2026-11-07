@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
+import { DropdownMenu } from 'radix-ui'
 import type { PaymentExtrasSummary, Subscription } from '@/types'
 import { Button } from '@/components/ui/button'
-import { Bell, Clock3, Trash2, Pencil, Sparkles } from 'lucide-react'
+import { Bell, Clock3, Trash2, Pencil, Sparkles, Ellipsis } from 'lucide-react'
 import { useThisMonth } from '@/lib/hooks/useThisMonth'
 import { apiKeys, useApi } from '@/lib/hooks/useApi'
 import { getPaymentExtras } from '@/lib/api'
@@ -85,14 +86,14 @@ export function SubscriptionCard({
   }
 
   return (
-    <div className="flex flex-col gap-3 px-4 py-3 transition-colors hover:bg-muted/40 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 px-4 py-5 transition-colors hover:bg-muted/30 sm:px-5">
 
       {/* Left — logo + name + subtitle */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
         <BrandLogo name={subscription.name} category={subscription.category} />
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <p className="truncate text-sm font-medium leading-tight">{subscription.name}</p>
+            <p className="line-clamp-2 text-sm font-semibold tracking-tight leading-5 sm:text-[15px]">{subscription.name}</p>
             {trialActive ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
                 <Clock3 className="h-3 w-3" />
@@ -110,7 +111,7 @@ export function SubscriptionCard({
               </span>
             ) : null}
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
+          <p className="truncate text-xs text-muted-foreground mt-1.5">
             {formatCategory(subscription.category)}
             {trialActive && trialEnd
               ? <span className="ml-1.5">· trial ends {trialEnd}</span>
@@ -134,13 +135,13 @@ export function SubscriptionCard({
       </div>
 
       {/* Right — amount + actions */}
-      <div className="flex shrink-0 items-center justify-between gap-3 pl-5 sm:justify-start sm:pl-0">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-4">
         <div className="text-right">
           <p className="font-semibold text-sm tabular-nums leading-tight">
             {subscription.amount_type === 'variable' ? '≈ ' : ''}
             {formatCurrency(subscription.amount, subscription.currency)}
-            <span className="ml-1 text-xs font-normal text-muted-foreground">
-              · {cadenceLabel(subscription).toLowerCase()}
+            <span className="mt-1 block text-[11px] font-normal text-muted-foreground sm:ml-1 sm:mt-0 sm:inline sm:text-xs">
+              <span className="hidden sm:inline">· </span>{cadenceLabel(subscription).toLowerCase()}
             </span>
           </p>
           {trialActive ? (
@@ -156,77 +157,38 @@ export function SubscriptionCard({
               {formatCurrency(subscription.intro_amount ?? 0, subscription.currency)} until {trialEnd}
             </p>
           ) : null}
-          {!trialActive && monthlyBase !== null && yearlyBase !== null ? (
-            <p className="mt-0.5 text-xs tabular-nums text-muted-foreground">
-              {subscription.amount_type === 'variable' ? '≈ ' : ''}{formatCurrency(monthlyBase, baseCurrency)} in {monthShort} ·{' '}
-              {formatCurrency(yearlyBase, baseCurrency)}/yr
-            </p>
-          ) : null}
-          {!trialActive && !canShowConversion && subscription.currency !== baseCurrency ? (
-            <p className="mt-0.5 text-[10px] text-amber-700 dark:text-amber-300">
-              {ratesLoading ? 'Loading exchange rate…' : `${subscription.currency} conversion unavailable`}
-            </p>
-          ) : null}
+
         </div>
 
         {!confirming ? (
-          <div className="flex flex-wrap justify-end gap-1">
-            {onAskAssistant && !terminal ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                onClick={() => onAskAssistant(subscription)}
-                aria-label={`Ask the assistant about cheaper alternatives to ${subscription.name}`}
-                title="Compare current alternatives"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-              </Button>
-            ) : null}
-            {remindersAvailable ? (
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-7 w-7 text-muted-foreground hover:bg-primary/10 hover:text-primary"
-                onClick={() => onReminders(subscription)}
-                aria-label={`Manage reminders for ${subscription.name}`}
-                title="Reminders"
-              >
-                <Bell className="h-3.5 w-3.5" />
-              </Button>
-            ) : null}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 px-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-              onClick={() => onEdit(subscription)}
-              aria-label={`Edit ${subscription.name}`}
-            >
-              <Pencil className="mr-1 h-3.5 w-3.5" />
-              Edit
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-              onClick={() => setConfirming(true)}
-              aria-label={`Delete ${subscription.name}`}
-              title="Delete"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </Button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1">
-            <Button variant="destructive" size="sm" className="h-7 text-xs px-2" onClick={handleDelete} disabled={deleting}>
-              {deleting ? 'Deleting…' : 'Delete'}
-            </Button>
-            <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => setConfirming(false)} disabled={deleting}>
-              Cancel
-            </Button>
-          </div>
-        )}
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <Button variant="ghost" size="icon" className="text-muted-foreground" aria-label={`Options for ${subscription.name}`}><Ellipsis className="h-5 w-5" /></Button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content align="end" sideOffset={6} className="z-50 w-64 max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-popover p-2 text-popover-foreground shadow-lg">
+                {!trialActive && monthlyBase !== null && yearlyBase !== null ? (
+                  <DropdownMenu.Label className="px-3 py-3 text-xs leading-5 text-muted-foreground">{subscription.amount_type === 'variable' ? '≈ ' : ''}{formatCurrency(monthlyBase, baseCurrency)} in {monthShort}<br />{formatCurrency(yearlyBase, baseCurrency)} per year</DropdownMenu.Label>
+                ) : null}
+                {!trialActive && !canShowConversion && subscription.currency !== baseCurrency ? <DropdownMenu.Label className="px-3 py-2 text-xs text-muted-foreground">{ratesLoading ? 'Loading exchange rate…' : `${subscription.currency} conversion unavailable`}</DropdownMenu.Label> : null}
+                <DropdownMenu.Item onSelect={() => onEdit(subscription)} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm outline-none focus:bg-muted"><Pencil className="h-4 w-4" />Edit payment</DropdownMenu.Item>
+                {remindersAvailable ? <DropdownMenu.Item onSelect={() => onReminders(subscription)} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm outline-none focus:bg-muted"><Bell className="h-4 w-4" />Manage reminders</DropdownMenu.Item> : null}
+                {onAskAssistant && !terminal ? <DropdownMenu.Item onSelect={() => onAskAssistant(subscription)} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm outline-none focus:bg-muted"><Sparkles className="h-4 w-4" />Explore alternatives</DropdownMenu.Item> : null}
+                <DropdownMenu.Separator className="my-1 h-px bg-border" />
+                <DropdownMenu.Item onSelect={() => setConfirming(true)} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm text-destructive outline-none focus:bg-destructive/10"><Trash2 className="h-4 w-4" />Remove from Subtrack</DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+        ) : null}
+
       </div>
+
+      {confirming ? (
+        <div className="col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-destructive/5 p-3">
+          <p className="text-xs text-muted-foreground">Remove this record? This won&apos;t cancel the service.</p>
+          <div className="flex gap-2"><Button variant="ghost" size="sm" onClick={() => setConfirming(false)} disabled={deleting}>Keep it</Button><Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting}>{deleting ? 'Removing…' : 'Remove'}</Button></div>
+        </div>
+      ) : null}
 
     </div>
   )

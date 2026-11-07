@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const TABS = [
-  { href: '/subscriptions', label: 'Payments' },
-  { href: '/subscriptions/paid', label: 'Paid' },
+  { href: '/subscriptions', label: 'Tracked' },
+  { href: '/subscriptions/paid', label: 'History' },
 ]
 
 /** Switch between your payments and what has already been paid. */

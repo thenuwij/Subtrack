@@ -111,8 +111,8 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
 
   if (ranked.length === 0) {
     return (
-      <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
-        <h2 className="text-[17px] font-semibold text-foreground">Where your money goes</h2>
+      <section className="@container rounded-3xl bg-card p-5 shadow-sm sm:p-6">
+        <h2 className="text-[17px] font-semibold tracking-tight text-foreground">Your month in view</h2>
         <div className="mt-6 flex flex-col items-center justify-center py-10 text-center">
           <p className="text-sm font-medium text-foreground">Nothing to break down yet</p>
           <p className="mt-1 max-w-xs text-sm text-muted-foreground">
@@ -134,10 +134,10 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
   const visiblePayments = showAllPayments ? ranked : ranked.slice(0, 6)
 
   return (
-    <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
+    <section className="@container rounded-3xl bg-card p-5 shadow-sm sm:p-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-[17px] font-semibold text-foreground">Where your money goes</h2>
+          <h2 className="text-[17px] font-semibold tracking-tight text-foreground">Your month in view</h2>
           {summary}
         </div>
 
@@ -170,7 +170,7 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
       </div>
 
       {view === 'chart' && (
-        <div id="breakdown-panel-chart" role="tabpanel" aria-labelledby="breakdown-tab-chart" className="mt-6 flex flex-col items-center gap-8 sm:flex-row sm:items-center sm:gap-10">
+        <div id="breakdown-panel-chart" role="tabpanel" aria-labelledby="breakdown-tab-chart" className="mt-7 flex flex-col items-center gap-7 @[540px]:flex-row @[540px]:gap-8">
           {/* A donut rather than another stacked bar: the hero already shows
               the same composition as a strip, and repeating it here would say
               nothing new. Hand-drawn in SVG — a charting library would be
@@ -201,7 +201,7 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
                     r={radius}
                     fill="none"
                     stroke={categoryColor(segment.category)}
-                    strokeWidth="26"
+                    strokeWidth="20"
                     strokeDasharray={`${dash} ${circumference - dash}`}
                     strokeDashoffset={-offset}
                   />
@@ -210,6 +210,10 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
                 return element
               })
             })()}
+            <g transform="rotate(90 100 100)">
+              <text x="100" y="98" textAnchor="middle" fill="var(--foreground)" fontSize="30" fontWeight="600" letterSpacing="-1">{ranked.length}</text>
+              <text x="100" y="120" textAnchor="middle" fill="var(--muted-foreground)" fontSize="11">payments</text>
+            </g>
           </svg>
 
           <ul className="w-full min-w-0 space-y-3">
@@ -226,7 +230,7 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
                 <span className="w-10 shrink-0 text-right text-sm tabular-nums text-muted-foreground">
                   {segment.share.toFixed(0)}%
                 </span>
-                <span className="w-28 shrink-0 text-right text-sm font-medium tabular-nums text-foreground">
+                <span className="shrink-0 text-right sm:w-28 text-sm font-medium tabular-nums text-foreground">
                   {segment.items.some(item => item.subscription.amount_type === 'variable') ? '≈ ' : ''}
                   {formatCurrency(segment.total, baseCurrency)}
                 </span>
@@ -266,7 +270,7 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
                     <span className="shrink-0 text-right text-sm font-semibold tabular-nums text-foreground sm:w-28">
                       {entry.items.some(item => item.subscription.amount_type === 'variable') ? '≈ ' : ''}
                       {formatCurrency(entry.total, baseCurrency)}
-                      <span className="font-normal text-muted-foreground">/mo</span>
+                      <span className="sr-only"> this month</span>
                     </span>
                     {isOpen ? (
                       <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -336,7 +340,7 @@ export function SpendBreakdown({ ranked, monthlyTotal, baseCurrency, unavailable
                     <p className="text-sm font-semibold tabular-nums text-foreground">
                       {subscription.amount_type === 'variable' ? '≈ ' : ''}
                       {formatCurrency(monthly, baseCurrency)}
-                      <span className="font-normal text-muted-foreground">/mo</span>
+                      <span className="sr-only"> this month</span>
                     </p>
                     <p className="text-xs tabular-nums text-muted-foreground">
                       {share.toFixed(0)}% · {formatCurrency(yearly, baseCurrency)}/yr
