@@ -251,8 +251,8 @@ export function SafeToSpendCard() {
   }
 
   const currency = position.base_currency ?? position.profile?.currency ?? 'AUD'
-  const payday = position.next_payday
-    ? formatStoredDate(position.next_payday, { weekday: 'long', day: 'numeric', month: 'short' })
+  const shortPayday = position.next_payday
+    ? formatStoredDate(position.next_payday, { weekday: 'short', day: 'numeric', month: 'short' })
     : ''
   const balanceDate = position.balance_date
     ? formatStoredDate(position.balance_date, { day: 'numeric', month: 'short' })
@@ -280,14 +280,11 @@ export function SafeToSpendCard() {
           } ${position.shortfall ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
             {formatCurrency(position.shortfall || position.safe_to_spend || 0, currency)}
             <span className="ml-2 text-lg font-medium tracking-normal text-muted-foreground">
-              {position.shortfall ? 'short' : 'safe to spend'}
+              {position.shortfall ? 'short' : 'to spend'}
             </span>
           </p>
           <p className="mt-2 text-[15px] text-muted-foreground">
-            As of {isCurrent ? `today, ${balanceDate}` : balanceDate}
-            {position.shortfall
-              ? `. Your balance won't cover your payments and buffer before payday, ${payday}.`
-              : ` · until payday ${payday} · about ${formatCurrency(position.per_day ?? 0, currency)} a day`}
+            As of {balanceDate} · payday {shortPayday}
           </p>
         </div>
       ) : (
