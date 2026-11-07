@@ -116,6 +116,60 @@ function ProfileForm({ position, onSaved, onCancel }: {
   )
 }
 
+function localDateKey() {
+  // en-CA formats as YYYY-MM-DD in the browser's own timezone.
+  return new Date().toLocaleDateString('en-CA')
+}
+
+/** One field: today's balance. Everything else (payday, buffer) stays as saved. */
+function QuickBalance({ position, onSaved }: { position: SafeToSpend; onSaved: (next: SafeToSpend) => void }) {
+  const [value, setValue] = useState('')
+  const [saving, setSaving] = useState(false)
+  const profile = position.profile
+
+  async function check(event: FormEvent) {
+    event.preventDefault()
+    if (!profile || !position.next_payday || value.trim() === '') return
+    setSaving(true)
+    try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('Your session has expired.')
+      onSaved(await saveSafeToSpendProfile(token, {
+        balance: Number(value),
+        currency: profile.currency,
+        next_payday: position.next_payday,
+        pay_interval_unit: profile.pay_interval_unit,
+        pay_interval_count: profile.pay_interval_count,
+        buffer: profile.buffer,
+        payday_bills_after_pay: profile.payday_bills_after_pay,
+      }))
+    } catch (error) {
+      toast.error(errorMessage(error, 'Could not check your balance.'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={check} className="mt-4 flex items-end gap-2">
+      <div className="grid flex-1 gap-1.5">
+        <Label htmlFor="safe-quick-balance">Today&apos;s balance</Label>
+        <Input
+          id="safe-quick-balance"
+          type="number"
+          step="0.01"
+          inputMode="decimal"
+          required
+          placeholder="What’s in your everyday account now?"
+          value={value}
+          onChange={event => setValue(event.target.value)}
+        />
+      </div>
+      <Button type="submit" disabled={saving}>{saving ? 'Checking…' : 'Check'}</Button>
+    </form>
+  )
+}
+
 function Row({ label, value, onClick }: { label: string; value: string; onClick?: () => void }) {
   if (onClick) {
     return (
@@ -204,6 +258,9 @@ export function SafeToSpendCard() {
     ? formatStoredDate(position.balance_date, { day: 'numeric', month: 'short' })
     : ''
   const hasNumber = position.safe_to_spend !== null && position.per_day != null
+  // A typed-in balance can't see spending since, so the result is only "now"
+  // on the day it was entered. Older results are shown dated and dimmed.
+  const isCurrent = position.balance_date === localDateKey()
 
   return (
     <section className="h-full rounded-2xl bg-card p-5 shadow-sm sm:p-6">
@@ -211,40 +268,37 @@ export function SafeToSpendCard() {
         <p className="text-sm font-medium text-muted-foreground">Safe to spend</p>
         {!editing ? (
           <button type="button" onClick={() => setEditing(true)} className="shrink-0 text-sm font-medium text-primary hover:underline">
-            Update balance
+            {isCurrent ? 'Update balance' : 'Edit details'}
           </button>
         ) : null}
       </div>
 
-      {hasNumber && position.shortfall ? (
-        <>
-          <p className="mt-3 text-5xl font-semibold tracking-tight tabular-nums text-amber-600 dark:text-amber-400 sm:text-6xl">
-            {formatCurrency(position.shortfall, currency)}
-            <span className="ml-2 text-lg font-medium tracking-normal text-muted-foreground">short</span>
+      {hasNumber ? (
+        <div className={isCurrent ? '' : 'opacity-60'}>
+          <p className={`mt-3 font-semibold tracking-tight tabular-nums ${
+            isCurrent ? 'text-5xl sm:text-6xl' : 'text-3xl'
+          } ${position.shortfall ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
+            {formatCurrency(position.shortfall || position.safe_to_spend || 0, currency)}
+            <span className="ml-2 text-lg font-medium tracking-normal text-muted-foreground">
+              {position.shortfall ? 'short' : 'safe to spend'}
+            </span>
           </p>
           <p className="mt-2 text-[15px] text-muted-foreground">
-            Your balance won&apos;t cover your payments and buffer before payday, {payday}.
+            As of {isCurrent ? `today, ${balanceDate}` : balanceDate}
+            {position.shortfall
+              ? `. Your balance won't cover your payments and buffer before payday, ${payday}.`
+              : ` · until payday ${payday} · about ${formatCurrency(position.per_day ?? 0, currency)} a day`}
           </p>
-          {balanceDate ? (
-            <p className="mt-1 text-[13px] text-muted-foreground">Balance from {balanceDate}</p>
-          ) : null}
-        </>
-      ) : hasNumber ? (
-        <>
-          <p className="mt-3 text-5xl font-semibold tracking-tight tabular-nums text-foreground sm:text-6xl">
-            {formatCurrency(position.per_day ?? 0, currency)}
-            <span className="ml-2 text-lg font-medium tracking-normal text-muted-foreground">a day</span>
-          </p>
-          <p className="mt-2 text-[15px] text-muted-foreground">
-            {formatCurrency(position.safe_to_spend ?? 0, currency)} until {payday}
-            {balanceDate ? ` · balance from ${balanceDate}` : ''}
-          </p>
-        </>
+        </div>
       ) : (
         <p className="mt-2 text-lg font-medium text-foreground">
-          {position.status === 'balance_outdated' ? 'Update your balance to see this' : 'We can’t give you a number yet'}
+          {position.status === 'balance_outdated' ? 'Enter today’s balance to see this' : 'We can’t give you a number yet'}
         </p>
       )}
+
+      {!editing && !isCurrent ? (
+        <QuickBalance position={position} onSaved={handleSaved} />
+      ) : null}
       {!hasNumber ? position.warnings?.map(warning => (
         <p key={warning} className="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300">{warning}</p>
       )) : null}
