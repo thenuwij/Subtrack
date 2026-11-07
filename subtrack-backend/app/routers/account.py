@@ -35,6 +35,7 @@ from app.models import (
     GmailReceipt,
     MoneyGoal,
     MoneyRule,
+    PaymentDecision,
     PaymentExtra,
     PaymentReminder,
     SafeToSpendProfile,
@@ -265,6 +266,8 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ("id", "sender_domain", "merchant_key", "subscription_id", "created_at"),
         ("created_at", "id"),
     ),
+    ExportResource("payment_decisions", PaymentDecision, ("id", "target", "decision", "created_at"), ("created_at", "id")),
+
 )
 
 
@@ -272,6 +275,7 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
 # user's entire history into application memory and keep the operation inside
 # one database transaction.
 DELETE_ORDER: tuple[tuple[str, type], ...] = (
+    ("payment_decisions", PaymentDecision),
     ("gmail_oauth_states", GmailOAuthState),
     ("transaction_links", TransactionLink),
     ("gmail_receipts", GmailReceipt),

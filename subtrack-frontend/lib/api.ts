@@ -716,3 +716,9 @@ export function dismissReminder(token: string, id: string) {
 export function restoreReminder(token: string, id: string) {
   return request(`/reminders/${id}/restore`, token, { method: 'POST' })
 }
+
+export async function decidePayment(token: string, target: string, decision: 'paid' | 'skipped' | 'undo') {
+  const response = await request('/subscriptions/paid/decision', token, { method: 'POST', body: JSON.stringify({ target, decision }) })
+  return response.json()
+}
+

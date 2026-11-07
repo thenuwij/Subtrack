@@ -301,6 +301,8 @@ export interface CalendarMonthCharges extends SubscriptionForecast {
 }
 
 export interface PaidPayment {
+  target?: string
+  manual?: string | null
   subscription_id: string
   name: string
   category: Category
@@ -308,11 +310,13 @@ export interface PaidPayment {
   amount: number
   currency: string
   amount_in_base: number | null
-  status: 'confirmed' | 'expected' | 'unsorted'
+  status: 'confirmed' | 'expected' | 'unsorted' | 'skipped'
   kind: 'receipt' | 'schedule' | 'late_fee' | 'extra' | 'above_plan'
 }
 
 export interface PaidBill {
+  target?: string
+  manual?: string | null
   id: string
   subscription_id: string
   name: string
@@ -324,7 +328,7 @@ export interface PaidBill {
   paid: number
   paid_on: string | null
   owing: number | null
-  status: 'paid' | 'credit' | 'part_paid' | 'overdue' | 'due' | 'unknown'
+  status: 'paid' | 'credit' | 'part_paid' | 'overdue' | 'due' | 'unknown' | 'carried'
   late_fee: number | null
 }
 

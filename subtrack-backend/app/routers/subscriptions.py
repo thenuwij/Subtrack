@@ -983,3 +983,40 @@ def delete_subscription(
     db.delete(sub)
     db.commit()
     return {"message": "Deleted successfully"}
+
+
+class PaymentDecisionInput(BaseModel):
+    target: str = Field(max_length=100)
+    decision: Literal["paid", "skipped", "undo"]
+
+
+@router.post("/paid/decision")
+def decide_payment(body: PaymentDecisionInput, user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+    from sqlalchemy.exc import IntegrityError
+
+    from app.models import PaymentDecision
+    from app.services.paid_history import paid_history
+    history = paid_history(db, user_id, months=24)
+    item = next((item for item in history["payments"] + history["bills"] if item.get("target") == body.target), None)
+    existing = db.query(PaymentDecision).filter_by(user_id=user_id, target=body.target).first()
+    if body.decision == "undo":
+        if existing:
+            db.delete(existing)
+    else:
+        if not item:
+            raise HTTPException(404, "Payment occurrence not found")
+        if body.target.startswith("bill:") and body.decision == "skipped":
+            raise HTTPException(422, "Bills can be marked paid; their invoiced amount remains owed otherwise")
+        if existing:
+            existing.decision = body.decision
+        else:
+            db.add(PaymentDecision(user_id=user_id, target=body.target, decision=body.decision))
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.query(PaymentDecision).filter_by(user_id=user_id, target=body.target).one()
+        existing.decision = body.decision
+        db.commit()
+    return {"saved": True}
+
