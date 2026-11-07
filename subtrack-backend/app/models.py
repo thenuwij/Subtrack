@@ -163,6 +163,11 @@ class Subscription(Base):
     # charges before ``trial_ends_at`` cost this instead of nothing; ``amount``
     # is still the full price from that date on.
     intro_amount = Column(Numeric(12, 2), nullable=True)
+    # Variable bills (electricity, water): the last few billed amounts, newest
+    # last, and the date of the latest one. ``amount`` is their average, so a
+    # new bill updates the estimate instead of asking about a "price change".
+    bill_history = Column(JSON, nullable=True)
+    last_bill_at = Column(DateTime, nullable=True)
     status = Column(String(24), nullable=False, default="active")
     paused_until = Column(DateTime, nullable=True)
     cancellation_effective_at = Column(DateTime, nullable=True)
