@@ -27,6 +27,8 @@ jobs:
         env:
           API_URL: ${{ secrets.SUBTRACK_API_URL }}
         run: |
+          # Tolerate a missing https:// or a trailing slash in the secret.
+          API_URL="https://${API_URL#*://}"; API_URL="${API_URL%/}"
           # The free Render plan sleeps when idle; waking can take a minute.
           for attempt in $(seq 1 12); do
             if curl -fsS --max-time 20 "$API_URL/" > /dev/null; then
@@ -41,6 +43,7 @@ jobs:
           API_URL: ${{ secrets.SUBTRACK_API_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          API_URL="https://${API_URL#*://}"; API_URL="${API_URL%/}"
           for round in $(seq 1 40); do
             response=$(curl -fsS --max-time 30 -X POST \
               -H "X-Cron-Secret: $CRON_SECRET" \
