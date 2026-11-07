@@ -625,10 +625,11 @@ export default function ReviewPage() {
                 : item.existing_subscription_id
                   ? preservedSplitAmount(item, 'current') : item.amount)
               const isShared = myAmount < item.amount
-              const isPriceChange = item.existing_subscription_id !== null
+              const isIntro = item.intro_amount != null && item.trial_ends_at !== null
+              const isPriceChange = item.existing_subscription_id !== null && !isIntro
               const rose =
                 item.previous_amount !== null && item.amount > item.previous_amount
-              const isTrial = item.trial_ends_at !== null
+              const isTrial = item.trial_ends_at !== null && !isIntro
               const detectedTrialIsPast = Boolean(
                 item.trial_ends_at
                   && storedDateKey(item.trial_ends_at) < todayUtcDateKey(),
@@ -638,7 +639,7 @@ export default function ReviewPage() {
               )
                 ? trialEndDates[item.id]
                 : detectedTrialIsPast ? '' : storedDateKey(item.trial_ends_at)
-              const trialWillBeSaved = Boolean(trialEndDateValue)
+              const trialWillBeSaved = isTrial && Boolean(trialEndDateValue)
               const cadenceDraft = cadenceDrafts[item.id]
               const suggested = suggestedCadence(item)
               const usingSuggestion = !cadenceDraft && !item.interval_unit
@@ -666,12 +667,12 @@ export default function ReviewPage() {
                 || Boolean(item.existing_subscription_id || item.similar_subscription_id)
               // "Is this your X payment?" — offered for a name match the user hasn't
               // rejected, and for an already-linked payment whose charge was higher.
-              const askSame = tab === 'pending' && !item.cancelled
+              const askSame = tab === 'pending' && !item.cancelled && !isIntro
                 && Boolean(item.similar_subscription_id) && !item.existing_subscription_id
                 && !notSame.has(item.id)
               const linkedRegular = item.existing_subscription_id
                 ? (item.current_full_amount ?? item.current_amount) : null
-              const askWhyHigher = tab === 'pending' && !item.cancelled
+              const askWhyHigher = tab === 'pending' && !item.cancelled && !isIntro
                 && Boolean(item.existing_subscription_id)
                 && linkedRegular !== null && item.amount > linkedRegular + 0.005
               const sameTargetId = askSame ? item.similar_subscription_id : item.existing_subscription_id
@@ -734,6 +735,8 @@ export default function ReviewPage() {
                             )}</>
                           ) : null}
                         </p>
+                      ) : isIntro ? (
+                        <p className="text-sm text-muted-foreground">{formatCurrency(item.intro_amount!, item.currency)} · {cadenceText.toLowerCase()} during the offer</p>
                       ) : isTrial && item.amount <= 0 ? (
                         <div className="max-w-xs space-y-1.5">
                           <label htmlFor={`trial-price-${item.id}`} className="text-xs font-medium text-foreground">
@@ -774,9 +777,10 @@ export default function ReviewPage() {
                         </p>
                       )}
 
-                      {isTrial ? (
+                      {isIntro && item.existing_subscription_id ? <p className="text-xs leading-5 text-muted-foreground">Saves this introductory offer on your existing {item.current_name ?? 'payment'}. The higher price is scheduled for later; it is not a receipt for that amount.</p> : null}
+                      {isTrial || isIntro ? (
                         <div className="grid max-w-sm gap-1.5 rounded-xl border border-border bg-muted/20 p-3">
-                          <Label htmlFor={`detected-trial-end-${item.id}`}>Trial end date</Label>
+                          <Label htmlFor={`detected-trial-end-${item.id}`}>{isIntro ? 'Introductory price ends' : 'Trial end date'}</Label>
                           {tab === 'pending' ? (
                             <Input
                               id={`detected-trial-end-${item.id}`}
@@ -801,7 +805,9 @@ export default function ReviewPage() {
                           }`}>
                             {detectedTrialIsPast
                               ? 'The detected date has passed. Enter a corrected future date, or leave it blank to approve this as an already-converted recurring payment.'
-                              : trialWillBeSaved
+                              : isIntro
+                                ? 'Keep paying the introductory price until this date. The regular price applies afterwards.'
+                                : trialWillBeSaved
                                 ? 'Approving creates a dashboard cancellation reminder 7 days before this date.'
                                 : 'Leave this blank only if the trial has already converted.'}
                           </p>
@@ -991,7 +997,7 @@ export default function ReviewPage() {
                         {item.sender_domain}
                       </p>
 
-                      {item.previous_amount !== null && !item.cancelled && (
+                      {item.previous_amount !== null && !item.cancelled && !isIntro && (
                         <p
                           className="flex items-center gap-1 text-xs font-medium"
                           style={{ color: rose ? 'var(--increase)' : 'var(--decrease)' }}
@@ -1272,7 +1278,7 @@ export default function ReviewPage() {
                               disabled={busy !== null}
                             >
                               <Check className="mr-1 h-3.5 w-3.5" />
-                              {item.cancelled ? 'Cancel payment' : isPriceChange ? 'Update' : 'Add'}
+                              {item.cancelled ? 'Cancel payment' : item.existing_subscription_id ? isIntro ? 'Save offer' : 'Update' : 'Add'}
                             </Button>
                           ) : null}
                           <Button

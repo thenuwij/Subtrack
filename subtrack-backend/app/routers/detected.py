@@ -411,7 +411,7 @@ def apply_approval(
     next_due = overrides.next_due \
         if next_due_override_supplied else detection.next_due
     next_due = utc_naive(next_due) if next_due else None
-    if trial_end:
+    if trial_end and detection.intro_amount is None:
         next_due = trial_end
         next_due_supplied = True
     if next_due and next_due.date() < utcnow().date():
@@ -514,7 +514,8 @@ def apply_approval(
                 currency=before_currency,
             )
             log_change(db, sub, ChangeKind.added, None, after)
-        elif after != before:
+        elif after != before and sub.intro_amount is None:
+            # Saving a future post-offer price is not a price rise charged today.
             log_change(db, sub, ChangeKind.price_change, before, after)
     else:
         split = resolve_split(billed, overrides.share_ratio, overrides.share_amount)

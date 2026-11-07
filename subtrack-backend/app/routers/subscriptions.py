@@ -1030,7 +1030,14 @@ def ways_to_save(user_id: str = Depends(verify_token), db: Session = Depends(get
     overview = financial_overview(db, user_id)
     changes = commitment_changes(db, user_id, "last_90_days")
     history = paid_history(db, user_id)
-    soon = datetime.utcnow().date() + timedelta(days=30)
+    today = datetime.utcnow().date()
+    soon = today + timedelta(days=30)
+    intro_offers = [{"id": str(sub.id), "name": sub.name,
+        "trial_ends_at": sub.trial_ends_at.isoformat(), "price_after_trial": float(sub.amount),
+        "currency": sub.currency} for sub in db.query(Subscription).filter(
+            Subscription.user_id == user_id, Subscription.is_active == True,  # noqa: E712
+            Subscription.intro_amount.isnot(None), Subscription.trial_ends_at.isnot(None),
+        ) if today <= sub.trial_ends_at.date() <= soon]
     return {
         "base_currency": overview["base_currency"],
         "monthly_income": overview["monthly_income"],
@@ -1039,7 +1046,7 @@ def ways_to_save(user_id: str = Depends(verify_token), db: Session = Depends(get
         "currency_conversion": overview["currency_conversion"],
         "unconverted_count": len(overview["unconverted_payments"]),
         "price_rises": [c for c in changes["changes"] if c["kind"] == "price_change" and c["old_monthly_native"] is not None and c["new_monthly_native"] is not None and c["new_monthly_native"] > c["old_monthly_native"]],
-        "trials": [t for t in overview["active_trials"] if datetime.fromisoformat(t["trial_ends_at"]).date() <= soon],
+        "trials": [t for t in overview["active_trials"] + intro_offers if datetime.fromisoformat(t["trial_ends_at"]).date() <= soon],
         "late_fees_total": history["late_fees_total"],
         "above_plan_total": history["above_plan_total"],
     }
