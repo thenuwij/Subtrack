@@ -17,6 +17,7 @@ function monthLabel(date: string) {
 
 function rowNote(row: PaidPayment) {
   if (row.kind === 'late_fee') return 'Late fee'
+  if (row.kind === 'late') return 'Paid late'
   if (row.kind === 'extra') return 'Extra charge'
   return row.status === 'confirmed' ? 'Receipt in Gmail' : 'Expected, no receipt seen'
 }
@@ -42,6 +43,18 @@ export default function PaidPage() {
         </div>
         <PaymentsTabs />
       </div>
+
+      {query.data && query.data.late_fees_total > 0 ? (
+        <section className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-5 sm:p-6">
+          <p className="text-[13px] font-medium text-amber-700 dark:text-amber-300">Lost to late fees</p>
+          <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums text-foreground">
+            {formatCurrency(query.data.late_fees_total, base)}
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            In the last 3 months, from payments made after their due date.
+          </p>
+        </section>
+      ) : null}
 
       <div className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
@@ -93,7 +106,9 @@ export default function PaidPage() {
                         {formatStoredDate(row.date, { weekday: 'short', day: 'numeric', month: 'short' })} · {rowNote(row)}
                       </span>
                     </span>
-                    <span className="shrink-0 text-[15px] font-semibold tabular-nums text-foreground">
+                    <span className={`shrink-0 text-[15px] font-semibold tabular-nums ${
+                      row.kind === 'late_fee' ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'
+                    }`}>
                       {row.status === 'expected' ? '≈ ' : ''}{formatCurrency(row.amount, row.currency)}
                     </span>
                   </li>

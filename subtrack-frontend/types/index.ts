@@ -308,12 +308,13 @@ export interface PaidPayment {
   currency: string
   amount_in_base: number | null
   status: 'confirmed' | 'expected'
-  kind: 'receipt' | 'schedule' | 'late_fee' | 'extra'
+  kind: 'receipt' | 'late' | 'schedule' | 'late_fee' | 'extra'
 }
 
 export interface PaidHistory {
   base_currency: string
   since: string
+  late_fees_total: number
   payments: PaidPayment[]
 }
 

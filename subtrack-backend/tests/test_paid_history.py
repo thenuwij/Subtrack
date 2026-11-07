@@ -114,6 +114,38 @@ class PaidHistoryTests(unittest.TestCase):
         rows = [(r["amount"], r["status"]) for r in self.history() if r["name"] == "Rent" and r["date"] == "2026-11-02"]
         self.assertEqual(rows, [(320.0, "confirmed")])
 
+    def phone(self):
+        sub = self.sub("Vodafone", 58.0, None, datetime(2026, 11, 2))
+        sub.category = Category.phone_internet
+        self.db.commit()
+        return sub
+
+    def test_late_payment_covering_two_months_counts_the_extra_as_a_fee(self):
+        self.phone()
+        self.receipt("mybill.vodafone.com.au", date(2026, 10, 25), 140.59)
+        result = paid_history(self.db, "owner", months=3, today=TODAY)
+        rows = [(r["date"], r["kind"], r["amount"]) for r in result["payments"] if r["name"] == "Vodafone"]
+        self.assertIn(("2026-10-25", "late_fee", 24.59), rows)
+        self.assertEqual(result["late_fees_total"], 24.59)
+
+    def test_on_time_exact_payment_has_no_fee(self):
+        self.phone()
+        self.receipt("mybill.vodafone.com.au", date(2026, 10, 2), 58.0)
+        self.assertEqual(paid_history(self.db, "owner", months=3, today=TODAY)["late_fees_total"], 0)
+
+    def test_streaming_never_gets_late_fees(self):
+        self.receipt("netflix.com", date(2026, 10, 12), 30.0)
+        self.assertEqual(paid_history(self.db, "owner", months=3, today=TODAY)["late_fees_total"], 0)
+
+    def test_pay_later_receipts_are_not_late_payments(self):
+        plus = self.sub("Afterpay", 9.99, None, datetime(2026, 11, 26))
+        plus.category = Category.memberships
+        self.db.commit()
+        self.receipt("afterpay.com", date(2026, 10, 20), 23.50, message="ap1")
+        result = paid_history(self.db, "owner", months=3, today=TODAY)
+        self.assertEqual(result["late_fees_total"], 0)
+        self.assertNotIn("2026-10-20", [r["date"] for r in result["payments"]])
+
     def test_unknown_sender_receipts_are_ignored(self):
         self.receipt("randomshop.com", date(2026, 10, 2), 50.0)
         self.assertNotIn("2026-10-02", [r["date"] for r in self.history()])

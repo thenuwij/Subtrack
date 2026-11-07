@@ -43,14 +43,51 @@ CATEGORY_SENDERS = {
 }
 
 
+# Bills that charge a late fee when paid late. Anything paid above the
+# regular price is a fee, and one late payment can cover several periods.
+FEE_CATEGORIES = {"phone_internet", "utilities", "fitness", "memberships", "housing", "insurance"}
+# How long after a due date a late payment can still be the one that paid it.
+LATE_WINDOW_DAYS = 70
+MIN_FEE = 0.5
+
+
+# Pay-later and payment platforms send a receipt for every purchase, so their
+# receipts only ever match a payment at its exact price.
+PAY_LATER_SENDERS = ("afterpay", "zip.co", "klarna", "paypal", "humm", "openpay", "laybuy")
+
+
+def _pay_later(receipt: GmailReceipt) -> bool:
+    return any(name in receipt.intermediary.lower() for name in PAY_LATER_SENDERS)
+
+
+def _charges_late_fees(sub: Subscription) -> bool:
+    return not _is_variable(sub) and getattr(sub.category, "value", sub.category) in FEE_CATEGORIES
+
+
+def _split_payment(sub: Subscription, amount: float) -> tuple[int, float]:
+    """How many periods a receipt paid for, and the late fee on top."""
+    regular = _regular(sub)
+    if not regular or not _charges_late_fees(sub) or amount < regular + MIN_FEE:
+        return 1, 0.0
+    periods = max(1, int(amount / regular + 0.05))
+    fee = round(amount - periods * regular, 2)
+    return periods, fee if fee >= MIN_FEE else 0.0
+
+
 def _is_variable(sub: Subscription) -> bool:
     return getattr(sub.amount_type, "value", sub.amount_type) == "variable"
 
 
-def _amount_fits(sub: Subscription, amount: float) -> bool:
+def _amount_fits(sub: Subscription, amount: float, receipt: GmailReceipt | None = None) -> bool:
     """Close to the regular (whole-bill) price, or to an intro price."""
     tolerance = 0.6 if _is_variable(sub) else 0.1
     if _close(sub, amount, tolerance):
+        return True
+    # A late payment: one or more periods plus fees.
+    regular = _regular(sub)
+    if receipt is not None and _pay_later(receipt):
+        return False
+    if _charges_late_fees(sub) and regular and regular * 0.9 <= amount <= regular * 3.2:
         return True
     intro = float(sub.intro_amount) if sub.intro_amount is not None else None
     return intro is not None and abs(intro - amount) <= max(intro * tolerance, 0.05)
@@ -92,13 +129,13 @@ def _receipt_owner(
     if len(domain_links) == 1:
         return next(iter(domain_links.values()))
     amount = float(receipt.amount)
-    candidates = [sub for sub in by_domain.get(receipt.intermediary, []) if _amount_fits(sub, amount)]
+    candidates = [sub for sub in by_domain.get(receipt.intermediary, []) if _amount_fits(sub, amount, receipt)]
     if candidates:
         return min(candidates, key=lambda sub: abs(_regular(sub) - amount))
     # Payments added by hand have no sender on record, so fall back to the
     # name. A name match alone is weaker, so the amount must be close too
     # (variable bills such as electricity are allowed to move more).
-    named = [sub for sub in active if _named_in(sub, receipt) and _amount_fits(sub, amount)]
+    named = [sub for sub in active if _named_in(sub, receipt) and _amount_fits(sub, amount, receipt)]
     if not named:
         return None
     return min(named, key=lambda sub: abs(_regular(sub) - amount))
@@ -157,8 +194,19 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
 
     window_start = datetime.combine(start, datetime.min.time())
     window_end = datetime.combine(today, datetime.max.time())
+    recorded_fees = [
+        extra for extra in db.query(PaymentExtra).filter(
+            PaymentExtra.user_id == user_id,
+            PaymentExtra.charged_at >= window_start,
+        )
+    ]
+
     for sub in subs:
-        unused = sorted(receipts.get(sub.id, []), key=lambda r: r.received_on)
+        # Each receipt can pay one or more periods; track what's left on it.
+        left = []
+        for receipt in sorted(receipts.get(sub.id, []), key=lambda r: r.received_on):
+            periods, fee = _split_payment(sub, float(receipt.amount))
+            left.append([receipt, periods, fee])
         due_dates: list[date] = []
         if sub.next_due is not None:
             anchor = rewind_anchor(sub.next_due, sub, window_start)
@@ -171,26 +219,47 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
         # Before the payment was added, a missing receipt proves nothing, so
         # only receipts (not "expected" rows) are shown for that period.
         tracked_since = utc_naive(sub.created_at).date() if sub.created_at else start
+        late_ok = LATE_WINDOW_DAYS if _charges_late_fees(sub) else MATCH_WINDOW_DAYS
         for due in due_dates:
             match = next(
-                (r for r in unused if abs((r.received_on - due).days) <= MATCH_WINDOW_DAYS), None,
+                (entry for entry in left
+                 if entry[1] > 0 and -MATCH_WINDOW_DAYS <= (entry[0].received_on - due).days <= late_ok),
+                None,
             )
             if match is not None:
-                unused.remove(match)
-                rows.append(row(sub, match.received_on, _your_part(sub, match), match.currency, "confirmed", "receipt"))
+                receipt = match[0]
+                match[1] -= 1
+                # "Late" means it cost a fee, not just a few days' drift.
+                late = bool(match[2])
+                rows.append(row(sub, receipt.received_on, float(sub.amount) if late or match[2] else _your_part(sub, receipt),
+                                receipt.currency, "confirmed", "late" if late else "receipt"))
             elif sub.is_active and due >= tracked_since:
                 rows.append(row(sub, due, float(sub.amount), sub.currency, "expected", "schedule"))
-        for receipt in unused:
-            rows.append(row(sub, receipt.received_on, _your_part(sub, receipt), receipt.currency, "confirmed", "receipt"))
+        for receipt, periods, fee in left:
+            used = _split_payment(sub, float(receipt.amount))[0] - periods
+            if used == 0:
+                # No due date explains it (e.g. the schedule is off); still paid.
+                rows.append(row(sub, receipt.received_on, _your_part(sub, receipt) if not fee else float(sub.amount),
+                                receipt.currency, "confirmed", "receipt"))
+            already_recorded = any(
+                extra.subscription_id == sub.id
+                and abs((utc_naive(extra.charged_at).date() - receipt.received_on).days) <= MATCH_WINDOW_DAYS
+                for extra in recorded_fees
+            )
+            if fee and not already_recorded:
+                rows.append(row(sub, receipt.received_on, fee, receipt.currency, "confirmed", "late_fee"))
 
-    for extra in db.query(PaymentExtra).filter(
-        PaymentExtra.user_id == user_id,
-        PaymentExtra.charged_at >= window_start,
-    ):
+    for extra in recorded_fees:
         sub = by_id.get(extra.subscription_id)
         if sub is not None:
             rows.append(row(sub, utc_naive(extra.charged_at).date(), float(extra.amount),
                             extra.currency, "confirmed", "late_fee" if extra.reason == "late_fee" else "extra"))
 
     rows.sort(key=lambda r: (r["date"], r["name"].casefold()), reverse=True)
-    return {"base_currency": currency.base, "since": start.isoformat(), "payments": rows}
+    late_fees = round(sum(r["amount_in_base"] or 0 for r in rows if r["kind"] == "late_fee"), 2)
+    return {
+        "base_currency": currency.base,
+        "since": start.isoformat(),
+        "late_fees_total": late_fees,
+        "payments": rows,
+    }
