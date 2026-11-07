@@ -194,3 +194,25 @@ class ScheduledEndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StuckScanTests(unittest.TestCase):
+    def test_a_stuck_scan_does_not_count_as_running(self):
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        Session = sessionmaker(bind=engine)
+        db = Session()
+        long_ago = utcnow() - timedelta(hours=3)
+        db.add(GmailAccount(user_id="stuck", email_address="s@x", refresh_token_encrypted="e",
+                            scan_status="running", scan_started_at=long_ago, scan_heartbeat_at=long_ago,
+                            auto_scan_enabled=False))
+        db.commit()
+        try:
+            with patch.object(gmail_router.settings, "cron_secret", "s3cret"), patch.object(
+                gmail_router, "gmail_is_configured", return_value=True
+            ):
+                result = gmail_router.run_scheduled_scans(x_cron_secret="s3cret", db=db)
+            self.assertEqual(result["running"], 0)
+        finally:
+            db.close()
+            engine.dispose()
