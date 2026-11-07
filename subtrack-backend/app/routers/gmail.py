@@ -48,7 +48,7 @@ from app.models import (
     Subscription,
 )
 from app.services.gmail_access import revoke_encrypted_refresh_token
-from app.services.payment_links import linked_subscription_id, load_links
+from app.services.payment_links import is_same_finding, linked_subscription_id, load_links
 from app.services.recurrence import Cadence, cadence_for, legacy_cycle_for, utc_naive
 
 logger = logging.getLogger(__name__)
@@ -688,6 +688,17 @@ def _match_detection(rows: list[DetectedSubscription], found) -> DetectedSubscri
                 and abs(row.amount - found.previous_amount) <= AMOUNT_TOLERANCE \
                 and row.status == DetectionStatus.pending:
             return row
+    # The analyzer named the same item a little differently this time
+    # ("Google One 100GB" vs "Google One 100 GB"). Only pending suggestions are
+    # merged, and only when the amounts agree (or the bill varies anyway).
+    for row in rows:
+        if row.status != DetectionStatus.pending or not is_same_finding(
+            row.merchant, row.product_key, found.merchant, found.product_key,
+        ):
+            continue
+        variable = _enum_value(row.amount_type) == "variable" or found.amount_type == "variable"
+        if variable or abs(row.amount - found.amount) <= max(AMOUNT_TOLERANCE, row.amount * 0.1):
+            return row
     return None
 
 
@@ -976,6 +987,37 @@ def _apply_stated_terms(findings, terms_by_domain: dict) -> None:
                 found.cadence_evidence = "Billed on a set weekday each month."
 
 
+def remove_duplicate_findings(db, user_id: str) -> int:
+    """Delete pending findings that repeat another pending finding.
+
+    Keeps the most recent one of each item; dismissed and approved findings
+    are left alone so their history (and "don't suggest again") stays.
+    """
+    pending = db.query(DetectedSubscription).filter(
+        DetectedSubscription.user_id == user_id,
+        DetectedSubscription.status == DetectionStatus.pending,
+    ).order_by(DetectedSubscription.detected_at.desc()).all()
+    kept: list[DetectedSubscription] = []
+    removed = 0
+    for row in pending:
+        same = next((
+            keep for keep in kept
+            if is_same_finding(keep.merchant, keep.product_key, row.merchant, row.product_key)
+            and (
+                "variable" in (_enum_value(keep.amount_type), _enum_value(row.amount_type))
+                or abs(keep.amount - row.amount) <= max(AMOUNT_TOLERANCE, keep.amount * 0.1)
+            )
+        ), None)
+        if same is None:
+            kept.append(row)
+        else:
+            db.delete(row)
+            removed += 1
+    if removed:
+        db.commit()
+    return removed
+
+
 def _save_bills(db, user_id: str, candidates) -> None:
     """Keep each bill read from email (amount owing, due date, stated fees)."""
     bills = [c for c in candidates if c.bill_amount is not None or c.bill_due_on is not None]
@@ -1189,6 +1231,7 @@ def _run_scan(user_id: str, run_id: str):
                     pending[i].similar_subscription_id = active[j].id
                     pending[i].similar_reason = reason[:300]
 
+        remove_duplicate_findings(db, user_id)
         ensure_current()
         partial = bool(scan_result.truncated or outcome.truncated)
         account.scan_status = "done"
