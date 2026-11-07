@@ -722,3 +722,13 @@ export async function decidePayment(token: string, target: string, decision: 'pa
   return response.json()
 }
 
+export interface SavingsOverview {
+  base_currency: string; monthly_income: number | null; monthly_total: number; income_share: number | null; unconverted_count: number
+  price_rises: {id: string; name: string; old_monthly_native: number; new_monthly_native: number; native_currency: string}[]
+  duplicates: {temporarily_unavailable?: boolean; suggestions: {keep: {id: string; name: string}; possible_duplicate: {id: string; name: string}}[]}
+  trials: {id: string; name: string; trial_ends_at: string; price_after_trial: number; currency: string}[]
+  late_fees_total: number; above_plan_total: number
+}
+export async function getWaysToSave(token: string): Promise<SavingsOverview> {
+  return (await request('/subscriptions/ways-to-save', token)).json()
+}
