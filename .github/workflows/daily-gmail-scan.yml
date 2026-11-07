@@ -3,7 +3,7 @@
 # reports how many are still waiting, so this keeps calling until none are.
 #
 # Needs two repository secrets:
-#   SUBTRACK_API_URL  e.g. https://subtrack-api.onrender.com
+#   SUBTRACK_API_URL  the API address, e.g. https://subtrack-api.twij.app
 #   CRON_SECRET       the same value as the API's CRON_SECRET
 name: Daily Gmail scan
 
@@ -46,6 +46,12 @@ jobs:
               -H "X-Cron-Secret: $CRON_SECRET" \
               "$API_URL/gmail/scheduled-scan")
             echo "Round $round: $response"
+            # Anything but the API's JSON means SUBTRACK_API_URL points at the
+            # wrong place (e.g. the website). Stop now instead of looping.
+            if ! echo "$response" | jq -e 'has("remaining") and has("running")' > /dev/null 2>&1; then
+              echo "::error::Unexpected reply from $API_URL/gmail/scheduled-scan. Check SUBTRACK_API_URL is the API address, not the website."
+              exit 1
+            fi
             remaining=$(echo "$response" | jq '.remaining')
             running=$(echo "$response" | jq '.running')
             if [ "$remaining" -eq 0 ] && [ "$running" -eq 0 ]; then
