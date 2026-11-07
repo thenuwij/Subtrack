@@ -74,6 +74,12 @@ class ReceiptCandidate:
     bill_amount: float | None = None
     bill_due_on: str | None = None
     bill_late_fee: float | None = None
+    # Billing terms stated in words (intro price, "first Thursday of the month").
+    intro_amount: float | None = None
+    intro_ends_on: str | None = None
+    full_amount: float | None = None
+    stated_next_due: str | None = None
+    pdf_attachment_id: str | None = None   # a bill's attached PDF, read only if needed
 
 
 @dataclass
@@ -130,11 +136,20 @@ def _collect_parts(payload: dict, by_type: dict[str, list[str]]) -> None:
         by_type.setdefault(payload.get("mimeType", ""), []).append(text)
 
 
+_HAS_MONEY = re.compile(r"[$£€¥]\s?\d|\b(?:AUD|USD|GBP|EUR)\s?\d")
+
+
 def _extract_body_text(payload: dict) -> str:
     """Readable body text. Prefers text/plain, falls back to cleaned HTML."""
     by_type: dict[str, list[str]] = {}
     _collect_parts(payload, by_type)
 
+    plain = "\n".join(by_type.get("text/plain", []))
+    rich = "\n".join(by_type.get("text/html", []))
+    # Some receipts (Apple's tax invoices) leave the items and prices out of
+    # the plain-text version entirely; use the HTML when only it has amounts.
+    if plain and rich and not _HAS_MONEY.search(plain) and _HAS_MONEY.search(rich):
+        return rich
     for mime in ("text/plain", "text/html"):
         if by_type.get(mime):
             return "\n".join(by_type[mime])
@@ -255,7 +270,72 @@ def _to_candidate(message: dict) -> ReceiptCandidate:
         confidence=confidence,
         excerpt=_excerpt(body),
         **_bill_fields(subject, body),
+        **_term_fields(f"{subject}\n{body}", received.date()),
+        pdf_attachment_id=_pdf_attachment(message["payload"]),
     )
+
+
+def _pdf_attachment(payload: dict) -> str | None:
+    if (payload.get("filename") or "").lower().endswith(".pdf"):
+        return payload.get("body", {}).get("attachmentId")
+    for part in payload.get("parts", []) or []:
+        found = _pdf_attachment(part)
+        if found:
+            return found
+    return None
+
+
+# Bills whose email left out the due date: read it from the attached PDF.
+MAX_PDF_BILLS = 8
+PDF_BUDGET_SECONDS = 10
+
+
+def _read_bill_pdfs(service, candidates: list, deadline: float | None) -> None:
+    from io import BytesIO
+
+    from pypdf import PdfReader
+
+    from app.gmail.bills import read_bill
+
+    pending = [
+        c for c in candidates
+        if c.bill_amount is not None and not c.bill_due_on and c.pdf_attachment_id
+    ][:MAX_PDF_BILLS]
+    for candidate in pending:
+        if deadline is not None and time.monotonic() >= deadline:
+            return
+        try:
+            attachment = service.users().messages().attachments().get(
+                userId="me", messageId=candidate.message_id, id=candidate.pdf_attachment_id,
+            ).execute()
+            data = base64.urlsafe_b64decode(attachment["data"].encode())
+            pages = PdfReader(BytesIO(data)).pages[:2]
+            text = "\n".join(page.extract_text() or "" for page in pages)
+        except Exception as exc:  # noqa: BLE001 - a bad PDF must not stop the scan
+            logger.warning("Could not read a bill PDF (%s)", type(exc).__name__)
+            continue
+        bill = read_bill(candidate.subject, text)
+        if bill is not None:
+            if bill.due_on:
+                candidate.bill_due_on = bill.due_on.isoformat()
+            if bill.late_fee and candidate.bill_late_fee is None:
+                candidate.bill_late_fee = bill.late_fee
+
+
+def _term_fields(text: str, received) -> dict:
+    from app.gmail.terms import read_terms
+
+    terms = read_terms(text, received)
+    fields = {}
+    if terms.intro_amount is not None:
+        fields.update(
+            intro_amount=terms.intro_amount,
+            full_amount=terms.full_amount,
+            intro_ends_on=terms.intro_ends_on.isoformat() if terms.intro_ends_on else None,
+        )
+    if terms.next_due is not None:
+        fields["stated_next_due"] = terms.next_due.isoformat()
+    return fields
 
 
 def _bill_fields(subject: str, body: str) -> dict:
@@ -425,6 +505,8 @@ def scan(
         on_progress,
         deadline=deadline,
     )
+    # Its own small budget: the email fetch may have used all of its time.
+    _read_bill_pdfs(service, candidates, time.monotonic() + PDF_BUDGET_SECONDS)
     truncated = bool(
         listing_timed_out
         or fetch_timed_out

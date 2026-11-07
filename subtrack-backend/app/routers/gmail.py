@@ -900,6 +900,7 @@ def _apply_detections(db, user_id, subscriptions, existing_detections, detected,
         row.confidence = found.confidence
         row.charge_count = found.charge_count
         row.trial_ends_at = utc_naive(found.trial_ends_at) if found.trial_ends_at else None
+        row.intro_amount = found.intro_amount
         if found.cancelled:
             row.next_due = None
             row.due_date_confidence = "unknown"
@@ -942,6 +943,37 @@ def _is_payment_proof(candidate) -> bool:
     # A plain "Your electricity bill" is a request to pay, not proof of payment.
     is_bill = re.search(r"(?i)\bbill\b", candidate.subject or "")
     return not is_bill or bool(PROOF_OF_PAYMENT.search(text))
+
+
+def _terms_by_domain(candidates) -> dict:
+    """The latest email per sender that states its billing terms in words."""
+    found: dict = {}
+    for candidate in sorted(candidates, key=lambda c: c.date):
+        if candidate.intro_amount is not None or candidate.stated_next_due:
+            found[candidate.sender_domain] = candidate
+    return found
+
+
+def _apply_stated_terms(findings, terms_by_domain: dict) -> None:
+    """What an email says outright beats what the analyzer inferred."""
+    for found in findings:
+        source = terms_by_domain.get(found.sender_domain)
+        if source is None:
+            continue
+        if source.intro_amount is not None and source.intro_ends_on:
+            ends = datetime.fromisoformat(source.intro_ends_on)
+            if ends.date() > _utcnow().date():
+                found.intro_amount = source.intro_amount
+                found.amount = source.full_amount or found.amount
+                found.trial_ends_at = ends.replace(hour=12)
+        if source.stated_next_due:
+            found.next_due = datetime.fromisoformat(source.stated_next_due).replace(hour=12)
+            found.due_date_confidence = "high"
+            found.due_date_evidence = "The email states the debit day each month."
+            if found.interval_unit is None:
+                found.interval_unit, found.interval_count = "month", 1
+                found.cadence_confidence = "medium"
+                found.cadence_evidence = "Billed on a set weekday each month."
 
 
 def _save_bills(db, user_id: str, candidates) -> None:
@@ -1115,9 +1147,11 @@ def _run_scan(user_id: str, run_id: str):
         ).all()
 
         links = load_links(db, user_id)
+        terms_by_domain = _terms_by_domain(scan_result.candidates)
 
         def apply_batch(found):
             ensure_current()
+            _apply_stated_terms(found, terms_by_domain)
             _apply_detections(db, user_id, subscriptions, existing_detections, found, links)
             account.scan_heartbeat_at = _utcnow()
             db.commit()

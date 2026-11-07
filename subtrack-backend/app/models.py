@@ -391,6 +391,8 @@ class DetectedSubscription(Base):
     # Date of the latest charge seen in email, so a one-off extra can be
     # recorded on the day it actually happened.
     last_charge_at = Column(DateTime, nullable=True)
+    # A discounted intro price read from the email; trial_ends_at is when it ends.
+    intro_amount = Column(Numeric(12, 2), nullable=True)
     status = Column(Enum(DetectionStatus), default=DetectionStatus.pending, index=True)
     detected_at = Column(DateTime, server_default=func.now())
     resolved_at = Column(DateTime, nullable=True)

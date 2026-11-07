@@ -121,6 +121,7 @@ export interface DetectedSubscription {
   confidence: 'high' | 'medium'
   charge_count: number
   trial_ends_at: string | null
+  intro_amount?: number | null
   next_due: string | null
   due_date_confidence: 'high' | 'medium' | 'unknown'
   due_date_evidence: string | null

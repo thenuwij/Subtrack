@@ -701,6 +701,13 @@ export default function ReviewPage() {
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="font-semibold text-foreground">{item.merchant}</p>
+                        {item.intro_amount != null && item.trial_ends_at ? (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary tabular-nums">
+                            {formatCurrency(item.intro_amount, item.currency)} until{' '}
+                            {formatStoredDate(item.trial_ends_at, { day: 'numeric', month: 'short' })}, then{' '}
+                            {formatCurrency(item.amount, item.currency)}
+                          </span>
+                        ) : null}
 
                         {isPriceChange && (
                           <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
