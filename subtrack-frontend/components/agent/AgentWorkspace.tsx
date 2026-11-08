@@ -8,21 +8,18 @@ import {
   useState,
   type KeyboardEvent,
 } from 'react'
-import { useRouter } from 'next/navigation'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import {
   Archive,
   ArchiveRestore,
   ArrowDown,
-  ArrowLeft,
   Check,
   ChevronLeft,
   History,
   Eye,
   LoaderCircle,
   Maximize2,
-  Menu,
   MessageSquarePlus,
   Pencil,
   RotateCcw,
@@ -48,7 +45,6 @@ import type {
   AgentStreamEvent,
   AgentThread,
 } from '@/lib/agent/types'
-import { useStoredString } from '@/lib/hooks/useStoredState'
 import {
   agentPageLabel,
   useAgentPageContext,
@@ -68,7 +64,6 @@ import {
 import { getAccessToken } from '@/lib/auth/session'
 
 
-const ACTIVE_THREAD_KEY = 'subtrack:agent-active-thread'
 const suggestions = {
   dashboard: [
     'What changed in my recurring costs this month?',
@@ -188,12 +183,10 @@ export function AgentWorkspace({
   tokenProvider = accessToken,
   draftRequest,
 }: AgentWorkspaceProps) {
-  const router = useRouter()
   const pageContext = useAgentPageContext()
   const relevantPage = pageContext.source_page ?? pageContext.page
   const pageLabel = agentPageLabel(relevantPage)
-  const [activeThreadId, setActiveThreadId, clearActiveThreadId] =
-    useStoredString(ACTIVE_THREAD_KEY, '')
+  const [activeThreadId, setActiveThreadId] = useState('')
   const [threads, setThreads] = useState<AgentThread[]>([])
   const [messages, setMessages] = useState<AgentMessage[]>([])
   const [input, setInput] = useState('')
@@ -231,8 +224,8 @@ export function AgentWorkspace({
 
   const clearSelectedThread = useCallback(() => {
     activeThreadRef.current = ''
-    clearActiveThreadId()
-  }, [clearActiveThreadId])
+    setActiveThreadId('')
+  }, [])
 
   const loadThreads = useCallback(async (preferredId?: string) => {
     const requestId = ++threadLoadRef.current
@@ -242,14 +235,12 @@ export function AgentWorkspace({
       if (requestId !== threadLoadRef.current) return
       setThreads(result)
       const wanted = preferredId ?? activeThreadRef.current
-      if (wanted && result.some(thread => thread.id === wanted)) return
-      if (result[0]) selectActiveThread(result[0].id)
-      else clearSelectedThread()
+      if (wanted && !result.some(thread => thread.id === wanted)) clearSelectedThread()
     } catch (error) {
       if (requestId !== threadLoadRef.current) return
       setLoadError(error instanceof Error ? error.message : 'Could not load conversations.')
     }
-  }, [clearSelectedThread, selectActiveThread, showArchived, tokenProvider])
+  }, [clearSelectedThread, showArchived, tokenProvider])
 
   const loadMessages = useCallback(async (
     threadId: string,
@@ -620,26 +611,17 @@ export function AgentWorkspace({
   return (
     <div className="relative flex h-full min-h-0 flex-col overflow-hidden bg-card text-card-foreground md:rounded-3xl md:shadow-sm">
       <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-3">
-        {variant === 'page' ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => router.push('/dashboard')}
-            aria-label="Back to dashboard"
-          >
-            <ArrowLeft />
-          </Button>
-        ) : null}
         <Button
           variant="ghost"
           size="icon-sm"
           onClick={() => setShowHistory(value => !value)}
-          aria-label={showHistory ? 'Hide conversation history' : 'Show conversation history'}
+          aria-label={showHistory ? 'Hide past chats' : 'Show past chats'}
           aria-expanded={showHistory}
+          className="w-auto gap-1.5 px-2 text-xs"
         >
-          {showHistory ? <ChevronLeft /> : <Menu />}
+          {showHistory ? <ChevronLeft /> : <History />}
+          <span>Past chats</span>
         </Button>
-        <LogoMark className="h-7 w-7 shrink-0" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">
             {activeThread?.title ?? 'Subtrack assistant'}
@@ -653,9 +635,11 @@ export function AgentWorkspace({
           size="icon-sm"
           disabled={loading}
           onClick={() => void newConversation()}
-          aria-label="New conversation"
+          aria-label="New chat"
+          className="w-auto gap-1.5 px-2 text-xs"
         >
           <MessageSquarePlus />
+          <span>New chat</span>
         </Button>
         {variant === 'panel' && onOpenFullPage ? (
           <Button
@@ -678,7 +662,7 @@ export function AgentWorkspace({
         <aside className="absolute inset-y-14 left-0 z-20 flex w-[min(19rem,86%)] flex-col border-r border-border bg-card shadow-lg">
           <div className="flex items-center justify-between border-b border-border px-3 py-2">
             <div>
-              <p className="text-xs font-semibold">Conversation history</p>
+              <p className="text-xs font-semibold">Past chats</p>
               <button
                 type="button"
                 disabled={loading}
