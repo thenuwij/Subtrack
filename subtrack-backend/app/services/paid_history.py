@@ -22,9 +22,24 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.agent.finance import CurrencyContext
-from app.models import Bill, GmailReceipt, PaymentDecision, PaymentExtra, SenderLink, Subscription
+from app.models import (
+    Bill,
+    ChangeKind,
+    GmailReceipt,
+    PaymentDecision,
+    PaymentExtra,
+    SenderLink,
+    Subscription,
+    SubscriptionChange,
+)
 from app.services.payment_links import merchant_key, name_words
-from app.services.recurrence import forecast_end_for, occurrences_between, rewind_anchor, utc_naive
+from app.services.recurrence import (
+    forecast_end_for,
+    monthly_equivalent,
+    occurrences_between,
+    rewind_anchor,
+    utc_naive,
+)
 
 MATCH_WINDOW_DAYS = 4
 MIN_ABOVE_PLAN = 0.5
@@ -205,6 +220,23 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
     stored = db.query(PaymentDecision).filter(PaymentDecision.user_id == user_id).all()
     decisions = {d.target: d.decision for d in stored}
     paid_amounts = {d.target: float(d.amount) for d in stored if d.decision == "paid" and d.amount is not None}
+    price_changes: dict = {}
+    for change in db.query(SubscriptionChange).filter(
+        SubscriptionChange.user_id == user_id,
+        SubscriptionChange.kind == ChangeKind.price_change,
+    ).order_by(SubscriptionChange.changed_at):
+        price_changes.setdefault(change.subscription_id, []).append(change)
+
+    def price_on(sub: Subscription, when: date) -> float:
+        """The price a past date had: the old price of the first change made after it."""
+        per_month = monthly_equivalent(1.0, sub)
+        for change in price_changes.get(sub.id, []):
+            if change.changed_at is None or change.changed_at.date() <= when:
+                continue
+            if change.old_monthly is None or change.currency != sub.currency or not per_month:
+                break
+            return round(change.old_monthly / per_month, 2)
+        return float(sub.amount)
     by_id = {sub.id: sub for sub in subs}
     links = {
         (link.sender_domain, link.merchant_key): by_id.get(link.subscription_id)
@@ -344,7 +376,7 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
                 target = f"payment:{sub.id}:{due.isoformat()}"
                 manual = decisions.get(target)
                 paid_amount = paid_amounts.get(target)
-                rows.append(row(sub, due, paid_amount if paid_amount is not None else float(sub.amount), sub.currency,
+                rows.append(row(sub, due, paid_amount if paid_amount is not None else price_on(sub, due), sub.currency,
                     "confirmed" if manual == "paid" else "skipped" if manual == "skipped" else "expected",
                     "schedule", target=target, manual=manual, paid_amount=paid_amount))
         for receipt in matched + unused:

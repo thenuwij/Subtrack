@@ -46,6 +46,20 @@ class PaymentAndEmailTests(unittest.TestCase):
         self.assertIsNone(row["paid_amount"])
         self.assertEqual(row["amount"], float(self.sub.amount))
 
+    def test_past_payments_keep_the_price_they_had_then(self):
+        from app.models import ChangeKind, SubscriptionChange
+
+        self.sub.amount = 9.99
+        self.db.add(SubscriptionChange(
+            user_id="owner", subscription_id=self.sub.id, name="Netflix", kind=ChangeKind.price_change,
+            old_monthly=20.99, new_monthly=9.99, currency=self.sub.currency, changed_at=datetime(2026, 11, 5),
+        ))
+        self.db.commit()
+        rows = paid_history(self.db, "owner", today=date(2026, 11, 20))["payments"]
+        by_date = {r["date"]: r["amount"] for r in rows if r["kind"] == "schedule"}
+        self.assertEqual(by_date["2026-10-12"], 20.99)
+        self.assertEqual(by_date["2026-11-12"], 9.99)
+
     def test_amount_is_only_accepted_for_paid_payments(self):
         target = f"payment:{self.sub.id}:2026-10-12"
         with self.assertRaises(HTTPException) as error:
