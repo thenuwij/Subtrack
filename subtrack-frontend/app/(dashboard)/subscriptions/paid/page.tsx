@@ -179,12 +179,12 @@ export default function PaidPage() {
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
+      <PaymentsTabs />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="eyebrow mb-2">Your payment record</p><h1 className="page-heading">Payment history</h1>
           <p className="mt-1 text-sm text-muted-foreground">Receipts, bills and expected payments from the last 3 months.</p>
         </div>
-        <PaymentsTabs />
       </div>
 
       {query.data && (query.data.late_fees_total > 0 || query.data.above_plan_total > 0) ? (

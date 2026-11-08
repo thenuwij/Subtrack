@@ -2,30 +2,35 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { History, ListChecks, PiggyBank } from 'lucide-react'
 
 const TABS = [
-  { href: '/subscriptions', label: 'Tracked' },
-  { href: '/subscriptions/paid', label: 'History' },
-  { href: '/subscriptions/save', label: 'Ways to save' },
+  { href: '/subscriptions', label: 'Tracked', hint: 'Everything you pay for', icon: ListChecks },
+  { href: '/subscriptions/paid', label: 'History', hint: 'Paid, overdue and bills', icon: History },
+  { href: '/subscriptions/save', label: 'Ways to save', hint: 'Cheaper options and price rises', icon: PiggyBank },
 ]
 
-/** Switch between your payments and what has already been paid. */
+/** The three Payments views, shown at the top of each so none is missed. */
 export function PaymentsTabs() {
   const pathname = usePathname()
   return (
-    <nav aria-label="Payments views" className="inline-flex rounded-lg bg-muted p-0.5">
-      {TABS.map(tab => {
-        const active = pathname === tab.href
+    <nav aria-label="Payments views" className="grid grid-cols-3 gap-2 rounded-2xl bg-muted p-1.5">
+      {TABS.map(({ href, label, hint, icon: Icon }) => {
+        const active = pathname === href
         return (
           <Link
-            key={tab.href}
-            href={tab.href}
+            key={href}
+            href={href}
             aria-current={active ? 'page' : undefined}
-            className={`min-h-9 rounded-[7px] px-3 py-1.5 text-sm font-medium transition-colors ${
-              active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+            className={`flex min-h-12 items-center gap-2.5 rounded-xl px-3 py-2 transition-colors ${
+              active ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:bg-card/60 hover:text-foreground'
             }`}
           >
-            {tab.label}
+            <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-primary' : ''}`} aria-hidden="true" />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-semibold">{label}</span>
+              <span className="hidden truncate text-xs text-muted-foreground sm:block">{hint}</span>
+            </span>
           </Link>
         )
       })}
