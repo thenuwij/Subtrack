@@ -988,6 +988,7 @@ def delete_subscription(
 class PaymentDecisionInput(BaseModel):
     target: str = Field(max_length=100)
     decision: Literal["paid", "skipped", "undo"]
+    amount: float | None = Field(default=None, gt=0, le=1_000_000)
 
 
 @router.post("/paid/decision")
@@ -1007,16 +1008,21 @@ def decide_payment(body: PaymentDecisionInput, user_id: str = Depends(verify_tok
             raise HTTPException(404, "Payment occurrence not found")
         if body.target.startswith("bill:") and body.decision == "skipped":
             raise HTTPException(422, "Bills can be marked paid; their invoiced amount remains owed otherwise")
+        if body.amount is not None and body.decision != "paid":
+            raise HTTPException(422, "An amount can only be given when marking a payment paid")
+        amount = round(body.amount, 2) if body.amount is not None else None
         if existing:
             existing.decision = body.decision
+            existing.amount = amount
         else:
-            db.add(PaymentDecision(user_id=user_id, target=body.target, decision=body.decision))
+            db.add(PaymentDecision(user_id=user_id, target=body.target, decision=body.decision, amount=amount))
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         existing = db.query(PaymentDecision).filter_by(user_id=user_id, target=body.target).one()
         existing.decision = body.decision
+        existing.amount = round(body.amount, 2) if body.amount is not None else None
         db.commit()
     return {"saved": True}
 

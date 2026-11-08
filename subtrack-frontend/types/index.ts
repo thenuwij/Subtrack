@@ -303,6 +303,7 @@ export interface CalendarMonthCharges extends SubscriptionForecast {
 export interface PaidPayment {
   target?: string
   manual?: string | null
+  paid_amount?: number | null
   subscription_id: string
   name: string
   category: Category

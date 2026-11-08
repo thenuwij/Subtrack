@@ -200,6 +200,12 @@ class DemoSessionTests(unittest.TestCase):
         history = paid_history(self.db, user_id, months=3)
         self.assertTrue(history["payments"])
         self.assertTrue(any(row.get("target") for row in history["payments"]))
+        statuses = {bill["name"]: bill["status"] for bill in history["bills"]}
+        self.assertEqual(statuses.get("Origin Energy"), "overdue")
+        self.assertIn("paid", [bill["status"] for bill in history["bills"] if bill["name"] == "Telstra Mobile"])
+        self.assertTrue(any(
+            row["name"] == "Netflix" and row["kind"] == "receipt" for row in history["payments"]
+        ))
 
     def test_new_demo_uses_few_database_round_trips(self):
         statements = []

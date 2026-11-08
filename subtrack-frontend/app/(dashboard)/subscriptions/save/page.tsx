@@ -18,15 +18,13 @@ export default function SavingsPage() {
     formatCurrency(amount, data?.base_currency ?? "AUD");
   return (
     <div className="page-shell max-w-4xl space-y-6">
+      <PaymentsTabs />
       <header>
         <p className="eyebrow mb-2">Small changes add up</p>
         <h1 className="page-heading">Ways to save</h1>
         <p className="page-description">
           A few things worth a look. You decide what&apos;s right for you.
         </p>
-        <div className="mt-5">
-          <PaymentsTabs />
-        </div>
       </header>
       {query.error ? (
         <section className="rounded-2xl bg-card p-6">
