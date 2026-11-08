@@ -20,6 +20,7 @@ import {
   Eye,
   LoaderCircle,
   Maximize2,
+  Menu,
   MessageSquarePlus,
   Pencil,
   RotateCcw,
@@ -617,10 +618,9 @@ export function AgentWorkspace({
           onClick={() => setShowHistory(value => !value)}
           aria-label={showHistory ? 'Hide past chats' : 'Show past chats'}
           aria-expanded={showHistory}
-          className="w-auto gap-1.5 px-2 text-xs"
+          title="Past chats"
         >
-          {showHistory ? <ChevronLeft /> : <History />}
-          <span>Past chats</span>
+          {showHistory ? <ChevronLeft /> : <Menu />}
         </Button>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">
