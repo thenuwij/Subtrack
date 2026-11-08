@@ -1008,8 +1008,8 @@ def decide_payment(body: PaymentDecisionInput, user_id: str = Depends(verify_tok
             raise HTTPException(404, "Payment occurrence not found")
         if body.target.startswith("bill:") and body.decision == "skipped":
             raise HTTPException(422, "Bills can be marked paid; their invoiced amount remains owed otherwise")
-        if body.amount is not None and (body.decision != "paid" or not body.target.startswith("payment:")):
-            raise HTTPException(422, "An amount can only be given when marking a scheduled payment paid")
+        if body.amount is not None and body.decision != "paid":
+            raise HTTPException(422, "An amount can only be given when marking a payment paid")
         amount = round(body.amount, 2) if body.amount is not None else None
         if existing:
             existing.decision = body.decision

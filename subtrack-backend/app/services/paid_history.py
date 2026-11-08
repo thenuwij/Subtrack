@@ -311,7 +311,11 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
                 late_fees += in_base(fee, bill.currency) or 0
             target = f"bill:{bill.id}"
             manual = decisions.get(target)
-            if manual == "paid" and state["status"] not in ("paid", "credit", "carried"):
+            paid_amount = paid_amounts.get(target)
+            if manual == "paid" and paid_amount is not None and bill.amount is not None \
+                    and paid_amount < float(bill.amount) - 0.01:
+                state.update(status="part_paid", paid=paid_amount, owing=round(float(bill.amount) - paid_amount, 2))
+            elif manual == "paid" and state["status"] not in ("paid", "credit", "carried"):
                 state.update(status="paid", paid=amount if (amount := bill.amount) is not None else 0, owing=0)
             bill_rows.append({
                 "target": target, "manual": manual,
@@ -350,8 +354,11 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
         if sub.id in bills_by_sub:
             # Invoiced payments: bills say what was owed, receipts mark them paid.
             add_bills(bills_by_sub[sub.id], sub_receipts, sub)
+            # Receipts from the first bill on are shown as that bill being paid.
+            first_bill = min(bill.issued_on for bill in bills_by_sub[sub.id])
             for receipt in sub_receipts:
-                rows.append(row(sub, receipt.received_on, float(receipt.amount), receipt.currency, "confirmed", "receipt"))
+                if receipt.received_on < first_bill:
+                    rows.append(row(sub, receipt.received_on, float(receipt.amount), receipt.currency, "confirmed", "receipt"))
             continue
 
         # Payments without invoices: line receipts up with the schedule.
