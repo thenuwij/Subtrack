@@ -23,7 +23,7 @@ function monthLabel(date: string) {
 }
 
 function rowNote(row: PaidPayment) {
-  if (row.manual === 'paid') return 'You marked this paid'
+  if (row.manual === 'paid') return row.paid_amount ? 'You entered what you paid' : 'You marked this paid'
   if (row.status === 'skipped') return 'You said this didn’t happen'
   if (row.kind === 'late_fee') return 'Late fee'
   if (row.kind === 'extra') return 'Extra charge'
@@ -119,13 +119,15 @@ export default function PaidPage() {
   const refresh = () => void query.mutate()
 
   // Show the answer straight away, then save it and reload the real figures.
-  async function decide(target: string, decision: 'paid' | 'skipped' | 'undo') {
+  async function decide(target: string, decision: 'paid' | 'skipped' | 'undo', amount?: number) {
     const manual = decision === 'undo' ? null : decision
     void query.mutate(current => current && {
       ...current,
       payments: current.payments.map(row => row.target !== target ? row : {
         ...row,
         manual,
+        paid_amount: amount ?? null,
+        amount: amount ?? row.amount,
         status: decision === 'paid' ? 'confirmed' : decision === 'skipped' ? 'skipped' : row.status,
       }),
       bills: current.bills.map(bill => bill.target !== target ? bill : {
@@ -135,7 +137,7 @@ export default function PaidPage() {
       }),
     }, { revalidate: false })
     try {
-      await withToken(token => decidePayment(token, target, decision))
+      await withToken(token => decidePayment(token, target, decision, amount))
     } catch (error) {
       toast.error(errorMessage(error, 'Could not save your answer.'))
     } finally {
@@ -260,7 +262,7 @@ export default function PaidPage() {
                           {formatCurrency(row.amount, row.currency)}
                         </span>
                       </div>
-                      {row.target ? <DecisionButtons target={row.target} manual={row.manual} onDecide={decide} /> : null}
+                      {row.target ? <DecisionButtons target={row.target} manual={row.manual} amount={row.amount} currency={row.currency} onDecide={decide} /> : null}
                       {row.kind === 'above_plan' ? (
                         <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-[3.25rem]">
                           <span className="text-[13px] text-muted-foreground">Was this extra a late fee?</span>
@@ -282,16 +284,68 @@ export default function PaidPage() {
   )
 }
 
-type Decide = (target: string, decision: 'paid' | 'skipped' | 'undo') => Promise<void>
+type Decide = (target: string, decision: 'paid' | 'skipped' | 'undo', amount?: number) => Promise<void>
 
-function DecisionButtons({ target, manual, bill = false, onDecide }: { target: string; manual?: string | null; bill?: boolean; onDecide: Decide }) {
+function DecisionButtons({ target, manual, amount, currency, bill = false, onDecide }: {
+  target: string
+  manual?: string | null
+  amount?: number
+  currency?: string
+  bill?: boolean
+  onDecide: Decide
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const value = Number(draft)
+  const valid = draft.trim() !== '' && Number.isFinite(value) && value > 0
+
+  function openEditor() {
+    setDraft(amount ? amount.toFixed(2) : '')
+    setEditing(true)
+  }
+
+  if (editing) {
+    return (
+      <form
+        className="mt-2 flex flex-wrap items-center gap-2 pl-11"
+        onSubmit={event => {
+          event.preventDefault()
+          if (!valid) return
+          setEditing(false)
+          void onDecide(target, 'paid', Math.round(value * 100) / 100)
+        }}
+      >
+        <label className="text-[13px] text-muted-foreground" htmlFor={`paid-${target}`}>
+          You paid{currency ? ` (${currency})` : ''}
+        </label>
+        <Input
+          id={`paid-${target}`}
+          autoFocus
+          inputMode="decimal"
+          value={draft}
+          onChange={event => setDraft(event.target.value)}
+          onKeyDown={event => { if (event.key === 'Escape') setEditing(false) }}
+          className="h-9 w-28"
+        />
+        <Button size="sm" type="submit" disabled={!valid}>Save</Button>
+        <Button size="sm" type="button" variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+      </form>
+    )
+  }
+
   return (
     <div className="mt-2 flex flex-wrap gap-2 pl-11">
       {manual ? (
-        <Button size="sm" variant="ghost" onClick={() => void onDecide(target, 'undo')}>Undo your answer</Button>
+        <>
+          {manual === 'paid' && !bill ? (
+            <Button size="sm" variant="outline" onClick={openEditor}>Change amount</Button>
+          ) : null}
+          <Button size="sm" variant="ghost" onClick={() => void onDecide(target, 'undo')}>Undo your answer</Button>
+        </>
       ) : (
         <>
           <Button size="sm" variant="outline" onClick={() => void onDecide(target, 'paid')}>{bill ? 'Paid another way' : 'Paid'}</Button>
+          {!bill ? <Button size="sm" variant="outline" onClick={openEditor}>Paid a different amount</Button> : null}
           {!bill ? <Button size="sm" variant="ghost" onClick={() => void onDecide(target, 'skipped')}>Didn&apos;t happen</Button> : null}
         </>
       )}
