@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { CalendarDays, ChevronRight } from 'lucide-react'
+import Link from 'next/link'
+import { CalendarDays, ChevronRight, CircleAlert } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import type { ForecastCharge, SubscriptionForecast } from '@/types'
+import type { ForecastCharge, PaidBill, SubscriptionForecast } from '@/types'
 import { Button } from '@/components/ui/button'
 import { BrandLogo } from '@/components/shared/BrandLogo'
 import { useEditPayment } from '@/components/subscriptions/PaymentEditor'
@@ -15,6 +16,7 @@ interface Props {
   error: string
   retrying: boolean
   onRetry: () => void
+  overdue?: PaidBill[]
 }
 
 function amountLabel(charge: ForecastCharge, estimated: boolean) {
@@ -76,7 +78,7 @@ function Group({ title, charges, estimated, empty, showDate = false, onSelect }:
 }
 
 /** The first thing on the dashboard: what is being paid today, and what is next. */
-export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
+export function ComingUp({ forecast, error, retrying, onRetry, overdue = [] }: Props) {
   const [showLater, setShowLater] = useState(false)
 
   if (!forecast) {
@@ -108,6 +110,38 @@ export function ComingUp({ forecast, error, retrying, onRetry }: Props) {
       </div>
 
       <div className="mt-5 space-y-4">
+        {overdue.length > 0 ? (
+          <div className="rounded-xl bg-amber-500/10 px-2 py-2">
+            <h3 className="flex items-center gap-1.5 px-2 text-[13px] font-medium text-amber-700 dark:text-amber-300">
+              <CircleAlert className="h-3.5 w-3.5" aria-hidden="true" />
+              Overdue
+            </h3>
+            <ul className="mt-1">
+              {overdue.map(bill => (
+                <li key={bill.id}>
+                  <Link
+                    href="/subscriptions/paid"
+                    className="flex min-h-10 items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-amber-500/10"
+                  >
+                    <BrandLogo name={bill.name} category={bill.category} className="h-7 w-7" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-medium text-foreground">{bill.name}</span>
+                      {bill.due_on ? (
+                        <span className="block truncate text-xs text-muted-foreground">
+                          Was due {formatStoredDate(bill.due_on, { day: 'numeric', month: 'short' })}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold tabular-nums text-foreground">
+                      {formatCurrency(bill.owing ?? bill.amount ?? 0, bill.currency)}
+                    </span>
+                    <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/50" aria-hidden="true" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
         <Group title={leadLabel} charges={lead} estimated={estimated} empty="Nothing due today." />
         {next ? (
           <Group

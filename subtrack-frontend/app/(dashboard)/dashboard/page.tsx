@@ -15,12 +15,14 @@ import {
   getPreferences,
   getReminders,
   getSubscriptionForecast,
+  getPaidHistory,
   getSubscriptions,
 } from '@/lib/api'
 import type {
   GmailStatus,
   DetectedSubscription,
   PaymentReminder,
+  PaidHistory,
   Preferences,
   Subscription,
   SubscriptionForecast,
@@ -57,6 +59,9 @@ export default function DashboardPage() {
   const detectionsQuery = useApi<DetectedSubscription[]>(
     apiKeys.detected('pending'), token => getDetected(token, 'pending'),
   )
+
+  const paidQuery = useApi<PaidHistory>(apiKeys.paid(3), token => getPaidHistory(token, 3))
+  const overdueBills = (paidQuery.data?.bills ?? []).filter(bill => bill.status === 'overdue')
 
   const queries = [
     subscriptionsQuery, preferencesQuery, gmailQuery,
@@ -225,6 +230,7 @@ export default function DashboardPage() {
               error={forecastError}
               retrying={forecastRetrying}
               onRetry={() => void forecastQuery.mutate()}
+              overdue={overdueBills}
             />
           </div>
 
