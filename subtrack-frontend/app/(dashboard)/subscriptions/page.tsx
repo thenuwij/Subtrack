@@ -28,7 +28,7 @@ import { PaymentsTabs } from '@/components/subscriptions/PaymentsTabs'
 import { useThisMonth } from '@/lib/hooks/useThisMonth'
 import { useCurrency }            from '@/lib/context/currency'
 import { formatCurrency }         from '@/lib/utils/currency'
-import { categoryColor, formatCategory } from '@/lib/utils/categories'
+import { formatCategory } from '@/lib/utils/categories'
 import { toast } from 'sonner'
 import { useRegisterAgentPageContext } from '@/lib/agent/page-context'
 import { ReminderDialog } from '@/components/reminders/ReminderDialog'
@@ -90,7 +90,7 @@ export default function SubscriptionsPage() {
   const [reminderSubscription, setReminderSubscription] = useState<Subscription | null>(null)
   const [assistantSubscription, setAssistantSubscription] = useState<Subscription | null>(null)
   const { baseCurrency, canConvert, convertAmount, ratesLoading, ratesStale } = useCurrency()
-  const { costOf, monthName, monthShort } = useThisMonth()
+  const { costOf, monthShort } = useThisMonth()
   const { mutate: mutateCache } = useSWRConfig()
   const duplicateOperationRef = useRef(false)
 
@@ -244,9 +244,6 @@ export default function SubscriptionsPage() {
   )
   const unconvertedCurrent = paid.length - convertiblePaid.length
   const hasVariableAmounts = paid.some(subscription => subscription.amount_type === 'variable')
-  const missingDates = current.filter(
-    subscription => !isActiveTrial(subscription) && !subscription.next_due,
-  ).length
 
   // ── filter / sort ──────────────────────────────────────────────────────────
 
@@ -316,19 +313,6 @@ export default function SubscriptionsPage() {
     all: subscriptions.length,
   }
 
-  const categoryTotals = useMemo(() => {
-    const totals = new Map<string, number>()
-    for (const subscription of subscriptions) {
-      if (!contributesToCommitment(subscription)) continue
-      const monthly = costOf(subscription)
-      if (!monthly) continue
-      totals.set(subscription.category, (totals.get(subscription.category) ?? 0) + monthly)
-    }
-    return [...totals.entries()]
-      .map(([category, total]) => ({ category, total }))
-      .sort((a, b) => b.total - a.total)
-  }, [subscriptions, costOf])
-
   const isFiltered = !!(scope !== 'current' || search || selectedCategory || period !== 'all')
 
   useRegisterAgentPageContext({
@@ -393,23 +377,6 @@ export default function SubscriptionsPage() {
     )
   }
 
-  function renderAttention(className = '') {
-    if (loading || (missingDates === 0 && (ratesLoading || unconvertedCurrent === 0))) return null
-    return (
-      <section className={`rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 ${className}`}>
-        <h2 className="text-[17px] font-semibold text-foreground">Needs attention</h2>
-        <ul className="mt-1 space-y-1 text-xs leading-5 text-muted-foreground">
-          {missingDates > 0 ? (
-            <li>{missingDates} current payment{missingDates === 1 ? '' : 's'} need a next expected date for reminders and forecasts.</li>
-          ) : null}
-          {!ratesLoading && unconvertedCurrent > 0 ? (
-            <li>{unconvertedCurrent} payment{unconvertedCurrent === 1 ? '' : 's'} are excluded from totals until a reliable exchange rate is available.</li>
-          ) : null}
-        </ul>
-      </section>
-    )
-  }
-
   // ─── render ────────────────────────────────────────────────────────────────
 
   return (
@@ -424,7 +391,7 @@ export default function SubscriptionsPage() {
             <PaymentsTabs />
           </div>
           {!loading && subscriptions.length > 0 && (
-            <p className="text-sm text-muted-foreground mt-1 tabular-nums xl:hidden">
+            <p className="text-sm text-muted-foreground mt-1 tabular-nums">
               {paid.length} recurring{trials.length ? ` · ${trials.length} free trial${trials.length === 1 ? '' : 's'}` : ''} ·{' '}
               {ratesLoading ? 'updating exchange rates…' : (
                 <>
@@ -436,7 +403,7 @@ export default function SubscriptionsPage() {
             </p>
           )}
           {!loading && ratesStale ? (
-            <p className="mt-1 text-xs text-muted-foreground xl:hidden">Foreign-currency totals use cached rates and are estimates.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Foreign-currency totals use cached rates and are estimates.</p>
           ) : null}
         </div>
         <Button onClick={() => setModalOpen(true)} className="shrink-0">
@@ -445,7 +412,7 @@ export default function SubscriptionsPage() {
         </Button>
       </div>
 
-      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_18rem] xl:items-start xl:gap-8">
+      <div>
       <div className="min-w-0 space-y-6">
       {/* Same service tracked twice — the totals are wrong until it's resolved. */}
       {duplicates.map(pair => (
@@ -490,8 +457,6 @@ export default function SubscriptionsPage() {
           </Button>
         </div>
       ) : null}
-
-      {renderAttention('xl:hidden')}
 
       {/* Error */}
       {error && (
@@ -623,66 +588,6 @@ export default function SubscriptionsPage() {
 
       </div>
 
-      {!loading && subscriptions.length > 0 ? (
-        <aside className="hidden space-y-4 xl:sticky xl:top-8 xl:block xl:max-h-[calc(100vh-4rem)] xl:overflow-y-auto" aria-label="Payments summary">
-          <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
-            <p className="text-xs font-medium text-muted-foreground">
-              {hasVariableAmounts ? `Estimated for ${monthName}` : `Due in ${monthName}`}
-            </p>
-            <p className="mt-1 text-3xl font-semibold tracking-tight tabular-nums">
-              {ratesLoading ? '…' : `${hasVariableAmounts ? '≈ ' : ''}${formatCurrency(totalMonthly, baseCurrency)}`}
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground tabular-nums">
-              {ratesLoading ? 'Updating exchange rates…' : `${hasVariableAmounts ? '≈ ' : ''}${formatCurrency(totalYearly, baseCurrency)} a year`}
-            </p>
-            <p className="mt-3 text-xs text-muted-foreground tabular-nums">
-              {paid.length} recurring{trials.length ? ` · ${trials.length} free trial${trials.length === 1 ? '' : 's'}` : ''}
-              {unconvertedCurrent ? ` · ${unconvertedCurrent} excluded (FX unavailable)` : ''}
-            </p>
-            {ratesStale ? (
-              <p className="mt-2 text-xs text-muted-foreground">Foreign-currency totals use cached rates and are estimates.</p>
-            ) : null}
-          </section>
-
-          {renderAttention()}
-
-          {categoryTotals.length > 0 && totalMonthly > 0 ? (
-            <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
-              <h2 className="text-[17px] font-semibold text-foreground">By category</h2>
-              <ul className="mt-3 space-y-1">
-                {categoryTotals.map(({ category, total }) => {
-                  const share = (total / totalMonthly) * 100
-                  return (
-                    <li key={category}>
-                      <button
-                        type="button"
-                        aria-pressed={selectedCategory === category}
-                        onClick={() => setSelectedCategory(selectedCategory === category ? '' : category as Category)}
-                        className={`w-full rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted ${
-                          selectedCategory === category ? 'bg-muted' : ''
-                        }`}
-                      >
-                        <span className="flex items-center justify-between gap-2 text-xs">
-                          <span className="truncate text-foreground">{formatCategory(category)}</span>
-                          <span className="shrink-0 tabular-nums text-muted-foreground">
-                            {formatCurrency(total, baseCurrency)}
-                          </span>
-                        </span>
-                        <span className="mt-1.5 block h-1.5 overflow-hidden rounded-full bg-muted">
-                          <span
-                            className="block h-full rounded-full"
-                            style={{ width: `${Math.max(share, 2)}%`, backgroundColor: categoryColor(category) }}
-                          />
-                        </span>
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            </section>
-          ) : null}
-        </aside>
-      ) : null}
       </div>
 
       {/* Add Modal */}

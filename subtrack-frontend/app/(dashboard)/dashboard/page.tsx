@@ -3,13 +3,8 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import {
-  ArrowDownRight,
   ArrowRight,
-  ArrowUpRight,
-  ChevronDown,
-  ChevronUp,
   Mail,
-  Minus,
   Sparkles,
 } from 'lucide-react'
 import {
@@ -19,56 +14,37 @@ import {
   getGmailStatus,
   getPreferences,
   getReminders,
-  getSubscriptionChanges,
   getSubscriptionForecast,
-  getCalendarMonth,
   getSubscriptions,
 } from '@/lib/api'
 import type {
-  CalendarMonthCharges,
   GmailStatus,
   DetectedSubscription,
   PaymentReminder,
   Preferences,
   Subscription,
-  SubscriptionChange,
   SubscriptionForecast,
 } from '@/types'
 import { useCurrency } from '@/lib/context/currency'
-import { formatCurrency } from '@/lib/utils/currency'
-import { SpendBreakdown } from '@/components/dashboard/SpendBreakdown'
 import { DashboardSkeleton } from '@/components/dashboard/DashboardSkeleton'
 import { Button } from '@/components/ui/button'
 import { ReminderCenter } from '@/components/reminders/ReminderCenter'
 import { useRegisterAgentPageContext } from '@/lib/agent/page-context'
 import { toast } from 'sonner'
-import {
-  contributesToCommitment,
-  monthlyEquivalentNative,
-  yearlyEquivalentNative,
-} from '@/lib/utils/recurrence'
 import { SafeToSpendCard } from '@/components/dashboard/SafeToSpendCard'
 import { ComingUp } from '@/components/dashboard/ComingUp'
 import { NeedsAttention } from '@/components/dashboard/NeedsAttention'
+import { CategorySpend } from '@/components/dashboard/CategorySpend'
+import { RecentChanges } from '@/components/subscriptions/RecentChanges'
 import { GettingStarted } from '@/components/onboarding/GettingStarted'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { getAccessToken, useIsDemo } from '@/lib/auth/session'
 
-function formatDate(date: string) {
-  return new Date(date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })
-}
-
 export default function DashboardPage() {
-  const [changesExpanded, setChangesExpanded] = useState(false)
-  const {
-    baseCurrency, canConvert, convertAmount, ratesLoading,
-  } = useCurrency()
+  const { baseCurrency, ratesLoading } = useCurrency()
 
   const subscriptionsQuery = useApi<Subscription[]>(
     apiKeys.subscriptions('current'), token => getSubscriptions(token),
-  )
-  const changesQuery = useApi<SubscriptionChange[]>(
-    apiKeys.subscriptionChanges(30), token => getSubscriptionChanges(token, 30),
   )
   const preferencesQuery = useApi<Preferences>(apiKeys.preferences, getPreferences)
   const gmailQuery = useApi<GmailStatus>(apiKeys.gmailStatus, getGmailStatus)
@@ -78,19 +54,17 @@ export default function DashboardPage() {
   const forecastQuery = useApi<SubscriptionForecast>(
     apiKeys.forecast(14), token => getSubscriptionForecast(token, 14),
   )
-  const calendarMonthQuery = useApi<CalendarMonthCharges>(apiKeys.calendarMonth, getCalendarMonth)
   const detectionsQuery = useApi<DetectedSubscription[]>(
     apiKeys.detected('pending'), token => getDetected(token, 'pending'),
   )
 
   const queries = [
-    subscriptionsQuery, changesQuery, preferencesQuery, gmailQuery,
-    remindersQuery, forecastQuery, detectionsQuery, calendarMonthQuery,
+    subscriptionsQuery, preferencesQuery, gmailQuery,
+    remindersQuery, forecastQuery, detectionsQuery,
   ]
   const loading = queries.some(query => query.isLoading)
 
   const subscriptions = useMemo(() => subscriptionsQuery.data ?? [], [subscriptionsQuery.data])
-  const changes = useMemo(() => changesQuery.data ?? [], [changesQuery.data])
   const reminders = useMemo(() => remindersQuery.data ?? [], [remindersQuery.data])
   const pendingDetections = useMemo(() => detectionsQuery.data ?? [], [detectionsQuery.data])
   const monthlyIncome = preferencesQuery.data?.monthly_income ?? null
@@ -99,7 +73,6 @@ export default function DashboardPage() {
   const forecast = forecastQuery.data ?? null
 
   const loadError = errorMessage(subscriptionsQuery.error, 'Could not load recurring payments.')
-  const changesError = errorMessage(changesQuery.error, 'Could not load recent changes.')
   const reminderError = errorMessage(remindersQuery.error, 'Could not load reminders.')
   const forecastError = errorMessage(forecastQuery.error, 'Could not calculate upcoming charges.')
   const remindersRetrying = remindersQuery.isValidating
@@ -127,58 +100,6 @@ export default function DashboardPage() {
     visible_detection_ids: pendingDetections.slice(0, 25).map(detection => detection.id),
     visible_reminder_ids: reminders.slice(0, 25).map(reminder => reminder.id),
   })
-
-  // Everything is normalised to a monthly figure in the base currency so the
-  // numbers on this page are actually comparable to each other.
-  // "Monthly" means this calendar month: a weekly payment counts 4 or 5
-  // times depending on the month, not its yearly cost divided by 12.
-  const thisMonth = useMemo(() => {
-    const totals = new Map<string, number>()
-    for (const charge of calendarMonthQuery.data?.charges ?? []) {
-      if (charge.charge_amount_in_base === null) continue
-      totals.set(charge.id, (totals.get(charge.id) ?? 0) + charge.charge_amount_in_base)
-    }
-    for (const extra of calendarMonthQuery.data?.extras ?? []) {
-      if (extra.amount_in_base === null) continue
-      totals.set(extra.subscription_id, (totals.get(extra.subscription_id) ?? 0) + extra.amount_in_base)
-    }
-    return totals
-  }, [calendarMonthQuery.data])
-  const monthName = calendarMonthQuery.data
-    ? new Date(calendarMonthQuery.data.year, calendarMonthQuery.data.month - 1, 1)
-      .toLocaleDateString('en-AU', { month: 'long' })
-    : 'this month'
-
-  const ranked = useMemo(() => {
-    return subscriptions
-      .filter(contributesToCommitment)
-      .filter(subscription => canConvert(subscription.currency))
-      .map((s) => ({
-        subscription: s,
-        monthly: calendarMonthQuery.data
-          ? thisMonth.get(s.id) ?? 0
-          : convertAmount(monthlyEquivalentNative(s), s.currency) ?? 0,
-        yearly: convertAmount(yearlyEquivalentNative(s), s.currency) ?? 0,
-      }))
-      .filter(entry => entry.monthly > 0)
-      .sort((a, b) => b.monthly - a.monthly)
-  }, [subscriptions, canConvert, convertAmount, calendarMonthQuery.data, thisMonth])
-
-  const contributingPayments = useMemo(
-    () => subscriptions.filter(contributesToCommitment),
-    [subscriptions],
-  )
-
-  const unavailableCurrencies = contributingPayments.filter(payment => !canConvert(payment.currency)).length
-  const hasVariableAmounts = ranked.some(entry => entry.subscription.amount_type === 'variable')
-
-  const monthlyTotal = useMemo(
-    () => ranked.reduce((sum, r) => sum + r.monthly, 0),
-    [ranked]
-  )
-
-  const shareOfIncome =
-    monthlyIncome && monthlyIncome > 0 ? (monthlyTotal / monthlyIncome) * 100 : null
 
   async function handleDismissReminder(id: string) {
     const accessToken = await getAccessToken()
@@ -278,7 +199,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
+    <div className="mx-auto w-full max-w-[90rem] px-5 py-8 sm:px-8 sm:py-10 lg:px-12">
       <div className="space-y-6 sm:space-y-8">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -296,225 +217,82 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-        <SafeToSpendCard />
-        <ComingUp
-          forecast={forecast}
-          error={forecastError}
-          retrying={forecastRetrying}
-          onRetry={() => void forecastQuery.mutate()}
-        />
-
-        </div>
-
-        <NeedsAttention
-          detections={pendingDetections}
-          forecast={forecast}
-          gmail={gmail}
-          gmailScanStale={gmailScanStale}
-          undatedPayments={subscriptions
-            .filter(subscription => !subscription.next_due && ['active', 'cancelling'].includes(subscription.status))
-            .map(({ id, name }) => ({ id, name }))}
-        />
-
-
-        {/* ── Inbox nudge — only while there's something to act on ─────── */}
-        {gmail && !gmail.connected && !isDemo && (
-          <section className="flex flex-col gap-4 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Mail className="h-4 w-4" />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-foreground">
-                  Find the ones you&apos;ve forgotten
-                </p>
-                <p className="mt-0.5 text-sm text-muted-foreground">
-                  Connect Gmail and Subtrack will spot recurring charges in your
-                  receipts. Read-only, and nothing is added without your approval.
-                </p>
-              </div>
-            </div>
-            <Button asChild className="shrink-0 self-start sm:self-center">
-              <Link href="/account#inbox">Connect Gmail</Link>
-            </Button>
-          </section>
-        )}
-
-
-        <div className={`grid grid-cols-1 gap-6 lg:items-start ${changesError || changes.length > 0 ? 'xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]' : ''}`}>
-        <div className="min-w-0 space-y-6">
-
-
-        {/* ── Where your money goes ───────────────────────────────────── */}
-        <SpendBreakdown
-          ranked={ranked}
-          monthlyTotal={monthlyTotal}
-          baseCurrency={baseCurrency}
-          unavailableCount={unavailableCurrencies}
-          summary={
-            <p className="mt-1 text-sm text-muted-foreground">
-              <span className="font-semibold tabular-nums text-foreground">
-                {hasVariableAmounts ? '≈ ' : ''}{formatCurrency(monthlyTotal, baseCurrency)}
-              </span>{' '}
-              in {monthName}
-              {' · '}
-              <Link href="/account#income" className="font-medium text-primary hover:underline">
-                {shareOfIncome !== null ? `${shareOfIncome.toFixed(0)}% of your income` : 'Add your income'}
-              </Link>
-              {' · '}
-              <Link href="/subscriptions" className="text-primary hover:underline">Manage</Link>
-            </p>
-          }
-        />
-
-
-        </div>
-        {changesError || changes.length > 0 ? (
-        <>
-        {/* ── What changed ────────────────────────────────────────────── */}
-        <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-[17px] font-semibold text-foreground">What changed</h2>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                Last 30 days
-              </p>
-            </div>
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start xl:gap-10">
+          <div className="min-w-0 space-y-8">
+            <SafeToSpendCard />
+            <ComingUp
+              forecast={forecast}
+              error={forecastError}
+              retrying={forecastRetrying}
+              onRetry={() => void forecastQuery.mutate()}
+            />
           </div>
 
-          {changesError ? (
-            <div className="mt-5 flex flex-col gap-3 rounded-xl border border-amber-500/25 bg-amber-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground">Recent changes are unavailable</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">We won&apos;t guess that nothing changed.</p>
-              </div>
-              <Button size="sm" variant="outline" onClick={() => void changesQuery.mutate()}>Try again</Button>
-            </div>
-          ) : changes.length === 0 ? (
-            <div className="mt-6 py-8 text-center">
-              <p className="text-sm font-medium text-foreground">Nothing changed</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Your recurring payments cost the same as they did last month.
-              </p>
-            </div>
-          ) : (
-            <ul id="dashboard-changes-list" className="mt-4 divide-y divide-border">
-              {(changesExpanded ? changes : changes.slice(0, 4)).map((change) => {
-                const conversionAvailable = canConvert(change.currency)
-                const delta = conversionAvailable
-                  ? convertAmount(change.delta, change.currency) ?? 0
-                  : change.delta
-                const tone =
-                  delta > 0 ? 'var(--increase)' : delta < 0 ? 'var(--decrease)' : undefined
+          <aside
+            className="min-w-0 divide-y divide-border overflow-hidden rounded-2xl bg-card shadow-sm lg:sticky lg:top-8"
+            aria-label="Needs your attention and spending"
+          >
+            <NeedsAttention
+              bare
+              detections={pendingDetections}
+              forecast={forecast}
+              gmail={gmail}
+              gmailScanStale={gmailScanStale}
+              undatedPayments={subscriptions
+                .filter(subscription => !subscription.next_due && ['active', 'cancelling'].includes(subscription.status))
+                .map(({ id, name }) => ({ id, name }))}
+            />
 
-                return (
-                  <li key={change.id} className="flex items-center gap-3 py-3">
-                    <div
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg"
-                      style={{
-                        backgroundColor: tone
-                          ? `color-mix(in oklch, ${tone} 12%, transparent)`
-                          : 'var(--muted)',
-                        color: tone ?? 'var(--muted-foreground)',
-                      }}
-                    >
-                      {delta > 0 ? (
-                        <ArrowUpRight className="h-4 w-4" />
-                      ) : delta < 0 ? (
-                        <ArrowDownRight className="h-4 w-4" />
-                      ) : (
-                        <Minus className="h-4 w-4" />
-                      )}
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">
-                        {change.name}
-                      </p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {!conversionAvailable
-                          ? `${change.currency} conversion unavailable`
-                          : change.kind === 'added'
-                          ? 'Added'
-                          : change.kind === 'removed'
-                            ? 'Removed'
-                            : `${formatCurrency(
-                                convertAmount(change.old_monthly ?? 0, change.currency) ?? 0,
-                                baseCurrency
-                              )} → ${formatCurrency(
-                                convertAmount(change.new_monthly ?? 0, change.currency) ?? 0,
-                                baseCurrency
-                              )}`}{' '}
-                        · {formatDate(change.changed_at)}
-                      </p>
-                    </div>
-
-                    <p
-                      className="shrink-0 text-sm font-semibold tabular-nums"
-                      style={{ color: tone ?? 'var(--muted-foreground)' }}
-                    >
-                      {delta > 0 ? '+' : delta < 0 ? '−' : ''}
-                      {formatCurrency(Math.abs(delta), conversionAvailable ? baseCurrency : change.currency)}/mo
+            {gmail && !gmail.connected && !isDemo && (
+              <section className="px-5 py-4">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Mail className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Find the ones you&apos;ve forgotten</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Connect Gmail to spot recurring charges. Read-only, nothing added without your approval.
                     </p>
-                  </li>
-                )
-              })}
-              {changes.length > 4 && (
-                <li>
-                  <button
-                    type="button"
-                    aria-expanded={changesExpanded}
-                    aria-controls="dashboard-changes-list"
-                    onClick={() => setChangesExpanded(value => !value)}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-lg py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    {changesExpanded ? (
-                      <><ChevronUp className="h-4 w-4" /> Show less</>
-                    ) : (
-                      <><ChevronDown className="h-4 w-4" /> Show {changes.length - 4} more</>
-                    )}
-                  </button>
-                </li>
-              )}
-            </ul>
-          )}
-          {!ratesLoading && changes.some(change => change.currency !== baseCurrency) ? (
-            <p className="mt-3 text-xs leading-5 text-muted-foreground">
-              Foreign amounts use today&apos;s exchange rates.
-            </p>
-          ) : null}
-        </section>
-        </>
-        ) : null}
-        </div>
-        <ReminderCenter
-          reminders={reminders}
-          onDismiss={handleDismissReminder}
-        />
-        {reminderError ? (
-          <section className="flex flex-col gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Reminders are unavailable</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{reminderError}</p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={remindersRetrying}
-              onClick={() => void remindersQuery.mutate()}
-              className="self-start sm:self-center"
-            >
-              {remindersRetrying ? 'Trying again…' : 'Try again'}
-            </Button>
-          </section>
-        ) : null}
-        <GettingStarted
-          gmailConnected={Boolean(gmail?.connected)}
-          hasPayments={hasPayments}
-          hasIncome={monthlyIncome !== null}
-        />
+                  </div>
+                </div>
+                <Button asChild size="sm" className="mt-3 w-full">
+                  <Link href="/account#inbox">Connect Gmail</Link>
+                </Button>
+              </section>
+            )}
 
+            <CategorySpend subscriptions={subscriptions} />
+
+            <RecentChanges bare />
+
+            <ReminderCenter bare reminders={reminders} onDismiss={handleDismissReminder} />
+            {reminderError ? (
+              <section className="flex flex-col gap-3 bg-amber-500/5 px-5 py-4">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Reminders are unavailable</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{reminderError}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={remindersRetrying}
+                  onClick={() => void remindersQuery.mutate()}
+                  className="self-start"
+                >
+                  {remindersRetrying ? 'Trying again…' : 'Try again'}
+                </Button>
+              </section>
+            ) : null}
+
+            <GettingStarted
+              bare
+              gmailConnected={Boolean(gmail?.connected)}
+              hasPayments={hasPayments}
+              hasIncome={monthlyIncome !== null}
+            />
+          </aside>
+        </div>
       </div>
     </div>
   )
