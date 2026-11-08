@@ -202,7 +202,9 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
     currency = CurrencyContext.for_user(db, user_id)
 
     subs = db.query(Subscription).filter(Subscription.user_id == user_id).all()
-    decisions = {d.target: d.decision for d in db.query(PaymentDecision).filter(PaymentDecision.user_id == user_id)}
+    stored = db.query(PaymentDecision).filter(PaymentDecision.user_id == user_id).all()
+    decisions = {d.target: d.decision for d in stored}
+    paid_amounts = {d.target: float(d.amount) for d in stored if d.decision == "paid" and d.amount is not None}
     by_id = {sub.id: sub for sub in subs}
     links = {
         (link.sender_domain, link.merchant_key): by_id.get(link.subscription_id)
@@ -341,9 +343,10 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
             elif sub.is_active and due >= tracked_since:
                 target = f"payment:{sub.id}:{due.isoformat()}"
                 manual = decisions.get(target)
-                rows.append(row(sub, due, float(sub.amount), sub.currency,
+                paid_amount = paid_amounts.get(target)
+                rows.append(row(sub, due, paid_amount if paid_amount is not None else float(sub.amount), sub.currency,
                     "confirmed" if manual == "paid" else "skipped" if manual == "skipped" else "expected",
-                    "schedule", target=target, manual=manual))
+                    "schedule", target=target, manual=manual, paid_amount=paid_amount))
         for receipt in matched + unused:
             amount = float(receipt.amount)
             above = round(amount - _regular(sub), 2)
