@@ -31,6 +31,8 @@ function rowNote(row: PaidPayment) {
   return row.status === 'confirmed' ? 'Receipt in Gmail' : 'Expected, no receipt seen'
 }
 
+const OWING = new Set<PaidBill['status']>(['overdue', 'part_paid', 'due'])
+
 const BILL_STATUS: Record<PaidBill['status'], { label: string; className: string }> = {
   carried: { label: 'Carried into next bill', className: 'bg-muted text-muted-foreground' },
   paid: { label: 'Paid', className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300' },
@@ -66,8 +68,13 @@ function BillRow({ bill, onChanged, onDecide }: { bill: PaidBill; onChanged: () 
   }
 
   return (
-    <li className="py-3">
+    <li className="py-2.5">
       <div className="flex min-h-11 items-center gap-3">
+        {['paid', 'credit', 'carried'].includes(bill.status)
+          ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-label="Paid" />
+          : bill.status === 'overdue' || bill.status === 'part_paid'
+            ? <CircleAlert className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-label="Owing" />
+            : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="Not paid yet" />}
         <BrandLogo name={bill.name} category={bill.category} className="h-8 w-8" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[15px] font-medium text-foreground">{bill.name}</span>
@@ -89,9 +96,9 @@ function BillRow({ bill, onChanged, onDecide }: { bill: PaidBill; onChanged: () 
           </span>
         </span>
       </div>
-      {bill.target ? <DecisionButtons target={bill.target} manual={bill.manual} bill onDecide={onDecide} /> : null}
+      {bill.target ? <DecisionButtons target={bill.target} manual={bill.manual} amount={bill.owing || bill.amount || undefined} currency={bill.currency} bill onDecide={onDecide} /> : null}
       {!bill.due_on ? (
-        <div className="mt-2 flex flex-wrap items-center gap-2 pl-11">
+        <div className="mt-2 flex flex-wrap items-center gap-2 pl-[3.25rem]">
           <span className="text-[13px] text-muted-foreground">The email didn&apos;t say when this is due.</span>
           <Input type="date" value={due} onChange={event => setDue(event.target.value)}
             className="h-9 w-auto" aria-label={`Due date for ${bill.name} bill`} />
@@ -107,13 +114,21 @@ function BillRow({ bill, onChanged, onDecide }: { bill: PaidBill; onChanged: () 
 export default function PaidPage() {
   const query = useApi<PaidHistory>(apiKeys.paid(3), token => getPaidHistory(token, 3))
   const [busy, setBusy] = useState<string | null>(null)
+  const owing = useMemo(
+    () => (query.data?.bills ?? []).filter(bill => OWING.has(bill.status)),
+    [query.data],
+  )
   const months = useMemo(() => {
-    const groups = new Map<string, PaidPayment[]>()
-    for (const row of query.data?.payments ?? []) {
-      const key = row.date.slice(0, 7)
-      groups.set(key, [...(groups.get(key) ?? []), row])
+    const groups = new Map<string, { payments: PaidPayment[]; bills: PaidBill[] }>()
+    const group = (key: string) => {
+      if (!groups.has(key)) groups.set(key, { payments: [], bills: [] })
+      return groups.get(key)!
     }
-    return [...groups.entries()]
+    for (const row of query.data?.payments ?? []) group(row.date.slice(0, 7)).payments.push(row)
+    for (const bill of query.data?.bills ?? []) {
+      if (!OWING.has(bill.status)) group((bill.due_on ?? bill.issued_on).slice(0, 7)).bills.push(bill)
+    }
+    return [...groups.entries()].sort(([a], [b]) => b.localeCompare(a))
   }, [query.data])
   const base = query.data?.base_currency ?? 'AUD'
   const refresh = () => void query.mutate()
@@ -133,7 +148,8 @@ export default function PaidPage() {
       bills: current.bills.map(bill => bill.target !== target ? bill : {
         ...bill,
         manual,
-        status: decision === 'paid' ? 'paid' : bill.status,
+        status: decision !== 'paid' ? bill.status
+          : amount !== undefined && bill.amount !== null && amount < bill.amount - 0.01 ? 'part_paid' : 'paid',
       }),
     }, { revalidate: false })
     try {
@@ -201,12 +217,11 @@ export default function PaidPage() {
         <section className="h-48 animate-pulse rounded-2xl bg-card shadow-sm" aria-label="Loading paid history" />
       ) : (
         <>
-          {query.data.bills.length > 0 ? (
+          {owing.length > 0 ? (
             <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
-              <h2 className="text-[17px] font-semibold text-foreground">Bills</h2>
-              <p className="mt-0.5 text-[13px] text-muted-foreground">From the bills in your email. Receipts mark them paid.</p>
-              <ul className="mt-2 divide-y divide-border">
-                {query.data.bills.map(bill => <BillRow key={bill.id} bill={bill} onChanged={refresh} onDecide={decide} />)}
+              <h2 className="text-[17px] font-semibold text-foreground">Still to pay</h2>
+              <ul className="mt-3 divide-y divide-border">
+                {owing.map(bill => <BillRow key={bill.id} bill={bill} onChanged={refresh} onDecide={decide} />)}
               </ul>
             </section>
           ) : null}
@@ -227,19 +242,22 @@ export default function PaidPage() {
                 Payments show here once their due dates pass, and are confirmed when a receipt arrives in Gmail.
               </p>
             </section>
-          ) : months.map(([key, rows]) => {
+          ) : months.map(([key, { payments: rows, bills }]) => {
             const total = rows.filter(row => row.status !== 'unsorted' && row.status !== 'skipped').reduce((sum, row) => sum + (row.amount_in_base ?? 0), 0)
+              + bills.filter(bill => bill.currency === base).reduce((sum, bill) => sum + bill.paid, 0)
             const confirmed = rows.filter(row => row.status === 'confirmed').length
+              + bills.filter(bill => bill.status !== 'due' && bill.status !== 'unknown').length
             return (
               <section key={key} className="rounded-2xl bg-card p-5 shadow-sm sm:p-6">
                 <div className="flex items-baseline justify-between gap-4">
-                  <h2 className="text-[17px] font-semibold text-foreground">{monthLabel(rows[0].date)}</h2>
+                  <h2 className="text-[17px] font-semibold text-foreground">{monthLabel(`${key}-01`)}</h2>
                   <p className="text-sm text-muted-foreground tabular-nums">
                     <span className="font-semibold text-foreground">{formatCurrency(total, base)}</span>
                     {' · '}{confirmed} confirmed
                   </p>
                 </div>
                 <ul className="mt-3 divide-y divide-border">
+                  {bills.map(bill => <BillRow key={bill.id} bill={bill} onChanged={refresh} onDecide={decide} />)}
                   {rows.map((row, index) => (
                     <li key={`${row.subscription_id}-${row.date}-${row.kind}-${index}`} className="py-2.5">
                       <div className={`flex min-h-11 items-center gap-3 ${row.status === 'expected' ? 'opacity-70' : ''}`}>
@@ -307,7 +325,7 @@ function DecisionButtons({ target, manual, amount, currency, bill = false, onDec
   if (editing) {
     return (
       <form
-        className="mt-2 flex flex-wrap items-center gap-2 pl-11"
+        className="mt-2 flex flex-wrap items-center gap-2 pl-[3.25rem]"
         onSubmit={event => {
           event.preventDefault()
           if (!valid) return
@@ -334,18 +352,18 @@ function DecisionButtons({ target, manual, amount, currency, bill = false, onDec
   }
 
   return (
-    <div className="mt-2 flex flex-wrap gap-2 pl-11">
+    <div className="mt-2 flex flex-wrap gap-2 pl-[3.25rem]">
       {manual ? (
         <>
-          {manual === 'paid' && !bill ? (
+          {manual === 'paid' ? (
             <Button size="sm" variant="outline" onClick={openEditor}>Change amount</Button>
           ) : null}
           <Button size="sm" variant="ghost" onClick={() => void onDecide(target, 'undo')}>Undo your answer</Button>
         </>
       ) : (
         <>
-          <Button size="sm" variant="outline" onClick={() => void onDecide(target, 'paid')}>{bill ? 'Paid another way' : 'Paid'}</Button>
-          {!bill ? <Button size="sm" variant="outline" onClick={openEditor}>Paid a different amount</Button> : null}
+          <Button size="sm" variant="outline" onClick={() => void onDecide(target, 'paid')}>Paid</Button>
+          <Button size="sm" variant="outline" onClick={openEditor}>Paid a different amount</Button>
           {!bill ? <Button size="sm" variant="ghost" onClick={() => void onDecide(target, 'skipped')}>Didn&apos;t happen</Button> : null}
         </>
       )}
