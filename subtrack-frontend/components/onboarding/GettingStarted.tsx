@@ -15,9 +15,11 @@ interface GettingStartedProps {
   gmailConnected: boolean
   hasPayments: boolean
   hasIncome: boolean
+  /** Drop the card surface when rendered inside another panel. */
+  bare?: boolean
 }
 
-export function GettingStarted({ gmailConnected, hasPayments, hasIncome }: GettingStartedProps) {
+export function GettingStarted({ gmailConnected, hasPayments, hasIncome, bare = false }: GettingStartedProps) {
   const [hidden, setHidden] = useStoredString(HIDDEN_KEY, '')
   const threads = useApi<AgentThread[]>(apiKeys.agentThreads, token => listAgentThreads(token))
   const askedAssistant = (threads.data ?? []).some(thread => thread.message_count > 0)
@@ -60,7 +62,7 @@ export function GettingStarted({ gmailConnected, hasPayments, hasIncome }: Getti
   if (hidden || completed === items.length || threads.isLoading) return null
 
   return (
-    <section className="rounded-2xl bg-card p-5 text-left shadow-sm sm:p-6" aria-labelledby="getting-started-heading">
+    <section className={bare ? 'p-5 text-left' : 'rounded-2xl bg-card p-5 text-left shadow-sm sm:p-6'} aria-labelledby="getting-started-heading">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 id="getting-started-heading" className="text-[17px] font-semibold text-foreground">Getting started</h2>

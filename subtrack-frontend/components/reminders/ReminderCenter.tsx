@@ -37,11 +37,13 @@ function timingCopy(reminder: PaymentReminder) {
 }
 
 interface ReminderCenterProps {
+  /** Drop the card surface when rendered inside another panel. */
+  bare?: boolean
   reminders: PaymentReminder[]
   onDismiss: (id: string) => Promise<void>
 }
 
-export function ReminderCenter({ reminders, onDismiss }: ReminderCenterProps) {
+export function ReminderCenter({ reminders, onDismiss, bare = false }: ReminderCenterProps) {
   const [busyId, setBusyId] = useState<string | null>(null)
   if (reminders.length === 0) return null
 
@@ -55,7 +57,7 @@ export function ReminderCenter({ reminders, onDismiss }: ReminderCenterProps) {
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl bg-card shadow-sm" aria-labelledby="dashboard-reminders-title">
+    <section className={bare ? 'overflow-hidden' : 'overflow-hidden rounded-2xl bg-card shadow-sm'} aria-labelledby="dashboard-reminders-title">
       <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
         <div>
           <div className="flex items-center gap-2">
