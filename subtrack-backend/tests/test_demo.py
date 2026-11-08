@@ -190,6 +190,17 @@ class DemoSessionTests(unittest.TestCase):
         self.assertIsNone(preference.onboarding_completed_at)
         self.assertEqual(preference.monthly_income, 6500)
 
+    def test_new_demo_has_payment_history_to_show(self):
+        from app.services.paid_history import paid_history
+
+        with patch.object(settings, "demo_token_secret", DEMO_SECRET):
+            result = create_demo_session(request_from("198.51.100.1"), self.db)
+            user_id = auth.verify_token(credentials(result["access_token"]))
+
+        history = paid_history(self.db, user_id, months=3)
+        self.assertTrue(history["payments"])
+        self.assertTrue(any(row.get("target") for row in history["payments"]))
+
     def test_new_demo_uses_few_database_round_trips(self):
         statements = []
         event.listen(

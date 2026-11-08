@@ -58,6 +58,11 @@ DEMO_DETECTIONS: tuple[dict, ...] = (
 )
 
 
+# Demo payments look like they were added months ago, so Paid history has
+# past due dates to show and mark as paid.
+DEMO_TRACKED_DAYS = 120
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
@@ -105,6 +110,7 @@ def _demo_subscription(db: Session, user_id: str, spec: dict) -> Subscription:
         amount_type=spec.get("amount_type", "fixed"),
         spending_type=spec.get("spending_type", "unspecified"),
         is_active=status not in {"cancelled", "ended"},
+        created_at=_calendar_day(-DEMO_TRACKED_DAYS),
     )
 
 
