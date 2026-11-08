@@ -149,6 +149,23 @@ class PaidHistoryTests(unittest.TestCase):
         self.assertEqual(statuses["2026-09-18"], ("overdue", 58.0))
         self.assertEqual(statuses["2026-10-18"], ("part_paid", 28.0))
 
+    def test_receipt_that_paid_a_bill_is_not_listed_again(self):
+        self.phone()
+        self.bill(date(2026, 10, 18), 140.59, due=date(2026, 11, 3))
+        self.receipt("mybill.vodafone.com.au", date(2026, 10, 25), 140.59)
+        result = self.bills()
+        self.assertFalse([r for r in result["payments"] if r["date"] == "2026-10-25"])
+
+    def test_bill_marked_paid_with_less_is_part_paid(self):
+        from app.routers.subscriptions import PaymentDecisionInput, decide_payment
+
+        self.phone()
+        self.bill(date(2026, 10, 18), 140.0, due=date(2026, 11, 3))
+        target = self.bills()["bills"][0]["target"]
+        decide_payment(PaymentDecisionInput(target=target, decision="paid", amount=100), "owner", self.db)
+        bill = self.bills()["bills"][0]
+        self.assertEqual((bill["status"], bill["paid"], bill["owing"]), ("part_paid", 100.0, 40.0))
+
     def test_overpaying_leaves_credit(self):
         self.phone()
         self.bill(date(2026, 9, 18), 58.0, due=date(2026, 10, 3))

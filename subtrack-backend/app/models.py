@@ -951,6 +951,7 @@ class PaymentDecision(Base):
     user_id = Column(String, nullable=False, index=True)
     target = Column(String(100), nullable=False)
     decision = Column(String(16), nullable=False)
+    amount = Column(Numeric(12, 2), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 

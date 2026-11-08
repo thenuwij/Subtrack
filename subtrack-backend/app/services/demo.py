@@ -4,12 +4,14 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from app.models import (
+    Bill,
     BillingCycle,
     Category,
     ChangeKind,
     DemoSession,
     DetectedSubscription,
     DetectionStatus,
+    GmailReceipt,
     PaymentReminder,
     Subscription,
     SubscriptionChange,
@@ -23,15 +25,16 @@ DEMO_PAYMENTS: tuple[dict, ...] = (
     {"name": "Rent", "category": "housing", "amount": 550, "interval_unit": "week",
      "interval_count": 1, "due_in": 2, "spending_type": "essential"},
     {"name": "Origin Energy", "category": "utilities", "amount": 186.4, "interval_unit": "month",
-     "interval_count": 3, "due_in": 12, "amount_type": "variable", "spending_type": "essential"},
+     "interval_count": 3, "due_in": 12, "amount_type": "variable", "spending_type": "essential",
+     "source_domain": "originenergy.com.au"},
     {"name": "Aussie Broadband", "category": "phone_internet", "amount": 79, "interval_unit": "month",
      "interval_count": 1, "due_in": 9, "spending_type": "essential"},
     {"name": "Telstra Mobile", "category": "phone_internet", "amount": 55, "interval_unit": "month",
-     "interval_count": 1, "due_in": 13, "spending_type": "essential"},
+     "interval_count": 1, "due_in": 13, "spending_type": "essential", "source_domain": "telstra.com.au"},
     {"name": "Car insurance", "category": "insurance", "amount": 1148, "interval_unit": "year",
      "interval_count": 1, "due_in": 24, "spending_type": "essential"},
     {"name": "Netflix", "category": "streaming", "amount": 25.99, "interval_unit": "month",
-     "interval_count": 1, "due_in": 5, "spending_type": "optional"},
+     "interval_count": 1, "due_in": 5, "spending_type": "optional", "source_domain": "netflix.com"},
     {"name": "Spotify", "category": "streaming", "amount": 13.99, "interval_unit": "month",
      "interval_count": 1, "due_in": 11},
     {"name": "Spotify Premium", "category": "streaming", "amount": 13.99, "interval_unit": "month",
@@ -110,6 +113,7 @@ def _demo_subscription(db: Session, user_id: str, spec: dict) -> Subscription:
         amount_type=spec.get("amount_type", "fixed"),
         spending_type=spec.get("spending_type", "unspecified"),
         is_active=status not in {"cancelled", "ended"},
+        source_domain=spec.get("source_domain"),
         created_at=_calendar_day(-DEMO_TRACKED_DAYS),
     )
 
@@ -153,6 +157,8 @@ def seed_demo_user(db: Session, user_id: str) -> None:
         ),
     ])
 
+    rows.extend(_demo_bills_and_receipts(user_id, subs["Netflix"]))
+
     trial = subs["Disney+"]
     rows.extend([
         PaymentReminder(
@@ -191,6 +197,41 @@ def seed_demo_user(db: Session, user_id: str) -> None:
 
     db.add_all(rows)
     db.commit()
+
+
+def _months_before(day, months: int):
+    from calendar import monthrange
+
+    month = day.month - months
+    year = day.year + (month - 1) // 12
+    month = (month - 1) % 12 + 1
+    return day.replace(year=year, month=month, day=min(day.day, monthrange(year, month)[1]))
+
+
+def _demo_bills_and_receipts(user_id: str, netflix: Subscription) -> list:
+    """An overdue bill, a paid one, one not due yet and receipts, so History has every state to show."""
+    today = _utcnow().date()
+
+    def day(offset: int):
+        return today + timedelta(days=offset)
+
+    def bill(key: str, sender: str, merchant: str, amount: float, issued: int, due: int) -> Bill:
+        return Bill(user_id=user_id, gmail_message_id=f"demo-bill-{key}", intermediary=sender,
+                    merchant=merchant, amount=amount, currency="AUD", issued_on=day(issued), due_on=day(due))
+
+    def receipt(key: str, sender: str, merchant: str, amount: float, received) -> GmailReceipt:
+        return GmailReceipt(user_id=user_id, gmail_message_id=f"demo-receipt-{key}", intermediary=sender,
+                            merchant=merchant, amount=amount, currency="AUD", received_on=received)
+
+    netflix_due = netflix.next_due.date()
+    return [
+        bill("origin", "originenergy.com.au", "Origin Energy", 186.40, -45, -10),
+        bill("telstra-1", "telstra.com.au", "Telstra", 55, -40, -26),
+        receipt("telstra-1", "telstra.com.au", "Telstra", 55, day(-30)),
+        bill("telstra-2", "telstra.com.au", "Telstra", 55, -10, 4),
+        receipt("netflix-1", "netflix.com", "Netflix", 25.99, _months_before(netflix_due, 1)),
+        receipt("netflix-2", "netflix.com", "Netflix", 25.99, _months_before(netflix_due, 2)),
+    ]
 
 
 def purge_expired_demos(db: Session) -> int:

@@ -37,7 +37,7 @@ export default function Navbar() {
           aria-current={active ? 'page' : undefined}
           className={mobile
             ? `relative flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`
-            : `flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-colors ${active ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-card/60 hover:text-foreground'}`}>
+            : `flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-colors ${active ? 'bg-card text-primary shadow-sm' : 'text-foreground hover:bg-card/60'}`}>
           <span className="relative"><Icon className={mobile ? 'h-5 w-5' : 'h-[18px] w-[18px]'} strokeWidth={active ? 2 : 1.7} />
             {mobile && href === '/review' && pendingCount > 0 ? <span className="absolute -right-2 -top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-card" /> : null}
           </span>
@@ -60,7 +60,7 @@ export default function Navbar() {
         <p className="eyebrow mb-3 px-3">Your money</p>
         <nav aria-label="Main" className="space-y-1.5">{navItems()}</nav>
         <div className="mt-auto space-y-5 pt-10">
-          <Link href="/account" data-tour="nav-account" aria-current={pathname === '/account' ? 'page' : undefined} className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium ${pathname === '/account' ? 'bg-card text-primary shadow-sm' : 'text-muted-foreground hover:bg-card/60'}`}><Settings2 className="h-[18px] w-[18px]" strokeWidth={1.7} />Account & settings</Link>
+          <Link href="/account" data-tour="nav-account" aria-current={pathname === '/account' ? 'page' : undefined} className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium ${pathname === '/account' ? 'bg-card text-primary shadow-sm' : 'text-foreground hover:bg-card/60'}`}><Settings2 className="h-[18px] w-[18px]" strokeWidth={1.7} />Account & settings</Link>
           <div className="flex items-center gap-2 border-t border-sidebar-border/70 px-1 pt-5">
             <Link href="/account" className="flex min-w-0 flex-1 items-center gap-2.5 rounded-lg p-1" aria-label="Your account"><UserAvatar name={currentUser.name} email={currentUser.email} avatarUrl={currentUser.avatarUrl} className="h-8 w-8 shrink-0 text-xs" /><span className="min-w-0"><span className="block truncate text-xs font-semibold">{currentUser.name || 'Your account'}</span><span className="block truncate text-[11px] text-muted-foreground">{currentUser.email || 'Personal workspace'}</span></span></Link>
             <button type="button" onClick={handleLogout} aria-label="Sign out" title="Sign out" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-card"><LogOut className="h-4 w-4" /></button>
