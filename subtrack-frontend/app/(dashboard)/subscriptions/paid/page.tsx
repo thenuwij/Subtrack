@@ -47,7 +47,7 @@ async function withToken<T>(run: (token: string) => Promise<T>) {
   return run(token)
 }
 
-function BillRow({ bill, onChanged }: { bill: PaidBill; onChanged: () => void }) {
+function BillRow({ bill, onChanged, onDecide }: { bill: PaidBill; onChanged: () => void; onDecide: Decide }) {
   const [due, setDue] = useState('')
   const [saving, setSaving] = useState(false)
   const status = BILL_STATUS[bill.status]
@@ -89,7 +89,7 @@ function BillRow({ bill, onChanged }: { bill: PaidBill; onChanged: () => void })
           </span>
         </span>
       </div>
-      {bill.target ? <DecisionButtons target={bill.target} manual={bill.manual} bill onChanged={onChanged} /> : null}
+      {bill.target ? <DecisionButtons target={bill.target} manual={bill.manual} bill onDecide={onDecide} /> : null}
       {!bill.due_on ? (
         <div className="mt-2 flex flex-wrap items-center gap-2 pl-11">
           <span className="text-[13px] text-muted-foreground">The email didn&apos;t say when this is due.</span>
@@ -117,6 +117,31 @@ export default function PaidPage() {
   }, [query.data])
   const base = query.data?.base_currency ?? 'AUD'
   const refresh = () => void query.mutate()
+
+  // Show the answer straight away, then save it and reload the real figures.
+  async function decide(target: string, decision: 'paid' | 'skipped' | 'undo') {
+    const manual = decision === 'undo' ? null : decision
+    void query.mutate(current => current && {
+      ...current,
+      payments: current.payments.map(row => row.target !== target ? row : {
+        ...row,
+        manual,
+        status: decision === 'paid' ? 'confirmed' : decision === 'skipped' ? 'skipped' : row.status,
+      }),
+      bills: current.bills.map(bill => bill.target !== target ? bill : {
+        ...bill,
+        manual,
+        status: decision === 'paid' ? 'paid' : bill.status,
+      }),
+    }, { revalidate: false })
+    try {
+      await withToken(token => decidePayment(token, target, decision))
+    } catch (error) {
+      toast.error(errorMessage(error, 'Could not save your answer.'))
+    } finally {
+      refresh()
+    }
+  }
 
   async function sort(row: PaidPayment, kind: 'late_fee' | 'not_fee') {
     const key = `${row.subscription_id}-${row.date}`
@@ -179,7 +204,7 @@ export default function PaidPage() {
               <h2 className="text-[17px] font-semibold text-foreground">Bills</h2>
               <p className="mt-0.5 text-[13px] text-muted-foreground">From the bills in your email. Receipts mark them paid.</p>
               <ul className="mt-2 divide-y divide-border">
-                {query.data.bills.map(bill => <BillRow key={bill.id} bill={bill} onChanged={refresh} />)}
+                {query.data.bills.map(bill => <BillRow key={bill.id} bill={bill} onChanged={refresh} onDecide={decide} />)}
               </ul>
             </section>
           ) : null}
@@ -235,7 +260,7 @@ export default function PaidPage() {
                           {formatCurrency(row.amount, row.currency)}
                         </span>
                       </div>
-                      {row.target ? <DecisionButtons target={row.target} manual={row.manual} onChanged={refresh} /> : null}
+                      {row.target ? <DecisionButtons target={row.target} manual={row.manual} onDecide={decide} /> : null}
                       {row.kind === 'above_plan' ? (
                         <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-[3.25rem]">
                           <span className="text-[13px] text-muted-foreground">Was this extra a late fee?</span>
@@ -257,13 +282,19 @@ export default function PaidPage() {
   )
 }
 
-function DecisionButtons({ target, manual, bill = false, onChanged }: { target: string; manual?: string | null; bill?: boolean; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false)
-  async function save(decision: 'paid' | 'skipped' | 'undo') {
-    setBusy(true)
-    try { await withToken(token => decidePayment(token, target, decision)); onChanged() }
-    catch (error) { toast.error(errorMessage(error, 'Could not save your answer.')) }
-    finally { setBusy(false) }
-  }
-  return <div className="mt-2 flex flex-wrap gap-2 pl-11">{manual ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save('undo')}>Undo your answer</Button> : <><Button size="sm" variant="outline" disabled={busy} onClick={() => void save('paid')}>{bill ? 'Paid another way' : 'Paid'}</Button>{!bill ? <Button size="sm" variant="ghost" disabled={busy} onClick={() => void save('skipped')}>Didn&apos;t happen</Button> : null}</>}</div>
+type Decide = (target: string, decision: 'paid' | 'skipped' | 'undo') => Promise<void>
+
+function DecisionButtons({ target, manual, bill = false, onDecide }: { target: string; manual?: string | null; bill?: boolean; onDecide: Decide }) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2 pl-11">
+      {manual ? (
+        <Button size="sm" variant="ghost" onClick={() => void onDecide(target, 'undo')}>Undo your answer</Button>
+      ) : (
+        <>
+          <Button size="sm" variant="outline" onClick={() => void onDecide(target, 'paid')}>{bill ? 'Paid another way' : 'Paid'}</Button>
+          {!bill ? <Button size="sm" variant="ghost" onClick={() => void onDecide(target, 'skipped')}>Didn&apos;t happen</Button> : null}
+        </>
+      )}
+    </div>
+  )
 }

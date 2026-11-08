@@ -11,10 +11,12 @@ interface Props {
   forecast: SubscriptionForecast | null
   gmail: GmailStatus | null
   gmailScanStale: boolean
+  /** Drop the card surface when rendered inside another panel. */
+  bare?: boolean
   undatedPayments?: { id: string; name: string }[]
 }
 
-export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, undatedPayments = [] }: Props) {
+export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, undatedPayments = [], bare = false }: Props) {
   const editPayment = useEditPayment()
   const uncertainDetections = detections.filter(item =>
     item.confidence !== 'high'
@@ -47,7 +49,7 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, un
   }
 
   return (
-    <section className="rounded-2xl bg-card px-5 py-2 shadow-sm sm:px-6" aria-labelledby="needs-attention-heading">
+    <section className={bare ? 'px-5 py-2' : 'rounded-2xl bg-card px-5 py-2 shadow-sm sm:px-6'} aria-labelledby="needs-attention-heading">
       <button
         type="button"
         aria-expanded={open}
