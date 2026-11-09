@@ -20,6 +20,10 @@ export const apiKeys = {
   transactionSummary: (month: string) => `transaction-summary:${month}`,
   budgets: (month: string) => `budgets:${month}`,
   goals: 'goals',
+  workspaceTemplates: 'workspace:templates',
+  workspacePages: 'workspace:pages',
+  workspacePage: (id: string) => `workspace:page:${id}`,
+  workspacePageData: (id: string) => `workspace:data:${id}`,
   agentThreads: 'agent-threads',
 } as const
 

@@ -517,3 +517,178 @@ export interface ContributionInput {
   occurred_on?: string
   note?: string | null
 }
+
+// Workspace
+export type WorkspaceTemplateId = string
+
+export interface WorkspaceTemplate {
+  id: WorkspaceTemplateId
+  name: string
+  description: string
+  block_types: WorkspaceBlockType[]
+}
+
+export interface WorkspacePageSummary {
+  id: string
+  title: string
+  template_id: WorkspaceTemplateId | null
+  block_count: number
+  position: number
+  updated_at: string | null
+}
+
+export interface ChecklistItem {
+  text: string
+  done: boolean
+}
+
+export interface SharedCostItem {
+  label: string
+  amount: number
+  paid_by: string
+  split_between: string[]
+}
+
+interface BlockBase {
+  title?: string | null
+}
+
+export type WorkspaceBlockConfig =
+  | (BlockBase & { type: 'payment_list'; category?: Category | null; payment_ids?: string[] | null })
+  | (BlockBase & { type: 'transaction_log'; kind?: string | null; category?: Category | null; range?: string | null })
+  | (BlockBase & { type: 'budget'; categories?: Category[] | null })
+  | (BlockBase & { type: 'goal_progress'; goal_ids?: string[] | null })
+  | (BlockBase & { type: 'upcoming_payments'; days?: number })
+  | (BlockBase & { type: 'spending_trend'; months?: number; category?: Category | null })
+  | (BlockBase & { type: 'checklist'; items: ChecklistItem[] })
+  | (BlockBase & { type: 'shared_costs'; people: string[]; items: SharedCostItem[]; currency?: Currency | null })
+  | (BlockBase & { type: 'notes'; text: string })
+
+export type WorkspaceBlockType = WorkspaceBlockConfig['type']
+
+export interface WorkspacePage {
+  id: string
+  title: string
+  template_id: WorkspaceTemplateId | null
+  blocks: WorkspaceBlockConfig[]
+  position: number
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface WorkspacePageInput {
+  title: string
+  template_id: WorkspaceTemplateId
+}
+
+export interface WorkspacePageUpdate {
+  title?: string
+  blocks?: WorkspaceBlockConfig[]
+}
+
+export interface PaymentListRow {
+  id: string
+  name: string
+  category: Category
+  amount: number
+  currency: Currency
+  cadence_label: string
+  next_due: string | null
+  monthly_in_base: number | null
+}
+
+export interface PaymentListData {
+  payments: PaymentListRow[]
+  monthly_total_in_base: number
+  unconverted_count: number
+  missing_count: number
+  inactive_count: number
+}
+
+export interface TransactionLogEntry {
+  id: string
+  kind: 'income' | 'expense'
+  name: string
+  category: Category
+  amount: number
+  currency: Currency
+  occurred_on: string
+  amount_in_base: number | null
+}
+
+export interface TransactionLogData {
+  range: string
+  base_currency: Currency
+  entries: TransactionLogEntry[]
+  entry_count: number
+  income: number
+  expenses: number
+  unconverted_count: number
+}
+
+export interface UpcomingChargeRow {
+  id: string
+  name: string
+  category: Category
+  amount: number
+  currency: Currency
+  due_at: string
+  days_until_due: number
+  charge_amount_in_base: number | null
+  charge_amount_is_estimate: boolean
+}
+
+export interface UpcomingPaymentsData {
+  days: number
+  charges: UpcomingChargeRow[]
+  total_in_base: number
+  unconverted_count: number
+}
+
+export interface SpendingTrendMonth {
+  month: string
+  logged_expenses: number
+  tracked_payments: number
+  has_unconverted: boolean
+}
+
+export interface SpendingTrendData {
+  base_currency: Currency
+  category: Category | null
+  months: SpendingTrendMonth[]
+}
+
+export interface SharedCostsPerson {
+  name: string
+  paid: number
+  share: number
+  net: number
+  status: 'is_owed' | 'owes' | 'settled'
+}
+
+export interface SharedCostsData {
+  currency: Currency
+  total: number
+  people: SharedCostsPerson[]
+}
+
+export type WorkspaceBlockData =
+  | { type: 'payment_list'; data: PaymentListData }
+  | { type: 'transaction_log'; data: TransactionLogData }
+  | { type: 'budget'; data: Omit<BudgetOverview, 'month'> & { month?: string } }
+  | { type: 'goal_progress'; data: { goals: Goal[]; missing_count: number } }
+  | { type: 'upcoming_payments'; data: UpcomingPaymentsData }
+  | { type: 'spending_trend'; data: SpendingTrendData }
+  | { type: 'checklist'; data: { items: ChecklistItem[] } }
+  | { type: 'shared_costs'; data: SharedCostsData }
+  | { type: 'notes'; data: { text: string } }
+
+export type WorkspaceBlockResult =
+  | (WorkspaceBlockData & { title: string | null; error?: undefined })
+  | { type: string | null; title: string | null; error: string; data?: undefined }
+
+export interface WorkspacePageData {
+  id: string
+  title: string
+  blocks: WorkspaceBlockResult[]
+}

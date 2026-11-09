@@ -27,6 +27,12 @@ import type {
   TransactionSummary,
   SubscriptionInput,
   Feature,
+  WorkspacePage,
+  WorkspacePageData,
+  WorkspacePageInput,
+  WorkspacePageSummary,
+  WorkspacePageUpdate,
+  WorkspaceTemplate,
 } from '@/types'
 import {
   formatCadence,
@@ -820,4 +826,35 @@ export async function deleteGoal(token: string, id: string) {
 
 export async function addGoalContribution(token: string, goalId: string, data: ContributionInput) {
   return request(`/goals/${goalId}/contributions`, token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+// Workspace
+export async function listWorkspaceTemplates(token: string): Promise<WorkspaceTemplate[]> {
+  const rows = await request('/workspace/templates', token)
+  return Array.isArray(rows) ? rows as WorkspaceTemplate[] : []
+}
+
+export async function listWorkspacePages(token: string): Promise<WorkspacePageSummary[]> {
+  const rows = await request('/workspace/pages', token)
+  return Array.isArray(rows) ? rows as WorkspacePageSummary[] : []
+}
+
+export async function createWorkspacePage(token: string, data: WorkspacePageInput): Promise<WorkspacePage> {
+  return request('/workspace/pages', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function getWorkspacePage(token: string, id: string): Promise<WorkspacePage> {
+  return request(`/workspace/pages/${id}`, token)
+}
+
+export async function getWorkspacePageData(token: string, id: string): Promise<WorkspacePageData> {
+  return request(`/workspace/pages/${id}/data`, token)
+}
+
+export async function updateWorkspacePage(token: string, id: string, data: WorkspacePageUpdate): Promise<WorkspacePage> {
+  return request(`/workspace/pages/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function deleteWorkspacePage(token: string, id: string) {
+  return request(`/workspace/pages/${id}`, token, { method: 'DELETE' })
 }
