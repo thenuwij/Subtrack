@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, get_args
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
@@ -38,6 +38,9 @@ from app.models import (
     SpendingType,
     Subscription,
     SubscriptionChange,
+    Transaction,
+    TransactionKind,
+    TransactionSource,
     UserPreference,
 )
 from app.routers.detected import ApproveOverrides, apply_approval
@@ -45,6 +48,13 @@ from app.routers.rates import conversion_for_storage
 from app.routers.subscriptions import (
     log_change,
     retarget_detection_links,
+)
+from app.routers.transactions import (
+    EARLIEST_DATE,
+    LATEST_DATE,
+    MAX_AMOUNT,
+    SupportedCurrency,
+    _require_owned_payment,
 )
 from app.services.duplicates import (
     canonical_duplicate_pair,
@@ -60,7 +70,10 @@ from app.services.recurrence import (
     monthly_equivalent,
 )
 from app.services.reminders import reminder_occurrence
+from app.services.safe_to_spend import _user_zone
 from app.services.schedules import utc_naive
+from app.services.transaction_duplicates import PossibleDuplicate, find_possible_duplicates
+from app.services.transactions import apply_conversion, base_currency_for
 from app.services.trials import sync_trial_reminder
 
 ACTION_EXPIRES_AFTER = timedelta(hours=24)
@@ -283,6 +296,56 @@ class SetEmailReminders(StrictAction):
     enabled: bool
 
 
+def _upper_currency(value: object) -> object:
+    return value.upper() if isinstance(value, str) else value
+
+
+class LogTransaction(StrictAction):
+    kind: TransactionKind
+    name: str = Field(min_length=1, max_length=200)
+    amount: Decimal = Field(gt=0, le=MAX_AMOUNT, decimal_places=2)
+    currency: SupportedCurrency
+    category: Category = Category.other
+    occurred_on: date | None = Field(default=None, ge=EARLIEST_DATE, le=LATEST_DATE)
+    note: str | None = Field(default=None, max_length=500)
+    recurring_payment_id: UUID | None = None
+
+    _currency = field_validator("currency", mode="before")(_upper_currency)
+
+
+class UpdateTransaction(StrictAction):
+    transaction_id: UUID
+    kind: TransactionKind | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    amount: Decimal | None = Field(default=None, gt=0, le=MAX_AMOUNT, decimal_places=2)
+    currency: SupportedCurrency | None = None
+    category: Category | None = None
+    occurred_on: date | None = Field(default=None, ge=EARLIEST_DATE, le=LATEST_DATE)
+    note: str | None = Field(default=None, max_length=500)
+    recurring_payment_id: UUID | None = None
+    # Null means "leave unchanged" in tool payloads, so clearing the optional
+    # note or bill link is an explicit, confirmation-gated instruction.
+    clear_fields: list[Literal["note", "recurring_payment_id"]] = Field(
+        default_factory=list, max_length=2,
+    )
+
+    _currency = field_validator("currency", mode="before")(_upper_currency)
+
+    @model_validator(mode="after")
+    def has_change(self):
+        values = self.model_dump(exclude={"transaction_id", "clear_fields"})
+        if not any(value is not None for value in values.values()) and not self.clear_fields:
+            raise ValueError("At least one field must be changed")
+        conflicts = [field for field in self.clear_fields if getattr(self, field) is not None]
+        if conflicts:
+            raise ValueError(f"Cannot both set and clear {', '.join(conflicts)}")
+        return self
+
+
+class RemoveTransaction(StrictAction):
+    transaction_id: UUID
+
+
 ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_add_recurring_payment": AddPayment,
     "propose_update_recurring_payment": UpdatePayment,
@@ -297,6 +360,9 @@ ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_mark_payment_paid": MarkPaid,
     "propose_update_balance": UpdateBalance,
     "propose_set_email_reminders": SetEmailReminders,
+    "propose_log_transaction": LogTransaction,
+    "propose_update_transaction": UpdateTransaction,
+    "propose_remove_transaction": RemoveTransaction,
 }
 
 
@@ -601,6 +667,88 @@ ACTION_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "propose_log_transaction",
+        "description": (
+            "Prepare logging one day-to-day expense or income entry for confirmation. Only use "
+            "an amount the user stated. Leave occurred_on null for today. Set "
+            "recurring_payment_id only when the entry pays a tracked bill the user confirmed. "
+            "The card warns about possible duplicates; repeat that warning."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": [item.value for item in TransactionKind]},
+                "name": {"type": "string", "minLength": 1, "maxLength": 200},
+                "amount": {"type": "number", "exclusiveMinimum": 0, "maximum": float(MAX_AMOUNT)},
+                "currency": {"type": "string", "enum": list(get_args(SupportedCurrency))},
+                "category": {"type": "string", "enum": [item.value for item in Category]},
+                "occurred_on": {"type": ["string", "null"], "format": "date"},
+                "note": {"type": ["string", "null"], "maxLength": 500},
+                "recurring_payment_id": {"type": ["string", "null"], "format": "uuid"},
+            },
+            "required": [
+                "kind", "name", "amount", "currency", "category", "occurred_on", "note",
+                "recurring_payment_id",
+            ],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_update_transaction",
+        "description": (
+            "Prepare changes to one logged expense or income entry. Use the exact ID from "
+            "list_transactions. Null leaves a field unchanged; use clear_fields to remove a "
+            "note or bill link."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "transaction_id": {"type": "string", "format": "uuid"},
+                "kind": {
+                    "type": ["string", "null"],
+                    "enum": [item.value for item in TransactionKind] + [None],
+                },
+                "name": {"type": ["string", "null"], "minLength": 1, "maxLength": 200},
+                "amount": {
+                    "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": float(MAX_AMOUNT),
+                },
+                "currency": {
+                    "type": ["string", "null"], "enum": list(get_args(SupportedCurrency)) + [None],
+                },
+                "category": {
+                    "type": ["string", "null"], "enum": [item.value for item in Category] + [None],
+                },
+                "occurred_on": {"type": ["string", "null"], "format": "date"},
+                "note": {"type": ["string", "null"], "maxLength": 500},
+                "recurring_payment_id": {"type": ["string", "null"], "format": "uuid"},
+                "clear_fields": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["note", "recurring_payment_id"]},
+                    "maxItems": 2,
+                    "uniqueItems": True,
+                },
+            },
+            "required": [
+                "transaction_id", "kind", "name", "amount", "currency", "category",
+                "occurred_on", "note", "recurring_payment_id", "clear_fields",
+            ],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_remove_transaction",
+        "description": (
+            "Prepare removing one logged expense or income entry. Use the exact ID from "
+            "list_transactions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"transaction_id": {"type": "string", "format": "uuid"}},
+            "required": ["transaction_id"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -662,6 +810,50 @@ def _owned_reminder(
     if not row:
         raise HTTPException(status_code=404, detail="Active reminder not found")
     return row
+
+
+def _owned_transaction(
+    db: Session,
+    user_id: str,
+    identifier: UUID,
+    *,
+    for_update: bool = False,
+) -> Transaction:
+    query = db.query(Transaction).filter(
+        Transaction.id == identifier,
+        Transaction.user_id == user_id,
+    )
+    if for_update:
+        query = query.with_for_update()
+    row = query.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Logged entry not found")
+    return row
+
+
+def _transaction_snapshot(row: Transaction) -> dict:
+    return {
+        "id": str(row.id),
+        "kind": row.kind,
+        "name": row.name,
+        "amount": str(row.amount),
+        "currency": row.currency,
+        "category": _enum(row.category),
+        "occurred_on": row.occurred_on.isoformat(),
+        "note": row.note,
+        "recurring_payment_id": str(row.recurring_payment_id) if row.recurring_payment_id else None,
+    }
+
+
+def _local_today(db: Session, user_id: str) -> date:
+    return datetime.now(_user_zone(db, user_id)).date()
+
+
+def _duplicate_hint(match: PossibleDuplicate) -> str:
+    amount = f"{match.currency} {match.amount:.2f}"
+    if match.occurred_on is None:
+        return f"your tracked payment {match.name} {amount}"
+    return f"{match.name} {amount} on {match.occurred_on.day} {match.occurred_on:%b}"
 
 
 def _subscription_snapshot(row: Subscription) -> dict:
@@ -1001,6 +1193,56 @@ def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str
         else:
             summary = "Turn off email reminders"
             description = "Stop reminder emails. In-app reminders stay."
+    elif tool_name == "propose_log_transaction":
+        item = data
+        assert isinstance(item, LogTransaction)
+        if item.recurring_payment_id is not None:
+            _require_owned_payment(db, user_id, item.recurring_payment_id)
+        occurred_on = item.occurred_on or _local_today(db, user_id)
+        # Store the date the card shows, so confirming after midnight can't move it.
+        payload["occurred_on"] = occurred_on.isoformat()
+        summary = f"Log {item.name}"
+        entry = "an expense" if item.kind == TransactionKind.expense else "income"
+        description = (
+            f"Record {entry} of {item.currency} {item.amount:.2f} "
+            f"({_enum(item.category).replace('_', ' ')}) on {occurred_on.isoformat()}."
+        )
+        if item.recurring_payment_id is not None:
+            description += " It will be linked to the tracked payment so it isn't counted twice."
+        duplicates = find_possible_duplicates(
+            db, user_id, name=item.name, amount=item.amount, currency=item.currency,
+            occurred_on=occurred_on,
+        )
+        if duplicates:
+            description += (
+                f" Looks like {'; '.join(_duplicate_hint(match) for match in duplicates)}"
+                " — confirm only if this is new."
+            )
+    elif tool_name == "propose_update_transaction":
+        item = data
+        assert isinstance(item, UpdateTransaction)
+        row = _owned_transaction(db, user_id, item.transaction_id)
+        if item.recurring_payment_id is not None:
+            _require_owned_payment(db, user_id, item.recurring_payment_id)
+        expected = {"transaction": _transaction_snapshot(row)}
+        summary = f"Update {row.name}"
+        changed = [
+            key.replace("_", " ")
+            for key, value in item.model_dump(exclude={"transaction_id", "clear_fields"}).items()
+            if value is not None
+        ]
+        changed.extend(f"clear {key.replace('_', ' ')}" for key in item.clear_fields)
+        description = f"Change {', '.join(changed)} after confirmation."
+    elif tool_name == "propose_remove_transaction":
+        item = data
+        assert isinstance(item, RemoveTransaction)
+        row = _owned_transaction(db, user_id, item.transaction_id)
+        expected = {"transaction": _transaction_snapshot(row)}
+        summary = f"Remove {row.name}"
+        description = (
+            f"Delete this logged {row.kind} of {row.currency} {Decimal(row.amount):.2f} "
+            f"on {row.occurred_on.isoformat()}."
+        )
     else:
         raise HTTPException(status_code=400, detail="Unknown assistant action")
     return payload, expected, summary, description
@@ -1171,6 +1413,10 @@ def _assert_fresh(action: AgentAction, db: Session, user_id: str) -> None:
         pref = db.query(EmailPreference).filter_by(user_id=user_id).with_for_update().first()
         if _email_snapshot(pref) != expected["email_pref"]:
             raise HTTPException(status_code=409, detail="Email reminder settings changed after the action was proposed.")
+    if "transaction" in expected:
+        row = _owned_transaction(db, user_id, UUID(expected["transaction"]["id"]), for_update=True)
+        if _transaction_snapshot(row) != expected["transaction"]:
+            raise HTTPException(status_code=409, detail="This entry changed after the action was proposed. Ask the assistant again.")
 
 
 def _execute_add_payment(action: AgentAction, db: Session, user_id: str) -> dict:
@@ -1557,6 +1803,60 @@ def _execute_set_email_reminders(action: AgentAction, db: Session, user_id: str)
     return {"enabled": data.enabled}
 
 
+def _execute_log_transaction(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = LogTransaction.model_validate(action.payload_json)
+    if data.recurring_payment_id is not None:
+        _require_owned_payment(db, user_id, data.recurring_payment_id)
+    row = Transaction(
+        user_id=user_id,
+        kind=data.kind.value,
+        name=data.name,
+        amount=data.amount,
+        currency=data.currency,
+        category=data.category,
+        occurred_on=data.occurred_on or _local_today(db, user_id),
+        note=data.note,
+        source=TransactionSource.ai.value,
+        recurring_payment_id=data.recurring_payment_id,
+    )
+    apply_conversion(db, row, base_currency_for(db, user_id))
+    db.add(row)
+    db.flush()
+    return {"transaction_id": str(row.id), "name": row.name, "occurred_on": row.occurred_on.isoformat()}
+
+
+def _execute_update_transaction(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = UpdateTransaction.model_validate(action.payload_json)
+    row = _owned_transaction(db, user_id, data.transaction_id)
+    if data.recurring_payment_id is not None:
+        _require_owned_payment(db, user_id, data.recurring_payment_id)
+    changes = {
+        key: value
+        for key, value in data.model_dump(exclude={"transaction_id", "clear_fields"}).items()
+        if value is not None
+    }
+    changes.update({key: None for key in data.clear_fields})
+    if "kind" in changes:
+        changes["kind"] = changes["kind"].value
+    money_changed = any(
+        field in changes and changes[field] != getattr(row, field) for field in ("amount", "currency")
+    )
+    for field, value in changes.items():
+        setattr(row, field, value)
+    if money_changed:
+        apply_conversion(db, row, base_currency_for(db, user_id))
+    db.flush()
+    return {"transaction_id": str(row.id), "name": row.name}
+
+
+def _execute_remove_transaction(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = RemoveTransaction.model_validate(action.payload_json)
+    row = _owned_transaction(db, user_id, data.transaction_id)
+    name = row.name
+    db.delete(row)
+    return {"transaction_id": str(data.transaction_id), "name": name}
+
+
 EXECUTORS = {
     "add_recurring_payment": _execute_add_payment,
     "update_recurring_payment": _execute_update_payment,
@@ -1571,6 +1871,9 @@ EXECUTORS = {
     "mark_payment_paid": _execute_mark_paid,
     "update_balance": _execute_update_balance,
     "set_email_reminders": _execute_set_email_reminders,
+    "log_transaction": _execute_log_transaction,
+    "update_transaction": _execute_update_transaction,
+    "remove_transaction": _execute_remove_transaction,
 }
 
 

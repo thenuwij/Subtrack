@@ -2,6 +2,8 @@
 
 from typing import Literal, get_args
 
+from sqlalchemy.orm import Session
+
 from app.models import UserPreference
 
 Feature = Literal["spending", "payments", "goals", "workspace"]
@@ -14,3 +16,8 @@ def enabled_features(pref: UserPreference | None) -> list[Feature]:
     if not chosen:
         return list(ALL_FEATURES)
     return [feature for feature in ALL_FEATURES if feature in chosen]
+
+
+def feature_enabled(db: Session, user_id: str, feature: Feature) -> bool:
+    pref = db.query(UserPreference).filter(UserPreference.user_id == user_id).first()
+    return feature in enabled_features(pref)

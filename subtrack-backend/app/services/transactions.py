@@ -77,7 +77,7 @@ def month_transactions(
     )
 
 
-def _amount_in_base(row: Transaction, base: str, snapshot: dict | None) -> Decimal | None:
+def amount_in_base(row: Transaction, base: str, snapshot: dict | None) -> Decimal | None:
     """Today's base-currency value of one entry, or None when no valid rate exists.
 
     A stored estimate is used only when it targets the current base currency;
@@ -113,7 +113,7 @@ def month_summary(db: Session, user_id: str, year: int, month: int) -> dict:
     by_category: dict[str, Decimal] = {}
     unconverted = 0
     for row in rows:
-        value = _amount_in_base(row, base, snapshot)
+        value = amount_in_base(row, base, snapshot)
         if value is None:
             unconverted += 1
             continue

@@ -22,6 +22,7 @@ from app.models import (
     PaymentReminder,
     SafeToSpendProfile,
     Subscription,
+    Transaction,
     UserPreference,
 )
 from app.routers import agent as agent_router
@@ -77,7 +78,8 @@ def _snapshot(db: Session) -> str:
         for row in db.query(Subscription).filter_by(user_id=EVAL_USER).order_by(Subscription.name)
     ]
     reminders = db.query(PaymentReminder).filter_by(user_id=EVAL_USER).count()
-    return json.dumps([rows, reminders], default=str)
+    transactions = db.query(Transaction).filter_by(user_id=EVAL_USER).count()
+    return json.dumps([rows, reminders, transactions], default=str)
 
 
 def run_case(db: Session, question: str, model: Callable[..., object] | None = None) -> Transcript:

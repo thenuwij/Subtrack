@@ -22,7 +22,15 @@ from app.agent.finance import (
     upcoming_charges,
 )
 from app.agent.research import ALTERNATIVE_RESEARCH_TOOL, research_alternatives
-from app.models import Category
+from app.agent.spending import (
+    MAX_LIST_LIMIT,
+    SPENDING_OFF,
+    SPENDING_TOOLS,
+    list_logged_transactions,
+    logged_transaction_summary,
+    spending_enabled,
+)
+from app.models import Category, TransactionKind
 from app.services.safe_to_spend import can_i_afford, safe_to_spend
 
 CATEGORIES = [item.value for item in Category]
@@ -303,6 +311,38 @@ READ_TOOL_DEFINITIONS = [
         ),
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
+    {
+        "name": "list_transactions",
+        "description": (
+            "List expenses and income the user logged in Subtrack for one calendar month "
+            "(defaults to this month), newest first, optionally by kind or category. "
+            "These are what the user recorded, not bank data. Use before logging to spot "
+            "an entry that is already there, and to find the ID to edit or remove."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "month": {"type": "string", "pattern": "^\\d{4}-\\d{2}$"},
+                "kind": {"type": "string", "enum": [item.value for item in TransactionKind]},
+                "category": {"type": "string", "enum": CATEGORIES},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_transaction_summary",
+        "description": (
+            "Get logged income, expenses, net and expenses per category for one calendar "
+            "month (defaults to this month) in the user's base currency. Quote logged "
+            "spending totals only from this tool."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"month": {"type": "string", "pattern": "^\\d{4}-\\d{2}$"}},
+            "additionalProperties": False,
+        },
+    },
     ALTERNATIVE_RESEARCH_TOOL,
 ]
 
@@ -319,6 +359,8 @@ def run_tool(
     assistant_message_id: UUID | None = None,
 ):
     """Dispatch an allow-listed read or create an inert action proposal."""
+    if tool_name in SPENDING_TOOLS and not spending_enabled(db, user_id):
+        return SPENDING_OFF
     if tool_name in ACTION_MODELS:
         if not thread_id or not assistant_message_id:
             return {"error": "Action proposals require a conversation message"}
@@ -399,6 +441,10 @@ def run_tool(
     if tool_name == "get_gmail_status":
         from app.routers.gmail import gmail_status
         return gmail_status(user_id=user_id, db=db)
+    if tool_name == "list_transactions":
+        return list_logged_transactions(db, user_id, tool_input)
+    if tool_name == "get_transaction_summary":
+        return logged_transaction_summary(db, user_id, tool_input)
     if tool_name == "research_cheaper_alternatives":
         return research_alternatives(db, user_id, tool_input)
     return {"error": "Unknown assistant tool"}
