@@ -1027,3 +1027,64 @@ class Transaction(Base):
     )
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class Budget(Base):
+    """A monthly spending limit for one category, set in the user's base currency."""
+
+    __tablename__ = "budgets"
+    __table_args__ = (
+        UniqueConstraint("user_id", "category", name="uq_budgets_user_category"),
+        CheckConstraint("monthly_limit > 0", name="ck_budgets_limit_positive"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    category = Column(Enum(Category), nullable=False)
+    monthly_limit = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(3), nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class Goal(Base):
+    """A savings target the user adds money to over time."""
+
+    __tablename__ = "goals"
+    __table_args__ = (
+        CheckConstraint("target_amount > 0", name="ck_goals_target_positive"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    target_amount = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(3), nullable=False)
+    target_date = Column(Date, nullable=True)
+    archived_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class GoalContribution(Base):
+    """Money put towards a goal, in the goal's currency; negative means taken out."""
+
+    __tablename__ = "goal_contributions"
+    __table_args__ = (
+        CheckConstraint("amount <> 0", name="ck_goal_contributions_amount_nonzero"),
+        CheckConstraint("source IN ('manual', 'ai')", name="ck_goal_contributions_source"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    goal_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("goals.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(String, nullable=False, index=True)
+    amount = Column(Numeric(12, 2), nullable=False)
+    occurred_on = Column(Date, nullable=False)
+    note = Column(String(500), nullable=True)
+    source = Column(String(8), nullable=False, default=TransactionSource.manual.value)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
