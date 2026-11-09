@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -28,9 +29,12 @@ from app.models import (
     ChangeKind,
     DetectedSubscription,
     DetectionStatus,
+    EmailPreference,
+    PaymentDecision,
     PaymentReminder,
     PaymentStatus,
     RecurrenceUnit,
+    SafeToSpendProfile,
     SpendingType,
     Subscription,
     SubscriptionChange,
@@ -265,6 +269,20 @@ class DismissReminder(StrictAction):
     reminder_id: UUID
 
 
+class MarkPaid(StrictAction):
+    target: str = Field(min_length=1, max_length=100)
+    decision: Literal["paid", "skipped", "undo"]
+    amount: float | None = Field(default=None, gt=0, le=1_000_000)
+
+
+class UpdateBalance(StrictAction):
+    balance: Decimal = Field(max_digits=12, decimal_places=2)
+
+
+class SetEmailReminders(StrictAction):
+    enabled: bool
+
+
 ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_add_recurring_payment": AddPayment,
     "propose_update_recurring_payment": UpdatePayment,
@@ -276,6 +294,9 @@ ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_approve_inbox_detection": ApproveDetection,
     "propose_dismiss_inbox_detection": DismissDetection,
     "propose_dismiss_payment_reminder": DismissReminder,
+    "propose_mark_payment_paid": MarkPaid,
+    "propose_update_balance": UpdateBalance,
+    "propose_set_email_reminders": SetEmailReminders,
 }
 
 
@@ -538,6 +559,48 @@ ACTION_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "propose_mark_payment_paid",
+        "description": (
+            "Prepare marking one past payment or bill as paid, as didn't happen (skipped), or "
+            "undoing an earlier choice. Use the exact target from get_paid_history. An amount can "
+            "only be given with paid, when the user says they paid a different amount. Bills "
+            "can't be skipped."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "maxLength": 100},
+                "decision": {"type": "string", "enum": ["paid", "skipped", "undo"]},
+                "amount": {"type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 1_000_000},
+            },
+            "required": ["target", "decision"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_update_balance",
+        "description": (
+            "Prepare updating today's bank balance used by safe to spend, in the currency already "
+            "saved. Payday and buffer stay the same. Only use a balance the user stated."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"balance": {"type": "number"}},
+            "required": ["balance"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_set_email_reminders",
+        "description": "Prepare turning email reminders before payments and trial ends on or off.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"enabled": {"type": "boolean"}},
+            "required": ["enabled"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -651,6 +714,27 @@ def _reminder_snapshot(row: PaymentReminder) -> dict:
         "dismissed_for": _iso(row.dismissed_for),
         "is_active": bool(row.is_active),
     }
+
+
+def _decision_snapshot(db: Session, user_id: str, target: str) -> dict:
+    row = db.query(PaymentDecision).filter_by(user_id=user_id, target=target).first()
+    return {
+        "target": target,
+        "decision": row.decision if row else None,
+        "amount": str(row.amount) if row and row.amount is not None else None,
+    }
+
+
+def _profile_snapshot(row: SafeToSpendProfile) -> dict:
+    return {
+        "balance": str(row.balance),
+        "currency": row.currency,
+        "balance_as_of": _iso(row.balance_as_of),
+    }
+
+
+def _email_snapshot(row: EmailPreference | None) -> dict:
+    return {"enabled": bool(row and row.enabled), "email": row.email if row else None}
 
 
 def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str):
@@ -844,6 +928,79 @@ def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str
         }
         summary = f"Dismiss reminder for {sub.name}"
         description = "Dismiss this occurrence. If it repeats, the reminder will return for the next billing cycle."
+    elif tool_name == "propose_mark_payment_paid":
+        item = data
+        assert isinstance(item, MarkPaid)
+        from app.services.paid_history import paid_history
+        history = paid_history(db, user_id, months=24)
+        row = next(
+            (r for r in history["payments"] + history["bills"] if r.get("target") == item.target),
+            None,
+        )
+        if item.decision != "undo" and not row:
+            raise HTTPException(status_code=404, detail="Payment occurrence not found")
+        if item.target.startswith("bill:") and item.decision == "skipped":
+            raise HTTPException(
+                status_code=422,
+                detail="Bills can be marked paid; their invoiced amount remains owed otherwise",
+            )
+        if item.amount is not None and item.decision != "paid":
+            raise HTTPException(status_code=422, detail="An amount can only be given when marking a payment paid")
+        current = _decision_snapshot(db, user_id, item.target)
+        if item.decision == "undo" and current["decision"] is None:
+            raise HTTPException(status_code=409, detail="There is no earlier choice to undo")
+        expected = {"decision": current}
+        name = row["name"] if row else "payment"
+        when = (row.get("date") or row.get("due_on") or row.get("issued_on")) if row else None
+        label = f"{name} ({when})" if when else name
+        if item.decision == "paid":
+            summary = f"Mark {label} paid"
+            description = "Show this payment as paid in History."
+            if item.amount is not None:
+                description += f" Record {item.amount:.2f} as the amount actually paid."
+        elif item.decision == "skipped":
+            summary = f"Mark {label} as didn't happen"
+            description = "Show this payment as didn't happen in History."
+        else:
+            summary = f"Undo your choice for {label}"
+            description = "Clear the paid or didn't happen choice so History works it out again."
+    elif tool_name == "propose_update_balance":
+        item = data
+        assert isinstance(item, UpdateBalance)
+        profile = db.get(SafeToSpendProfile, user_id)
+        if profile is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Safe to spend isn't set up yet. Add a balance and payday on the dashboard first.",
+            )
+        expected = {"profile": _profile_snapshot(profile)}
+        summary = "Update today's balance"
+        description = (
+            f"Set today's balance to {profile.currency} {item.balance:.2f}, dated today. "
+            "Payday and buffer stay the same."
+        )
+    elif tool_name == "propose_set_email_reminders":
+        item = data
+        assert isinstance(item, SetEmailReminders)
+        from app.config import settings
+        from app.middleware.auth import reject_demo_user
+        reject_demo_user(user_id, "Email reminders")
+        pref = db.get(EmailPreference, user_id)
+        if item.enabled:
+            if not settings.resend_api_key or not settings.reminder_email_from:
+                raise HTTPException(status_code=503, detail="Email delivery is not configured yet")
+            if pref is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Turn email reminders on from the Account page the first time so Subtrack can confirm your email.",
+                )
+        expected = {"email_pref": _email_snapshot(pref)}
+        if item.enabled:
+            summary = "Turn on email reminders"
+            description = f"Email {pref.email} before payments are due and trials end."
+        else:
+            summary = "Turn off email reminders"
+            description = "Stop reminder emails. In-app reminders stay."
     else:
         raise HTTPException(status_code=400, detail="Unknown assistant action")
     return payload, expected, summary, description
@@ -1002,6 +1159,18 @@ def _assert_fresh(action: AgentAction, db: Session, user_id: str) -> None:
         )
         if not matches(_reminder_snapshot(reminder), expected["reminder"]):
             raise HTTPException(status_code=409, detail="This reminder changed after the action was proposed.")
+    if "decision" in expected and (
+        _decision_snapshot(db, user_id, expected["decision"]["target"]) != expected["decision"]
+    ):
+        raise HTTPException(status_code=409, detail="This payment's History changed after the action was proposed.")
+    if "profile" in expected:
+        profile = db.query(SafeToSpendProfile).filter_by(user_id=user_id).with_for_update().first()
+        if profile is None or _profile_snapshot(profile) != expected["profile"]:
+            raise HTTPException(status_code=409, detail="Your balance changed after the action was proposed.")
+    if "email_pref" in expected:
+        pref = db.query(EmailPreference).filter_by(user_id=user_id).with_for_update().first()
+        if _email_snapshot(pref) != expected["email_pref"]:
+            raise HTTPException(status_code=409, detail="Email reminder settings changed after the action was proposed.")
 
 
 def _execute_add_payment(action: AgentAction, db: Session, user_id: str) -> dict:
@@ -1351,6 +1520,43 @@ def _execute_dismiss_reminder(action: AgentAction, db: Session, user_id: str) ->
     return {"reminder_id": str(reminder.id), "subscription_id": str(sub.id)}
 
 
+def _execute_mark_paid(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = MarkPaid.model_validate(action.payload_json)
+    existing = db.query(PaymentDecision).filter_by(user_id=user_id, target=data.target).first()
+    amount = round(data.amount, 2) if data.amount is not None else None
+    if data.decision == "undo":
+        if existing:
+            db.delete(existing)
+    elif existing:
+        existing.decision = data.decision
+        existing.amount = amount
+    else:
+        db.add(PaymentDecision(user_id=user_id, target=data.target, decision=data.decision, amount=amount))
+    db.flush()
+    return {"target": data.target, "decision": data.decision, "amount": amount}
+
+
+def _execute_update_balance(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = UpdateBalance.model_validate(action.payload_json)
+    profile = db.get(SafeToSpendProfile, user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Safe to spend isn't set up")
+    profile.balance = data.balance
+    profile.balance_as_of = utcnow()
+    return {"balance": str(data.balance), "currency": profile.currency}
+
+
+def _execute_set_email_reminders(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = SetEmailReminders.model_validate(action.payload_json)
+    pref = db.get(EmailPreference, user_id)
+    if pref is None:
+        if data.enabled:
+            raise HTTPException(status_code=409, detail="Turn email reminders on from the Account page first")
+        return {"enabled": False}
+    pref.enabled = data.enabled
+    return {"enabled": data.enabled}
+
+
 EXECUTORS = {
     "add_recurring_payment": _execute_add_payment,
     "update_recurring_payment": _execute_update_payment,
@@ -1362,6 +1568,9 @@ EXECUTORS = {
     "approve_inbox_detection": _execute_approve_detection,
     "dismiss_inbox_detection": _execute_dismiss_detection,
     "dismiss_payment_reminder": _execute_dismiss_reminder,
+    "mark_payment_paid": _execute_mark_paid,
+    "update_balance": _execute_update_balance,
+    "set_email_reminders": _execute_set_email_reminders,
 }
 
 

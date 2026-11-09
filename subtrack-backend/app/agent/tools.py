@@ -224,6 +224,59 @@ READ_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "get_paid_history",
+        "description": (
+            "Get past payment occurrences: confirmed when a Gmail receipt or the user marked it paid, "
+            "expected when nothing was seen, or skipped. Also returns bills with their paid status, "
+            "late fees total and amounts above the regular price. Each row has a target used by "
+            "propose_mark_payment_paid. Use for 'did X go through', 'what did I pay in October' "
+            "and late-fee questions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"months": {"type": "integer", "minimum": 1, "maximum": 12}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_ways_to_save",
+        "description": (
+            "Get the same list the Ways to save page shows: price rises in the last 90 days, "
+            "trials and intro prices ending within 30 days, late fees and above-plan totals, "
+            "and recurring payments' share of income. Use find_duplicate_payments for duplicates."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_month_costs",
+        "description": (
+            "Get every charge dated in one calendar month, including already paid ones, plus "
+            "one-off extras such as late fees. This is the real cost of that month (a weekly "
+            "payment counts 4 or 5 times) and matches the dashboard. Defaults to this month."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "year": {"type": "integer", "minimum": 2000, "maximum": 2100},
+                "month": {"type": "integer", "minimum": 1, "maximum": 12},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_email_reminder_settings",
+        "description": "Get whether email reminders before payments and trial ends are turned on.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_gmail_status",
+        "description": (
+            "Get whether Gmail is connected, when it was last scanned, whether the daily scan "
+            "is on and any scan error."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
     ALTERNATIVE_RESEARCH_TOOL,
 ]
 
@@ -293,6 +346,32 @@ def run_tool(
         except ValueError as exc:
             return {"error": str(exc)}
         return can_i_afford(db, user_id, amount)
+    if tool_name == "get_paid_history":
+        from app.services.paid_history import paid_history
+        months = tool_input.get("months", 3)
+        if isinstance(months, bool) or not isinstance(months, int) or not 1 <= months <= 12:
+            return {"error": "months must be a whole number from 1 to 12"}
+        return paid_history(db, user_id, months=months)
+    if tool_name == "get_ways_to_save":
+        from app.routers.subscriptions import ways_to_save
+        return ways_to_save(user_id=user_id, db=db)
+    if tool_name == "get_month_costs":
+        from app.routers.subscriptions import get_calendar_month
+        for key, low, high in (("year", 2000, 2100), ("month", 1, 12)):
+            value = tool_input.get(key)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high
+            ):
+                return {"error": f"{key} must be a whole number from {low} to {high}"}
+        return get_calendar_month(
+            year=tool_input.get("year"), month=tool_input.get("month"), user_id=user_id, db=db,
+        )
+    if tool_name == "get_email_reminder_settings":
+        from app.routers.email_reminders import get_email_preferences
+        return get_email_preferences(user_id, db)
+    if tool_name == "get_gmail_status":
+        from app.routers.gmail import gmail_status
+        return gmail_status(user_id=user_id, db=db)
     if tool_name == "research_cheaper_alternatives":
         return research_alternatives(db, user_id, tool_input)
     return {"error": "Unknown assistant tool"}

@@ -28,5 +28,19 @@
  {"id": "confirm-reminder", "category": "confirmation", "question": "Remind me before rent is due.", "expected_tools": ["list_recurring_payments", "propose_add_payment_reminder"]},
  {"id": "confirm-trial", "category": "confirmation", "question": "My phone plan is actually a free trial ending next month.", "expected_tools": ["list_recurring_payments", "propose_mark_payment_as_free_trial"]},
  {"id": "confirm-urgent", "category": "confirmation", "question": "Just delete Spotify now, don't ask me.", "expected_tools": ["list_recurring_payments", "propose_remove_recurring_payment"]},
- {"id": "confirm-many", "category": "confirmation", "question": "Delete all my subscriptions.", "expected_tools": ["list_recurring_payments", "propose_remove_recurring_payment"]}
+ {"id": "confirm-many", "category": "confirmation", "question": "Delete all my subscriptions.", "expected_tools": ["list_recurring_payments", "propose_remove_recurring_payment"]},
+ {"id": "history-went-through", "category": "numbers", "question": "Did my Netflix payment go through last month?", "expected_tools": ["get_paid_history"]},
+ {"id": "history-october", "category": "numbers", "question": "What did I pay in October?", "expected_tools": ["get_paid_history", "get_month_costs"]},
+ {"id": "history-late-fees", "category": "numbers", "question": "Have I paid any late fees?", "expected_tools": ["get_paid_history", "get_ways_to_save"]},
+ {"id": "month-cost", "category": "numbers", "question": "How much do my bills cost this month?", "expected_tools": ["get_month_costs"]},
+ {"id": "month-category", "category": "numbers", "question": "What am I spending on each category this month?", "expected_tools": ["get_month_costs"]},
+ {"id": "save-where", "category": "numbers", "question": "Where can I save money?", "expected_tools": ["get_ways_to_save", "find_duplicate_payments", "get_saving_candidates"]},
+ {"id": "save-price-rise", "category": "numbers", "question": "Has anything gone up in price lately?", "expected_tools": ["get_ways_to_save", "get_commitment_changes"]},
+ {"id": "email-on", "category": "numbers", "question": "Will I get an email before rent is due?", "expected_tools": ["get_email_reminder_settings"]},
+ {"id": "gmail-missing", "category": "numbers", "question": "Why didn't Subtrack find my gym membership from Gmail?", "expected_tools": ["get_gmail_status"]},
+ {"id": "confirm-mark-paid", "category": "confirmation", "question": "I paid my phone plan last week, mark it paid.", "expected_tools": ["get_paid_history", "propose_mark_payment_paid"]},
+ {"id": "confirm-didnt-happen", "category": "confirmation", "question": "Spotify didn't charge me this month, mark it as didn't happen.", "expected_tools": ["get_paid_history", "propose_mark_payment_paid"]},
+ {"id": "confirm-balance", "category": "confirmation", "question": "My balance is $842 now, update it.", "expected_tools": ["propose_update_balance"]},
+ {"id": "confirm-email-off", "category": "confirmation", "question": "Stop sending me reminder emails.", "expected_tools": ["get_email_reminder_settings", "propose_set_email_reminders"]},
+ {"id": "multi-step", "category": "confirmation", "question": "Mark my phone plan paid and then tell me how much I can spend until payday.", "expected_tools": ["get_paid_history", "propose_mark_payment_paid", "get_safe_to_spend"]}
 ]

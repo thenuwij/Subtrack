@@ -42,6 +42,11 @@ AGENT_FEATURE = "assistant"
 
 MAX_AGENT_STEPS = 8
 MAX_CONTEXT_MESSAGES = 60
+STEP_LIMIT_NOTE = (
+    "You have reached the step limit for this reply and cannot call more tools. "
+    "Tell the user briefly what you finished, which proposals are ready to confirm, "
+    "and what is left for them to ask next."
+)
 STALE_STREAM_AFTER = timedelta(minutes=5)
 DEFAULT_THREAD_TITLE = "New conversation"
 AGENT_ATTEMPTS_PER_MINUTE = 10
@@ -293,11 +298,18 @@ Rules:
 - Before proposing an action on an existing record, use a read tool to identify the exact owned ID. Never guess an ID or select one from ambiguous context.
 - If required information is missing or ambiguous, ask one focused question instead of proposing an incomplete action.
 - Removing a payment from Subtrack does not cancel it with the merchant. State this every time removal is proposed.
-- In-app dashboard reminders are available; email and push reminders are not. Never imply external delivery.
+- In-app dashboard reminders are always available. Email reminders are only sent when get_email_reminder_settings says they are enabled; push reminders don't exist. Never imply delivery that isn't turned on.
 - A free trial has a trial end date and a post-trial recurring price. Marking or adding one also prepares an automatic dashboard reminder 7 days before it ends.
 - Cadence is interval_count + interval_unit. Say "every 2 months", never the ambiguous word "bimonthly". Every 4 weeks is not the same cadence as monthly.
 - A monthly or yearly equivalent is a normalized budgeting rate, not a claim that the amount is charged in that period. Use get_upcoming_charges for exact date-window forecasts; it returns every projected occurrence, so one payment may appear repeatedly.
-- The data covers tracked recurring commitments, not bank transactions or all spending. Subtrack does not currently store a complete charge ledger, so never describe forecasts or commitment-change records as actual historical spending.
+- The data covers tracked recurring commitments, not bank transactions or all spending. Never describe forecasts or commitment-change records as actual spending.
+- For past payments use get_paid_history. Say "confirmed" only for rows with status confirmed (a Gmail receipt or the user marked it paid); "expected" means no receipt was seen, not that it was paid.
+- For this or another calendar month's cost, or cost by category for a month, use get_month_costs so the numbers match the dashboard. Monthly equivalents from get_financial_overview are averages.
+- For "how can I save" or "what should I cut", start with get_ways_to_save and find_duplicate_payments, then get_saving_candidates if more is needed.
+- To mark a past payment paid or as didn't happen, read get_paid_history first and use its exact target with propose_mark_payment_paid. Only include an amount the user stated.
+- Use propose_update_balance only with a balance the user just stated. Never estimate a balance.
+- For "why wasn't X found" or Gmail questions, use get_gmail_status before answering.
+- Work through multi-step requests yourself: keep calling tools until the task is done or you need one answer from the user. Prepare every needed proposal in the same reply.
 - For "how much can I spend" or "what's left until payday", use get_safe_to_spend. Whenever the user names a purchase amount ("can I afford $X", "is $X fine"), call check_can_i_afford with that amount. Quote their amounts exactly; never work out a safe amount yourself.
 - If safe-to-spend status is needs_setup, ask the user to add their balance and payday on the dashboard. If it is balance_outdated or incomplete, give no safe amount and explain the returned warning. Always mention the returned warnings and the balance date.
 - Safe-to-spend uses a balance the user entered and tracked payments only, not live bank data. Spending since the balance date is not counted.
@@ -359,14 +371,23 @@ def _stream_step(
     page_context: Optional[dict],
     accumulated_text: list[str],
     separate_step: bool,
+    final_step: bool = False,
 ) -> Generator[str, None, anthropic.types.Message]:
-    """Stream one model step to the client and return the final message."""
+    """Stream one model step to the client and return the final message.
+
+    On the last allowed step tools are switched off, so the model must stop and
+    tell the user what it finished and what is left instead of failing.
+    """
+    system = _system_prompt(page_context)
+    if final_step:
+        system.append({"type": "text", "text": STEP_LIMIT_NOTE})
     with client.messages.stream(
         model=AGENT_MODEL,
         max_tokens=4_000,
         output_config=CLAUDE_EFFORT,
-        system=_system_prompt(page_context),
+        system=system,
         tools=TOOL_DEFINITIONS,
+        tool_choice={"type": "none"} if final_step else {"type": "auto"},
         messages=messages,
         cache_control={"type": "ephemeral"},
     ) as stream:
@@ -412,7 +433,8 @@ def _stream_reply(
             started = time.perf_counter()
             try:
                 response = yield from _stream_step(
-                    messages, page_context, accumulated_text, separate_step
+                    messages, page_context, accumulated_text, separate_step,
+                    final_step=step == MAX_AGENT_STEPS - 1,
                 )
             except Exception as exc:
                 record_call(

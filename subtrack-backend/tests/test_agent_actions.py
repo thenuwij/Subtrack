@@ -662,3 +662,101 @@ class AgentActionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NewAgentActionTests(AgentActionTests):
+    """Paid history, balance and email reminder proposals."""
+
+    def past_target(self) -> str:
+        from app.services.paid_history import paid_history
+        sub = self.add_payment("Gym")
+        sub.next_due = self.future(-10)
+        sub.created_at = self.future(-120)
+        self.db.commit()
+        rows = [r for r in paid_history(self.db, "owner")["payments"] if r.get("target")]
+        self.assertTrue(rows, "expected a scheduled past occurrence")
+        return rows[0]["target"]
+
+    def test_mark_paid_then_undo(self):
+        from app.models import PaymentDecision
+        target = self.past_target()
+        action = self.propose("propose_mark_payment_paid", {"target": target, "decision": "paid", "amount": 22.5})
+        self.assertEqual(action["status"], "pending")
+        self.assertIsNone(self.db.query(PaymentDecision).first())
+        confirm_action(self.db, "owner", UUID(action["id"]))
+        row = self.db.query(PaymentDecision).one()
+        self.assertEqual((row.decision, float(row.amount)), ("paid", 22.5))
+
+        undo = self.propose("propose_mark_payment_paid", {"target": target, "decision": "undo"})
+        confirm_action(self.db, "owner", UUID(undo["id"]))
+        self.assertIsNone(self.db.query(PaymentDecision).first())
+
+    def test_mark_paid_rejects_unknown_target_and_amount_on_skip(self):
+        with self.assertRaises(HTTPException) as unknown:
+            self.propose("propose_mark_payment_paid", {"target": "payment:nope", "decision": "paid"})
+        self.assertEqual(unknown.exception.status_code, 404)
+        target = self.past_target()
+        with self.assertRaises(HTTPException) as amount:
+            self.propose("propose_mark_payment_paid", {"target": target, "decision": "skipped", "amount": 5})
+        self.assertEqual(amount.exception.status_code, 422)
+
+    def test_mark_paid_is_stale_after_a_change_on_the_page(self):
+        from app.models import PaymentDecision
+        target = self.past_target()
+        action = self.propose("propose_mark_payment_paid", {"target": target, "decision": "paid"})
+        self.db.add(PaymentDecision(user_id="owner", target=target, decision="skipped"))
+        self.db.commit()
+        with self.assertRaises(HTTPException) as stale:
+            confirm_action(self.db, "owner", UUID(action["id"]))
+        self.assertEqual(stale.exception.status_code, 409)
+
+    def test_update_balance_needs_setup_and_keeps_payday(self):
+        from datetime import date
+        from decimal import Decimal
+
+        from app.models import SafeToSpendProfile
+        with self.assertRaises(HTTPException) as missing:
+            self.propose("propose_update_balance", {"balance": 500})
+        self.assertEqual(missing.exception.status_code, 422)
+        payday = date.today() + timedelta(days=5)
+        self.db.add(SafeToSpendProfile(
+            user_id="owner", balance=Decimal("100.00"), currency="AUD",
+            balance_as_of=self.future(-3), pay_anchor_on=payday,
+            pay_interval_unit="week", pay_interval_count=2, buffer=Decimal("50.00"),
+        ))
+        self.db.commit()
+        action = self.propose("propose_update_balance", {"balance": 812.4})
+        confirm_action(self.db, "owner", UUID(action["id"]))
+        profile = self.db.get(SafeToSpendProfile, "owner")
+        self.assertEqual(profile.balance, Decimal("812.40"))
+        self.assertEqual(profile.pay_anchor_on, payday)
+        self.assertGreater(profile.balance_as_of, self.future(-1))
+
+    def test_email_reminders_off_and_first_enable_goes_to_account_page(self):
+        from unittest.mock import patch
+
+        from app.models import EmailPreference
+        with patch("app.config.settings.resend_api_key", "key"), \
+                patch("app.config.settings.reminder_email_from", "from@example.com"):
+            with self.assertRaises(HTTPException) as first:
+                self.propose("propose_set_email_reminders", {"enabled": True})
+            self.assertEqual(first.exception.status_code, 422)
+            self.db.add(EmailPreference(user_id="owner", email="owner@example.com", enabled=True))
+            self.db.commit()
+            action = self.propose("propose_set_email_reminders", {"enabled": False})
+            confirm_action(self.db, "owner", UUID(action["id"]))
+        self.assertFalse(self.db.get(EmailPreference, "owner").enabled)
+
+
+class NewReadToolTests(AgentActionTests):
+    def test_new_read_tools_run_and_validate(self):
+        from app.agent.tools import run_tool
+        self.add_payment("Cloud")
+        self.assertIn("payments", run_tool("get_paid_history", {"months": 2}, self.db, "owner"))
+        self.assertIn("error", run_tool("get_paid_history", {"months": 40}, self.db, "owner"))
+        self.assertIn("price_rises", run_tool("get_ways_to_save", {}, self.db, "owner"))
+        month = run_tool("get_month_costs", {}, self.db, "owner")
+        self.assertIn("charges", month)
+        self.assertIn("error", run_tool("get_month_costs", {"month": 13}, self.db, "owner"))
+        self.assertEqual(run_tool("get_email_reminder_settings", {}, self.db, "owner")["enabled"], False)
+        self.assertEqual(run_tool("get_gmail_status", {}, self.db, "owner")["connected"], False)
