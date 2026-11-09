@@ -19,6 +19,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.agent.goals import GOALS_FEATURE, GOALS_OFF, GOALS_TOOLS
+from app.agent.spending import SPENDING_FEATURE, SPENDING_OFF, SPENDING_TOOLS
+from app.agent.workspace import WORKSPACE_FEATURE, WORKSPACE_OFF_ERROR, WORKSPACE_TOOLS
 from app.models import (
     AgentAction,
     AgentMessage,
@@ -45,6 +48,7 @@ from app.models import (
     TransactionKind,
     TransactionSource,
     UserPreference,
+    WorkspacePage,
 )
 from app.routers.detected import ApproveOverrides, apply_approval
 from app.routers.goals import NEGATIVE_BALANCE, _contributions, _saved
@@ -60,11 +64,19 @@ from app.routers.transactions import (
     SupportedCurrency,
     _require_owned_payment,
 )
+from app.routers.workspace import (
+    MAX_PAGES_PER_USER,
+    PAGE_LIMIT_REACHED,
+    _owned_page,
+    _require_owned_references,
+    add_page,
+)
 from app.services.duplicates import (
     canonical_duplicate_pair,
     delete_duplicate_dismissals_for_subscription,
     persist_duplicate_dismissal,
 )
+from app.services.features import Feature, feature_enabled
 from app.services.goals import goal_progress
 from app.services.recurrence import (
     Cadence,
@@ -80,9 +92,12 @@ from app.services.schedules import utc_naive
 from app.services.transaction_duplicates import PossibleDuplicate, find_possible_duplicates
 from app.services.transactions import apply_conversion, base_currency_for
 from app.services.trials import sync_trial_reminder
+from app.services.workspace_blocks import Block, PageBlocks, blocks_to_json, page_blocks_adapter, validate_blocks
+from app.services.workspace_templates import TEMPLATES, TemplateId
 
 ACTION_EXPIRES_AFTER = timedelta(hours=24)
 ACTION_TOOL_PREFIX = "propose_"
+PAGE_TITLE_MAX_LENGTH = 120
 
 
 def utcnow() -> datetime:
@@ -408,6 +423,36 @@ class RemoveGoal(StrictAction):
     goal_id: UUID
 
 
+class CreateWorkspacePage(StrictAction):
+    """A page from a template's blocks, explicit blocks, or both (explicit blocks win)."""
+
+    title: str = Field(min_length=1, max_length=PAGE_TITLE_MAX_LENGTH)
+    template_id: TemplateId | None = None
+    blocks: PageBlocks | None = None
+
+    @model_validator(mode="after")
+    def has_a_layout(self):
+        if self.template_id is None and self.blocks is None:
+            raise ValueError("Choose a template or add at least one block")
+        return self
+
+
+class UpdateWorkspacePage(StrictAction):
+    page_id: UUID
+    title: str | None = Field(default=None, min_length=1, max_length=PAGE_TITLE_MAX_LENGTH)
+    blocks: PageBlocks | None = None
+
+    @model_validator(mode="after")
+    def has_change(self):
+        if self.title is None and self.blocks is None:
+            raise ValueError("Change the title or the blocks")
+        return self
+
+
+class RemoveWorkspacePage(StrictAction):
+    page_id: UUID
+
+
 ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_add_recurring_payment": AddPayment,
     "propose_update_recurring_payment": UpdatePayment,
@@ -431,7 +476,21 @@ ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_update_goal": UpdateGoal,
     "propose_remove_goal": RemoveGoal,
     "propose_add_goal_contribution": AddGoalContribution,
+    "propose_create_workspace_page": CreateWorkspacePage,
+    "propose_update_workspace_page": UpdateWorkspacePage,
+    "propose_remove_workspace_page": RemoveWorkspacePage,
 }
+
+
+def _blocks_schema() -> tuple[dict, dict]:
+    """The JSON schema for a page's blocks, from the same models that validate them."""
+    schema = page_blocks_adapter.json_schema()
+    definitions = schema.pop("$defs")
+    schema["items"].pop("discriminator", None)
+    return schema, definitions
+
+
+PAGE_BLOCKS_SCHEMA, BLOCK_DEFINITIONS = _blocks_schema()
 
 
 ACTION_TOOL_DEFINITIONS = [
@@ -930,7 +989,71 @@ ACTION_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "propose_create_workspace_page",
+        "description": (
+            "Prepare a new workspace page for the user's situation. Start from the closest "
+            "template in list_workspace_templates and adjust its blocks, using only the listed "
+            "block types and config. Payment and goal IDs must come from list_recurring_payments "
+            "and list_goals. Pass blocks null to use the template's blocks unchanged. Page text "
+            "tracks and organises; it never contains financial-product advice."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "minLength": 1, "maxLength": PAGE_TITLE_MAX_LENGTH},
+                "template_id": {"type": ["string", "null"], "enum": [*TEMPLATES, None]},
+                "blocks": {"anyOf": [PAGE_BLOCKS_SCHEMA, {"type": "null"}]},
+            },
+            "required": ["title", "template_id", "blocks"],
+            "additionalProperties": False,
+            "$defs": BLOCK_DEFINITIONS,
+        },
+    },
+    {
+        "name": "propose_update_workspace_page",
+        "description": (
+            "Prepare renaming a workspace page or replacing its blocks. Use the exact ID and "
+            "current blocks from list_workspace_pages; blocks is the full new list, not a change "
+            "list. Null leaves a field unchanged."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "string", "format": "uuid"},
+                "title": {"type": ["string", "null"], "minLength": 1, "maxLength": PAGE_TITLE_MAX_LENGTH},
+                "blocks": {"anyOf": [PAGE_BLOCKS_SCHEMA, {"type": "null"}]},
+            },
+            "required": ["page_id", "title", "blocks"],
+            "additionalProperties": False,
+            "$defs": BLOCK_DEFINITIONS,
+        },
+    },
+    {
+        "name": "propose_remove_workspace_page",
+        "description": (
+            "Prepare deleting one workspace page. Use the exact ID from list_workspace_pages. "
+            "The payments, goals and entries it shows are not affected."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"page_id": {"type": "string", "format": "uuid"}},
+            "required": ["page_id"],
+            "additionalProperties": False,
+        },
+    },
 ]
+
+ACTION_FEATURES: dict[str, tuple[Feature, dict]] = {
+    tool.removeprefix(ACTION_TOOL_PREFIX): (feature, off)
+    for feature, off, tools in (
+        (SPENDING_FEATURE, SPENDING_OFF, SPENDING_TOOLS),
+        (GOALS_FEATURE, GOALS_OFF, GOALS_TOOLS),
+        (WORKSPACE_FEATURE, WORKSPACE_OFF_ERROR, WORKSPACE_TOOLS),
+    )
+    for tool in tools
+    if tool.startswith(ACTION_TOOL_PREFIX)
+}
 
 
 def _owned_subscription(
@@ -1080,6 +1203,59 @@ def _goal_snapshot(db: Session, user_id: str, row: Goal) -> dict:
         "saved": str(_saved(contributions)),
         "contribution_count": len(contributions),
     }
+
+
+def _page_snapshot(row: WorkspacePage) -> dict:
+    return {"id": str(row.id), "title": row.title, "blocks": row.blocks}
+
+
+BLOCK_LABELS = {
+    "payment_list": "Payments",
+    "transaction_log": "Expenses and income",
+    "budget": "Budgets",
+    "goal_progress": "Goal progress",
+    "upcoming_payments": "Upcoming payments",
+    "spending_trend": "Spending trend",
+    "checklist": "Checklist",
+    "shared_costs": "Shared costs",
+    "notes": "Notes",
+}
+
+
+def _count(number: int, noun: str) -> str:
+    return f"{number} {noun}{'' if number == 1 else 's'}"
+
+
+def _block_detail(block: dict) -> str | None:
+    kind = block["type"]
+    if kind == "payment_list":
+        if block.get("payment_ids"):
+            return _count(len(block["payment_ids"]), "payment")
+        return block["category"].replace("_", " ") if block.get("category") else None
+    if kind == "transaction_log":
+        return block["range"].replace("_", " ") if block.get("range") else None
+    if kind == "goal_progress" and block.get("goal_ids"):
+        return _count(len(block["goal_ids"]), "goal")
+    if kind == "upcoming_payments":
+        return f"{block['days']} days"
+    if kind == "spending_trend":
+        return f"{block['months']} months"
+    if kind == "checklist":
+        return _count(len(block["items"]), "item")
+    if kind == "shared_costs" and block["people"]:
+        people = len(block["people"])
+        return f"{people} {'person' if people == 1 else 'people'}"
+    return None
+
+
+def _blocks_line(blocks: list[dict]) -> str:
+    """One line naming each block, such as "Upcoming payments (30 days), Checklist (6 items), Notes"."""
+    labels = []
+    for block in blocks:
+        label = block.get("title") or BLOCK_LABELS[block["type"]]
+        detail = _block_detail(block)
+        labels.append(f"{label} ({detail})" if detail else label)
+    return ", ".join(labels)
 
 
 def _local_today(db: Session, user_id: str) -> date:
@@ -1576,6 +1752,42 @@ def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str
             )
         elif progress["status"] == "reached":
             description += " That reaches the goal."
+    elif tool_name == "propose_create_workspace_page":
+        item = data
+        assert isinstance(item, CreateWorkspacePage)
+        blocks: list[Block] = item.blocks if item.blocks is not None else validate_blocks(
+            list(TEMPLATES[item.template_id].blocks)
+        )
+        _require_owned_references(db, user_id, blocks)
+        # Store the blocks the card lists, so confirming creates exactly that page.
+        payload["blocks"] = blocks_to_json(blocks)
+        if db.query(WorkspacePage).filter(WorkspacePage.user_id == user_id).count() >= MAX_PAGES_PER_USER:
+            raise HTTPException(status_code=409, detail=PAGE_LIMIT_REACHED)
+        summary = f"Add page {item.title}"
+        description = f"Create a workspace page with: {_blocks_line(payload['blocks'])}."
+    elif tool_name == "propose_update_workspace_page":
+        item = data
+        assert isinstance(item, UpdateWorkspacePage)
+        page = _owned_page(db, user_id, item.page_id)
+        expected = {"page": _page_snapshot(page)}
+        changes = []
+        if item.title is not None:
+            changes.append(f"Rename it to {item.title}.")
+        if item.blocks is not None:
+            _require_owned_references(db, user_id, item.blocks)
+            changes.append(f"Replace its blocks with: {_blocks_line(payload['blocks'])}.")
+        summary = f"Update page {page.title}"
+        description = " ".join(changes)
+    elif tool_name == "propose_remove_workspace_page":
+        item = data
+        assert isinstance(item, RemoveWorkspacePage)
+        page = _owned_page(db, user_id, item.page_id)
+        expected = {"page": _page_snapshot(page)}
+        summary = f"Remove page {page.title}"
+        description = (
+            f"Delete this page and its {_count(len(page.blocks), 'block')}, including any checklists, "
+            "notes and shared costs on it. The payments, goals and entries it shows aren't affected."
+        )
     else:
         raise HTTPException(status_code=400, detail="Unknown assistant action")
     return payload, expected, summary, description
@@ -1760,6 +1972,10 @@ def _assert_fresh(action: AgentAction, db: Session, user_id: str) -> None:
         goal = _owned_goal(db, user_id, UUID(expected["goal"]["id"]), for_update=True)
         if _goal_snapshot(db, user_id, goal) != expected["goal"]:
             raise HTTPException(status_code=409, detail="This goal changed after the action was proposed. Ask the assistant again.")
+    if "page" in expected:
+        page = _owned_page(db, user_id, UUID(expected["page"]["id"]), for_update=True)
+        if _page_snapshot(page) != expected["page"]:
+            raise HTTPException(status_code=409, detail="This page changed after the action was proposed. Ask the assistant again.")
 
 
 def _execute_add_payment(action: AgentAction, db: Session, user_id: str) -> dict:
@@ -2292,6 +2508,32 @@ def _execute_add_goal_contribution(action: AgentAction, db: Session, user_id: st
     }
 
 
+def _execute_create_workspace_page(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = CreateWorkspacePage.model_validate(action.payload_json)
+    page = add_page(db, user_id, data.title, data.template_id, data.blocks)
+    return {"page_id": str(page.id), "title": page.title}
+
+
+def _execute_update_workspace_page(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = UpdateWorkspacePage.model_validate(action.payload_json)
+    page = _owned_page(db, user_id, data.page_id)
+    if data.blocks is not None:
+        _require_owned_references(db, user_id, data.blocks)
+        page.blocks = blocks_to_json(data.blocks)
+    if data.title is not None:
+        page.title = data.title
+    db.flush()
+    return {"page_id": str(page.id), "title": page.title}
+
+
+def _execute_remove_workspace_page(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = RemoveWorkspacePage.model_validate(action.payload_json)
+    page = _owned_page(db, user_id, data.page_id)
+    title = page.title
+    db.delete(page)
+    return {"page_id": str(data.page_id), "title": title}
+
+
 EXECUTORS = {
     "add_recurring_payment": _execute_add_payment,
     "update_recurring_payment": _execute_update_payment,
@@ -2315,6 +2557,9 @@ EXECUTORS = {
     "update_goal": _execute_update_goal,
     "remove_goal": _execute_remove_goal,
     "add_goal_contribution": _execute_add_goal_contribution,
+    "create_workspace_page": _execute_create_workspace_page,
+    "update_workspace_page": _execute_update_workspace_page,
+    "remove_workspace_page": _execute_remove_workspace_page,
 }
 
 
@@ -2342,6 +2587,13 @@ def get_owned_action(
     return action
 
 
+def _require_action_feature(action: AgentAction, db: Session, user_id: str) -> None:
+    """A card made while its feature was on can't be confirmed once the feature is off."""
+    gate = ACTION_FEATURES.get(action.action_type)
+    if gate and not feature_enabled(db, user_id, gate[0]):
+        raise HTTPException(status_code=403, detail=gate[1]["error"])
+
+
 def confirm_action(db: Session, user_id: str, action_id: UUID) -> dict:
     action = get_owned_action(db, user_id, action_id, for_update=True)
     if action.status == "completed":
@@ -2358,6 +2610,7 @@ def confirm_action(db: Session, user_id: str, action_id: UUID) -> dict:
     if not executor:
         raise HTTPException(status_code=400, detail="Unsupported assistant action")
     try:
+        _require_action_feature(action, db, user_id)
         _assert_fresh(action, db, user_id)
         result = executor(action, db, user_id)
         action.status = "completed"

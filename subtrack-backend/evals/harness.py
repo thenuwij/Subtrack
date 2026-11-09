@@ -24,6 +24,7 @@ from app.models import (
     Subscription,
     Transaction,
     UserPreference,
+    WorkspacePage,
 )
 from app.routers import agent as agent_router
 from evals.graders import ToolCall, Transcript
@@ -79,7 +80,8 @@ def _snapshot(db: Session) -> str:
     ]
     reminders = db.query(PaymentReminder).filter_by(user_id=EVAL_USER).count()
     transactions = db.query(Transaction).filter_by(user_id=EVAL_USER).count()
-    return json.dumps([rows, reminders, transactions], default=str)
+    pages = db.query(WorkspacePage).filter_by(user_id=EVAL_USER).count()
+    return json.dumps([rows, reminders, transactions, pages], default=str)
 
 
 def run_case(db: Session, question: str, model: Callable[..., object] | None = None) -> Transcript:

@@ -26,6 +26,7 @@ router = APIRouter(prefix="/workspace", tags=["workspace"])
 WORKSPACE_OFF = "Custom workspace is turned off in Settings."
 MAX_PAGES_PER_USER = 50
 MAX_POSITION = 10_000
+PAGE_LIMIT_REACHED = f"You can have up to {MAX_PAGES_PER_USER} workspace pages"
 
 
 class PageCreate(BaseModel):
@@ -87,8 +88,11 @@ def _require_workspace(db: Session, user_id: str) -> None:
         raise HTTPException(status_code=403, detail=WORKSPACE_OFF)
 
 
-def _owned_page(db: Session, user_id: str, page_id: UUID) -> WorkspacePage:
-    page = db.query(WorkspacePage).filter(WorkspacePage.id == page_id, WorkspacePage.user_id == user_id).first()
+def _owned_page(db: Session, user_id: str, page_id: UUID, *, for_update: bool = False) -> WorkspacePage:
+    query = db.query(WorkspacePage).filter(WorkspacePage.id == page_id, WorkspacePage.user_id == user_id)
+    if for_update:
+        query = query.with_for_update()
+    page = query.first()
     if page is None:
         raise HTTPException(status_code=404, detail="Page not found")
     return page
@@ -120,6 +124,45 @@ def _require_owned_references(db: Session, user_id: str, blocks: list[Block]) ->
     _require_owned_ids(db, user_id, Goal, goal_ids, "Goal not found")
 
 
+def user_pages(db: Session, user_id: str) -> list[WorkspacePage]:
+    return (
+        db.query(WorkspacePage)
+        .filter(WorkspacePage.user_id == user_id)
+        .order_by(WorkspacePage.position, WorkspacePage.created_at, WorkspacePage.id)
+        .all()
+    )
+
+
+def add_page(
+    db: Session,
+    user_id: str,
+    title: str,
+    template_id: Optional[TemplateId],
+    blocks: Optional[list[Block]],
+) -> WorkspacePage:
+    """Add a page within the page limit, checking every id its blocks point at; the caller commits."""
+    page_count, last_position = (
+        db.query(func.count(WorkspacePage.id), func.max(WorkspacePage.position))
+        .filter(WorkspacePage.user_id == user_id)
+        .one()
+    )
+    if page_count >= MAX_PAGES_PER_USER:
+        raise HTTPException(status_code=409, detail=PAGE_LIMIT_REACHED)
+    if blocks is None:
+        blocks = validate_blocks(list(TEMPLATES[template_id].blocks))
+    _require_owned_references(db, user_id, blocks)
+    page = WorkspacePage(
+        user_id=user_id,
+        title=title,
+        template_id=template_id,
+        blocks=blocks_to_json(blocks),
+        position=min((last_position if last_position is not None else -1) + 1, MAX_POSITION),
+    )
+    db.add(page)
+    db.flush()
+    return page
+
+
 @router.get("/templates")
 def list_templates(
     user_id: str = Depends(verify_token),
@@ -143,13 +186,7 @@ def list_pages(
     db: Session = Depends(get_db),
 ):
     _require_workspace(db, user_id)
-    pages = (
-        db.query(WorkspacePage)
-        .filter(WorkspacePage.user_id == user_id)
-        .order_by(WorkspacePage.position, WorkspacePage.created_at, WorkspacePage.id)
-        .all()
-    )
-    return [page_summary(page) for page in pages]
+    return [page_summary(page) for page in user_pages(db, user_id)]
 
 
 @router.post("/pages", status_code=201)
@@ -159,23 +196,7 @@ def create_page(
     db: Session = Depends(get_db),
 ):
     _require_workspace(db, user_id)
-    page_count, last_position = (
-        db.query(func.count(WorkspacePage.id), func.max(WorkspacePage.position))
-        .filter(WorkspacePage.user_id == user_id)
-        .one()
-    )
-    if page_count >= MAX_PAGES_PER_USER:
-        raise HTTPException(status_code=409, detail=f"You can have up to {MAX_PAGES_PER_USER} workspace pages")
-    blocks = data.blocks if data.blocks is not None else validate_blocks(list(TEMPLATES[data.template_id].blocks))
-    _require_owned_references(db, user_id, blocks)
-    page = WorkspacePage(
-        user_id=user_id,
-        title=data.title,
-        template_id=data.template_id,
-        blocks=blocks_to_json(blocks),
-        position=min((last_position if last_position is not None else -1) + 1, MAX_POSITION),
-    )
-    db.add(page)
+    page = add_page(db, user_id, data.title, data.template_id, data.blocks)
     db.commit()
     db.refresh(page)
     return page_payload(page)
