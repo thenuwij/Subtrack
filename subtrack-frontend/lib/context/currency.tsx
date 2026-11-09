@@ -2,7 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { getPreferences, updatePreferences, getRates } from '@/lib/api'
-import type { Currency, Preferences } from '@/types'
+import type { Currency, Feature, Preferences } from '@/types'
+import { ALL_FEATURES } from '@/lib/features'
 import { getAccessToken } from '@/lib/auth/session'
 
 interface CurrencyUpdateResult {
@@ -21,6 +22,9 @@ interface CurrencyContextType {
   ratesAsOf: string | null
   canConvert: (from: string) => boolean
   convertAmount: (amount: number, from: string) => number | null
+  enabledFeatures: Feature[]
+  onboardingCompleted: boolean
+  saveFeatures: (features: Feature[], completeOnboarding?: boolean) => Promise<void>
 }
 
 const CurrencyContext = createContext<CurrencyContextType>({
@@ -37,6 +41,9 @@ const CurrencyContext = createContext<CurrencyContextType>({
   ratesAsOf: null,
   canConvert: (from) => from === 'AUD',
   convertAmount: (amount) => amount,
+  enabledFeatures: ALL_FEATURES,
+  onboardingCompleted: true,
+  saveFeatures: async () => {},
 })
 
 export function CurrencyProvider({ children }: { children: React.ReactNode }) {
@@ -49,6 +56,9 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   const [isUpdating, setIsUpdating] = useState(false)
   const [ratesStale, setRatesStale] = useState(false)
   const [ratesAsOf, setRatesAsOf] = useState<string | null>(null)
+  const [enabledFeatures, setEnabledFeatures] = useState<Feature[]>(ALL_FEATURES)
+  // Assume done until preferences say otherwise, so the picker never flashes.
+  const [onboardingCompleted, setOnboardingCompleted] = useState(true)
 
   const fetchRates = useCallback(async (currency: string, token: string) => {
     const now = new Date()
@@ -94,6 +104,8 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
 
         const pref = await getPreferences(accessToken)
         setBaseCurrencyState(pref.base_currency)
+        setEnabledFeatures(pref.enabled_features ?? ALL_FEATURES)
+        setOnboardingCompleted(pref.onboarding_completed ?? true)
         await fetchRates(pref.base_currency, accessToken)
       } catch {
         // Keep the AUD fallback. Consumers can distinguish unavailable rates
@@ -147,6 +159,17 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
     }
   }, [baseCurrency, fetchRates, rates])
 
+  const saveFeatures = useCallback(async (features: Feature[], completeOnboarding = false) => {
+    const accessToken = await getAccessToken()
+    if (!accessToken) throw new Error('Your session has expired.')
+    const saved = await updatePreferences(accessToken, {
+      enabled_features: features,
+      ...(completeOnboarding ? { onboarding_completed: true } : {}),
+    })
+    setEnabledFeatures(saved.enabled_features ?? features)
+    setOnboardingCompleted(saved.onboarding_completed ?? true)
+  }, [])
+
   const convertAmount = useCallback((amount: number, from: string): number | null => {
     if (from === baseCurrency) return amount
     const rate = rates[from]
@@ -161,8 +184,8 @@ export function CurrencyProvider({ children }: { children: React.ReactNode }) {
   }, [baseCurrency, rates])
 
   const value = useMemo(
-    () => ({ baseCurrency, setBaseCurrency, isLoading, isUpdating, rates, ratesLoading, ratesStale, ratesAsOf, canConvert, convertAmount }),
-    [baseCurrency, setBaseCurrency, isLoading, isUpdating, rates, ratesLoading, ratesStale, ratesAsOf, canConvert, convertAmount],
+    () => ({ baseCurrency, setBaseCurrency, isLoading, isUpdating, rates, ratesLoading, ratesStale, ratesAsOf, canConvert, convertAmount, enabledFeatures, onboardingCompleted, saveFeatures }),
+    [baseCurrency, setBaseCurrency, isLoading, isUpdating, rates, ratesLoading, ratesStale, ratesAsOf, canConvert, convertAmount, enabledFeatures, onboardingCompleted, saveFeatures],
   )
 
   return (

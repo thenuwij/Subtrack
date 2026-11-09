@@ -36,6 +36,9 @@ import {
 import { Input } from '@/components/ui/input'
 import { endDemo, getAccessToken, signOut } from '@/lib/auth/session'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
+import { FEATURE_OPTIONS } from '@/lib/features'
+import { useFeatures } from '@/lib/hooks/useFeatures'
+import type { Feature } from '@/types'
 import { UserAvatar } from '@/components/layout/UserAvatar'
 import { LogOut } from 'lucide-react'
 
@@ -85,6 +88,8 @@ export default function AccountPage() {
   const [deleteConfirmation, setDeleteConfirmation] = useState('')
   const [deleteBusy, setDeleteBusy] = useState(false)
   const currentUser = useCurrentUser()
+  const { features, save: saveFeatures } = useFeatures()
+  const [featureSaving, setFeatureSaving] = useState(false)
   const { baseCurrency, setBaseCurrency, isLoading, isUpdating: currencyUpdating } = useCurrency()
 
   useEffect(() => {
@@ -274,6 +279,21 @@ export default function AccountPage() {
     }
   }
 
+  async function handleToggleFeature(feature: Feature) {
+    const next = features.includes(feature)
+      ? features.filter(item => item !== feature)
+      : [...features, feature]
+    if (next.length === 0) return
+    setFeatureSaving(true)
+    try {
+      await saveFeatures(next)
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not update your features.')
+    } finally {
+      setFeatureSaving(false)
+    }
+  }
+
   async function handleSignOut() {
     await signOut()
     router.push('/login')
@@ -378,7 +398,7 @@ export default function AccountPage() {
       </section>
 
       <nav aria-label="Settings sections" className="flex flex-wrap gap-2">
-        {[['preferences', 'Preferences'], ['inbox', 'Email connection'], ['privacy', 'Your data']].map(([id, label]) => <a key={id} href={`#${id}`} className="inline-flex min-h-10 items-center rounded-full border border-border bg-card px-4 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary">{label}</a>)}
+        {[['preferences', 'Preferences'], ['features', 'Features'], ['inbox', 'Email connection'], ['privacy', 'Your data']].map(([id, label]) => <a key={id} href={`#${id}`} className="inline-flex min-h-10 items-center rounded-full border border-border bg-card px-4 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary">{label}</a>)}
       </nav>
       <div id="preferences" className="scroll-mt-20">
       <Section title="Preferences">
@@ -446,6 +466,30 @@ export default function AccountPage() {
             ) : null}
           </div>
         </Row>
+      </Section>
+      </div>
+
+      <div id="features" className="scroll-mt-20">
+      <Section title="Features">
+        {FEATURE_OPTIONS.map(option => {
+          const on = features.includes(option.id)
+          const lastOn = on && features.length === 1
+          return (
+            <Row key={option.id} title={option.title} description={lastOn ? `${option.description}. Keep at least one on.` : option.description}>
+              <Button
+                type="button"
+                variant={on ? 'default' : 'outline'}
+                role="switch"
+                aria-checked={on}
+                aria-label={option.title}
+                disabled={featureSaving || lastOn}
+                onClick={() => void handleToggleFeature(option.id)}
+              >
+                {on ? 'On' : 'Off'}
+              </Button>
+            </Row>
+          )
+        })}
       </Section>
       </div>
 

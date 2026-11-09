@@ -3,17 +3,19 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { House, CreditCard, LogOut, Settings2, Inbox, Sparkles } from 'lucide-react'
+import type { Feature } from '@/types'
 import { getDetected } from '@/lib/api'
 import { apiKeys, useApi } from '@/lib/hooks/useApi'
 import { signOut } from '@/lib/auth/session'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { UserAvatar } from '@/components/layout/UserAvatar'
 import { Logo, LogoMark } from '@/components/layout/Logo'
+import { useFeatures } from '@/lib/hooks/useFeatures'
 
-const links = [
+const links: { href: string; label: string; icon: typeof House; requires?: Feature }[] = [
   { href: '/dashboard', label: 'Overview', icon: House },
-  { href: '/subscriptions', label: 'Payments', icon: CreditCard },
-  { href: '/review', label: 'Inbox', icon: Inbox },
+  { href: '/subscriptions', label: 'Payments', icon: CreditCard, requires: 'payments' },
+  { href: '/review', label: 'Inbox', icon: Inbox, requires: 'payments' },
   { href: '/assistant', label: 'Assistant', icon: Sparkles },
 ]
 
@@ -23,6 +25,8 @@ export default function Navbar() {
   const detected = useApi(apiKeys.detected('pending'), token => getDetected(token, 'pending'))
   const pendingCount = detected.data?.length ?? 0
   const currentUser = useCurrentUser()
+  const { has } = useFeatures()
+  const visibleLinks = links.filter(link => !link.requires || has(link.requires))
 
   async function handleLogout() {
     await signOut()
@@ -30,7 +34,7 @@ export default function Navbar() {
   }
 
   function navItems(mobile = false) {
-    return links.map(({ href, label, icon: Icon }) => {
+    return visibleLinks.map(({ href, label, icon: Icon }) => {
       const active = pathname === href || pathname.startsWith(`${href}/`)
       return (
         <Link key={href} href={href} data-tour={`nav-${href.slice(1)}`}

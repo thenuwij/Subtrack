@@ -41,9 +41,13 @@ import { RecentChanges } from '@/components/subscriptions/RecentChanges'
 import { GettingStarted } from '@/components/onboarding/GettingStarted'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { getAccessToken, useIsDemo } from '@/lib/auth/session'
+import { useFeatures } from '@/lib/hooks/useFeatures'
+import { FeaturePicker } from '@/components/onboarding/FeaturePicker'
 
 export default function DashboardPage() {
-  const { baseCurrency, ratesLoading } = useCurrency()
+  const { baseCurrency, ratesLoading, isLoading: preferencesLoading } = useCurrency()
+  const { has, onboardingCompleted } = useFeatures()
+  const paymentsOn = has('payments')
 
   const subscriptionsQuery = useApi<Subscription[]>(
     apiKeys.subscriptions('current'), token => getSubscriptions(token),
@@ -140,7 +144,23 @@ export default function DashboardPage() {
   const needsForeignRates = subscriptions.some(
     subscription => subscription.currency !== baseCurrency,
   )
-  if (loading || (ratesLoading && needsForeignRates)) return <DashboardSkeleton />
+  if (preferencesLoading || loading || (ratesLoading && needsForeignRates)) return <DashboardSkeleton />
+
+  if (!onboardingCompleted) return <FeaturePicker />
+
+  if (!paymentsOn) {
+    return (
+      <div className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6">
+        <div className="rounded-2xl bg-card p-8 shadow-sm">
+          <h1 className="text-xl font-semibold text-foreground">The rest is coming soon</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The features you picked are on their way. You can turn on monthly payments any time in Settings.
+          </p>
+          <Button asChild className="mt-5"><Link href="/account#features">Open Settings</Link></Button>
+        </div>
+      </div>
+    )
+  }
 
   const hasPayments = subscriptions.length > 0
 
