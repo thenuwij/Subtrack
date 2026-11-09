@@ -52,7 +52,7 @@ export default function DashboardPage() {
   const paymentsOn = has('payments')
   const spendingOn = has('spending')
   const goalsOn = has('goals')
-  const moreComing = has('workspace')
+  const workspaceOn = has('workspace')
 
   const subscriptionsQuery = useApi<Subscription[]>(
     apiKeys.subscriptions('current'), token => getSubscriptions(token),
@@ -158,16 +158,21 @@ export default function DashboardPage() {
       <div className="mx-auto max-w-xl space-y-4 px-4 py-16 sm:px-6">
         {spendingOn ? <ThisMonthCard /> : null}
         {goalsOn ? <GoalsCard /> : null}
-        {moreComing || (!spendingOn && !goalsOn) ? (
+        {!spendingOn && !goalsOn ? (
           <div className="rounded-2xl bg-card p-8 text-center shadow-sm">
-            <h1 className="text-xl font-semibold text-foreground">The rest is coming soon</h1>
+            <h1 className="text-xl font-semibold text-foreground">
+              {workspaceOn ? 'Your workspace' : 'Nothing turned on yet'}
+            </h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              {spendingOn || goalsOn
-                ? 'Workspace is on its way. '
-                : 'The features you picked are on their way. '}
-              You can turn on monthly payments any time in Settings.
+              {workspaceOn
+                ? 'Build pages for your situation. You can turn on monthly payments any time in Settings.'
+                : 'Turn on the features you want in Settings.'}
             </p>
-            <Button asChild className="mt-5"><Link href="/account#features">Open Settings</Link></Button>
+            <Button asChild className="mt-5">
+              <Link href={workspaceOn ? '/workspace' : '/account#features'}>
+                {workspaceOn ? 'Open workspace' : 'Open Settings'}
+              </Link>
+            </Button>
           </div>
         ) : null}
       </div>
