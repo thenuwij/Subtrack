@@ -16,6 +16,8 @@ export const apiKeys = {
   preferences: 'preferences',
   safeToSpend: 'safe-to-spend',
   duplicates: 'duplicates',
+  transactions: (month: string) => `transactions:${month}`,
+  transactionSummary: (month: string) => `transaction-summary:${month}`,
   agentThreads: 'agent-threads',
 } as const
 

@@ -16,6 +16,10 @@ import type {
   SafeToSpendProfileInput,
   Subscription,
   SubscriptionForecast,
+  CreatedTransaction,
+  Transaction,
+  TransactionInput,
+  TransactionSummary,
   SubscriptionInput,
   Feature,
 } from '@/types'
@@ -742,4 +746,30 @@ export interface SavingsOverview {
 }
 export async function getWaysToSave(token: string): Promise<SavingsOverview> {
   return request('/subscriptions/ways-to-save', token)
+}
+
+// Spending
+export async function listTransactions(token: string, month: string): Promise<Transaction[]> {
+  const rows = await request(`/transactions?month=${month}`, token)
+  return Array.isArray(rows) ? rows as Transaction[] : []
+}
+
+export async function getTransactionSummary(token: string, month: string): Promise<TransactionSummary> {
+  return request(`/transactions/summary?month=${month}`, token)
+}
+
+export async function createTransaction(token: string, data: TransactionInput): Promise<CreatedTransaction> {
+  return request('/transactions', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateTransaction(
+  token: string,
+  id: string,
+  data: Partial<TransactionInput>,
+): Promise<Transaction> {
+  return request(`/transactions/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function deleteTransaction(token: string, id: string) {
+  return request(`/transactions/${id}`, token, { method: 'DELETE' })
 }

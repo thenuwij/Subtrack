@@ -387,3 +387,59 @@ export interface SafeToSpend {
   profile?: Omit<SafeToSpendProfileInput, 'next_payday'>
   warnings?: string[]
 }
+
+export type TransactionKind = 'expense' | 'income'
+
+export interface Transaction {
+  id: string
+  kind: TransactionKind
+  name: string
+  amount: number
+  currency: Currency
+  base_amount: number | null
+  base_currency: Currency | null
+  rate_as_of: string | null
+  category: Category
+  occurred_on: string
+  note: string | null
+  source: string
+  recurring_payment_id: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface TransactionInput {
+  kind: TransactionKind
+  name: string
+  amount: number
+  currency: Currency
+  category: Category
+  occurred_on?: string
+  note?: string | null
+}
+
+export interface PossibleDuplicate {
+  kind: string
+  id: string
+  name: string
+  amount: number
+  currency: Currency
+  occurred_on: string | null
+}
+
+export interface CreatedTransaction extends Transaction {
+  possible_duplicates: PossibleDuplicate[]
+}
+
+export interface TransactionSummary {
+  month: string
+  base_currency: Currency
+  income: number
+  expenses: number
+  net: number
+  expenses_by_category: Record<string, number>
+  transaction_count: number
+  unconverted_count: number
+  rate_as_of: string | null
+  rate_stale: boolean
+}
