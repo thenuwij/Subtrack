@@ -29,5 +29,6 @@ def upgrade():
 
 
 def downgrade():
-    Transaction.__table__.drop(op.get_bind(), checkfirst=True)
+    # op.drop_table leaves the shared category enum in place for other tables.
+    op.drop_table("transactions")
     op.drop_column("user_preferences", "enabled_features")
