@@ -44,13 +44,15 @@ import { getAccessToken, useIsDemo } from '@/lib/auth/session'
 import { useFeatures } from '@/lib/hooks/useFeatures'
 import { FeaturePicker } from '@/components/onboarding/FeaturePicker'
 import { ThisMonthCard } from '@/components/spending/ThisMonthCard'
+import { GoalsCard } from '@/components/goals/GoalsCard'
 
 export default function DashboardPage() {
   const { baseCurrency, ratesLoading, isLoading: preferencesLoading } = useCurrency()
   const { has, onboardingCompleted } = useFeatures()
   const paymentsOn = has('payments')
   const spendingOn = has('spending')
-  const moreComing = has('goals') || has('workspace')
+  const goalsOn = has('goals')
+  const moreComing = has('workspace')
 
   const subscriptionsQuery = useApi<Subscription[]>(
     apiKeys.subscriptions('current'), token => getSubscriptions(token),
@@ -155,12 +157,13 @@ export default function DashboardPage() {
     return (
       <div className="mx-auto max-w-xl space-y-4 px-4 py-16 sm:px-6">
         {spendingOn ? <ThisMonthCard /> : null}
-        {moreComing || !spendingOn ? (
+        {goalsOn ? <GoalsCard /> : null}
+        {moreComing || (!spendingOn && !goalsOn) ? (
           <div className="rounded-2xl bg-card p-8 text-center shadow-sm">
             <h1 className="text-xl font-semibold text-foreground">The rest is coming soon</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              {spendingOn
-                ? 'Goals and workspace are on their way. '
+              {spendingOn || goalsOn
+                ? 'Workspace is on its way. '
                 : 'The features you picked are on their way. '}
               You can turn on monthly payments any time in Settings.
             </p>
@@ -254,6 +257,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start xl:gap-10">
           <div className="min-w-0 space-y-8">
             {spendingOn ? <ThisMonthCard /> : null}
+            {goalsOn ? <GoalsCard /> : null}
             <SafeToSpendCard />
             <ComingUp
               forecast={forecast}
