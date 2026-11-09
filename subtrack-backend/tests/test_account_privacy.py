@@ -52,6 +52,7 @@ from app.models import (
     Transaction,
     TransactionLink,
     UserPreference,
+    WorkspacePage,
 )
 from app.routers import account, gmail
 from app.services import gmail_access
@@ -282,6 +283,7 @@ class AccountPrivacyTests(unittest.TestCase):
                 goal,
                 goal_contribution,
                 budget,
+                WorkspacePage(user_id=user_id, title="Moving", blocks=[{"type": "notes", "text": ""}]),
                 safe_to_spend_profile,
                 subscription,
                 distinct_subscription,

@@ -1088,3 +1088,21 @@ class GoalContribution(Base):
     note = Column(String(500), nullable=True)
     source = Column(String(8), nullable=False, default=TransactionSource.manual.value)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class WorkspacePage(Base):
+    """A saved page layout built from the fixed workspace blocks; it holds no copied data."""
+
+    __tablename__ = "workspace_pages"
+    __table_args__ = (
+        Index("ix_workspace_pages_user_position", "user_id", "position"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    title = Column(String(120), nullable=False)
+    template_id = Column(String(40), nullable=True)
+    blocks = Column(JSON, nullable=False)
+    position = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())

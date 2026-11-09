@@ -51,6 +51,7 @@ from app.models import (
     Transaction,
     TransactionLink,
     UserPreference,
+    WorkspacePage,
 )
 from app.services.gmail_access import revoke_encrypted_refresh_token
 
@@ -303,6 +304,12 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ("id", "goal_id", "amount", "occurred_on", "note", "source", "created_at"),
         ("occurred_on", "id"),
     ),
+    ExportResource(
+        "workspace_pages",
+        WorkspacePage,
+        ("id", "title", "template_id", "blocks", "position", "created_at", "updated_at"),
+        ("position", "id"),
+    ),
 
 )
 
@@ -316,6 +323,7 @@ DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("reminder_deliveries", ReminderDelivery),
     ("gmail_oauth_states", GmailOAuthState),
     ("transactions", Transaction),
+    ("workspace_pages", WorkspacePage),
     ("goal_contributions", GoalContribution),
     ("goals", Goal),
     ("budgets", Budget),
