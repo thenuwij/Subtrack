@@ -25,11 +25,14 @@ from app.models import (
     AgentResearchCache,
     AmountType,
     BillingCycle,
+    Budget,
     Category,
     ChangeKind,
     DetectedSubscription,
     DetectionStatus,
     EmailPreference,
+    Goal,
+    GoalContribution,
     PaymentDecision,
     PaymentReminder,
     PaymentStatus,
@@ -44,6 +47,7 @@ from app.models import (
     UserPreference,
 )
 from app.routers.detected import ApproveOverrides, apply_approval
+from app.routers.goals import NEGATIVE_BALANCE, _contributions, _saved
 from app.routers.rates import conversion_for_storage
 from app.routers.subscriptions import (
     log_change,
@@ -61,6 +65,7 @@ from app.services.duplicates import (
     delete_duplicate_dismissals_for_subscription,
     persist_duplicate_dismissal,
 )
+from app.services.goals import goal_progress
 from app.services.recurrence import (
     Cadence,
     cadence_for,
@@ -346,6 +351,63 @@ class RemoveTransaction(StrictAction):
     transaction_id: UUID
 
 
+class SetBudget(StrictAction):
+    category: Category
+    monthly_limit: Decimal = Field(gt=0, le=MAX_AMOUNT, decimal_places=2)
+
+
+class RemoveBudget(StrictAction):
+    budget_id: UUID
+
+
+class CreateGoal(StrictAction):
+    name: str = Field(min_length=1, max_length=120)
+    target_amount: Decimal = Field(gt=0, le=MAX_AMOUNT, decimal_places=2)
+    currency: SupportedCurrency
+    target_date: date | None = Field(default=None, ge=EARLIEST_DATE, le=LATEST_DATE)
+
+    _currency = field_validator("currency", mode="before")(_upper_currency)
+
+
+class UpdateGoal(StrictAction):
+    """Currency is fixed at creation because contributions are stored in it."""
+
+    goal_id: UUID
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    target_amount: Decimal | None = Field(default=None, gt=0, le=MAX_AMOUNT, decimal_places=2)
+    target_date: date | None = Field(default=None, ge=EARLIEST_DATE, le=LATEST_DATE)
+    archived: bool | None = None
+    # Null means "leave unchanged", so removing the target date is explicit.
+    clear_fields: list[Literal["target_date"]] = Field(default_factory=list, max_length=1)
+
+    @model_validator(mode="after")
+    def has_change(self):
+        values = self.model_dump(exclude={"goal_id", "clear_fields"})
+        if not any(value is not None for value in values.values()) and not self.clear_fields:
+            raise ValueError("At least one field must be changed")
+        if "target_date" in self.clear_fields and self.target_date is not None:
+            raise ValueError("Cannot both set and clear target_date")
+        return self
+
+
+class AddGoalContribution(StrictAction):
+    goal_id: UUID
+    amount: Decimal = Field(ge=-MAX_AMOUNT, le=MAX_AMOUNT, decimal_places=2)
+    occurred_on: date | None = Field(default=None, ge=EARLIEST_DATE, le=LATEST_DATE)
+    note: str | None = Field(default=None, max_length=500)
+
+    @field_validator("amount")
+    @classmethod
+    def amount_is_not_zero(cls, amount: Decimal) -> Decimal:
+        if amount == 0:
+            raise ValueError("Amount cannot be zero")
+        return amount
+
+
+class RemoveGoal(StrictAction):
+    goal_id: UUID
+
+
 ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_add_recurring_payment": AddPayment,
     "propose_update_recurring_payment": UpdatePayment,
@@ -363,6 +425,12 @@ ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_log_transaction": LogTransaction,
     "propose_update_transaction": UpdateTransaction,
     "propose_remove_transaction": RemoveTransaction,
+    "propose_set_budget": SetBudget,
+    "propose_remove_budget": RemoveBudget,
+    "propose_create_goal": CreateGoal,
+    "propose_update_goal": UpdateGoal,
+    "propose_remove_goal": RemoveGoal,
+    "propose_add_goal_contribution": AddGoalContribution,
 }
 
 
@@ -749,6 +817,119 @@ ACTION_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "propose_set_budget",
+        "description": (
+            "Prepare a monthly spending limit for one category in the user's base currency. "
+            "If the category already has a budget, its limit is changed instead of adding a "
+            "second one. Only use a limit the user stated."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "enum": [item.value for item in Category]},
+                "monthly_limit": {
+                    "type": "number", "exclusiveMinimum": 0, "maximum": float(MAX_AMOUNT),
+                },
+            },
+            "required": ["category", "monthly_limit"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_remove_budget",
+        "description": "Prepare removing one category budget. Use the exact ID from get_budget_status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"budget_id": {"type": "string", "format": "uuid"}},
+            "required": ["budget_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_create_goal",
+        "description": (
+            "Prepare a new savings goal: the user's own target, not a financial product. "
+            "Only use a target amount the user stated. Leave target_date null when they "
+            "gave no date."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 1, "maxLength": 120},
+                "target_amount": {
+                    "type": "number", "exclusiveMinimum": 0, "maximum": float(MAX_AMOUNT),
+                },
+                "currency": {"type": "string", "enum": list(get_args(SupportedCurrency))},
+                "target_date": {"type": ["string", "null"], "format": "date"},
+            },
+            "required": ["name", "target_amount", "currency", "target_date"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_update_goal",
+        "description": (
+            "Prepare changes to one savings goal: rename it, change its target or date, or "
+            "archive or restore it. Use the exact ID from list_goals. Null leaves a field "
+            "unchanged; use clear_fields to remove the target date. The currency can't change."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal_id": {"type": "string", "format": "uuid"},
+                "name": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+                "target_amount": {
+                    "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": float(MAX_AMOUNT),
+                },
+                "target_date": {"type": ["string", "null"], "format": "date"},
+                "archived": {"type": ["boolean", "null"]},
+                "clear_fields": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["target_date"]},
+                    "maxItems": 1,
+                    "uniqueItems": True,
+                },
+            },
+            "required": ["goal_id", "name", "target_amount", "target_date", "archived", "clear_fields"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_remove_goal",
+        "description": (
+            "Prepare deleting one savings goal and its contribution history. Use the exact ID "
+            "from list_goals. Suggest archiving instead when the user may want the history."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"goal_id": {"type": "string", "format": "uuid"}},
+            "required": ["goal_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_add_goal_contribution",
+        "description": (
+            "Prepare putting money towards a savings goal, or taking it out with a negative "
+            "amount, in the goal's currency. Use the exact ID from list_goals and only an "
+            "amount the user stated. Leave occurred_on null for today. The card shows the new "
+            "saved total and weekly amount; quote those instead of working them out."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal_id": {"type": "string", "format": "uuid"},
+                "amount": {
+                    "type": "number", "minimum": -float(MAX_AMOUNT), "maximum": float(MAX_AMOUNT),
+                },
+                "occurred_on": {"type": ["string", "null"], "format": "date"},
+                "note": {"type": ["string", "null"], "maxLength": 500},
+            },
+            "required": ["goal_id", "amount", "occurred_on", "note"],
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -842,6 +1023,62 @@ def _transaction_snapshot(row: Transaction) -> dict:
         "occurred_on": row.occurred_on.isoformat(),
         "note": row.note,
         "recurring_payment_id": str(row.recurring_payment_id) if row.recurring_payment_id else None,
+    }
+
+
+def _owned_budget(
+    db: Session,
+    user_id: str,
+    identifier: UUID,
+    *,
+    for_update: bool = False,
+) -> Budget:
+    query = db.query(Budget).filter(Budget.id == identifier, Budget.user_id == user_id)
+    if for_update:
+        query = query.with_for_update()
+    row = query.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Budget not found")
+    return row
+
+
+def _budget_snapshot(row: Budget) -> dict:
+    return {
+        "id": str(row.id),
+        "category": _enum(row.category),
+        "monthly_limit": str(row.monthly_limit),
+        "currency": row.currency,
+    }
+
+
+def _owned_goal(
+    db: Session,
+    user_id: str,
+    identifier: UUID,
+    *,
+    for_update: bool = False,
+) -> Goal:
+    query = db.query(Goal).filter(Goal.id == identifier, Goal.user_id == user_id)
+    if for_update:
+        query = query.with_for_update()
+    row = query.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    return row
+
+
+def _goal_snapshot(db: Session, user_id: str, row: Goal) -> dict:
+    """The goal and its saved total, so a contribution made meanwhile also counts as a change."""
+    contributions = _contributions(db, user_id, [row.id])
+    return {
+        "id": str(row.id),
+        "name": row.name,
+        "target_amount": str(row.target_amount),
+        "currency": row.currency,
+        "target_date": row.target_date.isoformat() if row.target_date else None,
+        "archived_at": _iso(row.archived_at),
+        "saved": str(_saved(contributions)),
+        "contribution_count": len(contributions),
     }
 
 
@@ -1243,6 +1480,102 @@ def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str
             f"Delete this logged {row.kind} of {row.currency} {Decimal(row.amount):.2f} "
             f"on {row.occurred_on.isoformat()}."
         )
+    elif tool_name == "propose_set_budget":
+        item = data
+        assert isinstance(item, SetBudget)
+        base = base_currency_for(db, user_id)
+        category = _enum(item.category).replace("_", " ")
+        existing = db.query(Budget).filter(
+            Budget.user_id == user_id, Budget.category == item.category,
+        ).first()
+        # The limit is stored in the base currency at confirmation, so a base
+        # change in the meantime would make the card wrong.
+        expected = {"base_currency": base}
+        limit = f"{base} {item.monthly_limit:.2f}"
+        if existing is None:
+            summary = f"Set {category} budget"
+            description = f"Set a monthly {category} budget of {limit}."
+        else:
+            expected["budget"] = _budget_snapshot(existing)
+            summary = f"Update {category} budget"
+            description = (
+                f"Change the monthly {category} budget from {existing.currency} "
+                f"{Decimal(existing.monthly_limit):.2f} to {limit}."
+            )
+    elif tool_name == "propose_remove_budget":
+        item = data
+        assert isinstance(item, RemoveBudget)
+        row = _owned_budget(db, user_id, item.budget_id)
+        expected = {"budget": _budget_snapshot(row)}
+        category = _enum(row.category).replace("_", " ")
+        summary = f"Remove {category} budget"
+        description = (
+            f"Delete the monthly {category} budget of {row.currency} {Decimal(row.monthly_limit):.2f}. "
+            "Logged spending stays."
+        )
+    elif tool_name == "propose_create_goal":
+        item = data
+        assert isinstance(item, CreateGoal)
+        summary = f"Add goal {item.name}"
+        description = f"Save {item.currency} {item.target_amount:.2f} for {item.name}"
+        description += f" by {item.target_date.isoformat()}." if item.target_date else "."
+    elif tool_name == "propose_update_goal":
+        item = data
+        assert isinstance(item, UpdateGoal)
+        goal = _owned_goal(db, user_id, item.goal_id)
+        expected = {"goal": _goal_snapshot(db, user_id, goal)}
+        summary = f"Update {goal.name}"
+        changed = [
+            key.replace("_", " ")
+            for key, value in item.model_dump(exclude={"goal_id", "clear_fields", "archived"}).items()
+            if value is not None
+        ]
+        changed.extend(f"clear {key.replace('_', ' ')}" for key in item.clear_fields)
+        if item.archived is not None:
+            changed.append("archive it" if item.archived else "restore it")
+        description = f"Change {', '.join(changed)} after confirmation."
+    elif tool_name == "propose_remove_goal":
+        item = data
+        assert isinstance(item, RemoveGoal)
+        goal = _owned_goal(db, user_id, item.goal_id)
+        expected = {"goal": _goal_snapshot(db, user_id, goal)}
+        saved = Decimal(expected["goal"]["saved"])
+        summary = f"Remove {goal.name}"
+        description = (
+            f"Delete this goal and its {expected['goal']['contribution_count']} contributions "
+            f"({goal.currency} {saved:.2f} saved). Money you've set aside elsewhere isn't affected."
+        )
+    elif tool_name == "propose_add_goal_contribution":
+        item = data
+        assert isinstance(item, AddGoalContribution)
+        goal = _owned_goal(db, user_id, item.goal_id)
+        expected = {"goal": _goal_snapshot(db, user_id, goal)}
+        new_saved = Decimal(expected["goal"]["saved"]) + item.amount
+        if new_saved < 0:
+            raise HTTPException(status_code=409, detail=NEGATIVE_BALANCE)
+        today = _local_today(db, user_id)
+        occurred_on = item.occurred_on or today
+        # Store the date the card shows, so confirming after midnight can't move it.
+        payload["occurred_on"] = occurred_on.isoformat()
+        progress = goal_progress(goal, new_saved, today)
+        amount = f"{goal.currency} {abs(item.amount):.2f}"
+        if item.amount > 0:
+            summary = f"Add to {goal.name}"
+            description = f"Put {amount} towards {goal.name} on {occurred_on.isoformat()}."
+        else:
+            summary = f"Take out of {goal.name}"
+            description = f"Take {amount} out of {goal.name} on {occurred_on.isoformat()}."
+        description += (
+            f" Saved will be {goal.currency} {progress['saved']:.2f} of "
+            f"{goal.currency} {Decimal(goal.target_amount):.2f}."
+        )
+        if progress["needed_per_week"] is not None:
+            description += (
+                f" That leaves {goal.currency} {progress['needed_per_week']:.2f} a week "
+                f"to reach it by {goal.target_date.isoformat()}."
+            )
+        elif progress["status"] == "reached":
+            description += " That reaches the goal."
     else:
         raise HTTPException(status_code=400, detail="Unknown assistant action")
     return payload, expected, summary, description
@@ -1417,6 +1750,16 @@ def _assert_fresh(action: AgentAction, db: Session, user_id: str) -> None:
         row = _owned_transaction(db, user_id, UUID(expected["transaction"]["id"]), for_update=True)
         if _transaction_snapshot(row) != expected["transaction"]:
             raise HTTPException(status_code=409, detail="This entry changed after the action was proposed. Ask the assistant again.")
+    if "base_currency" in expected and base_currency_for(db, user_id) != expected["base_currency"]:
+        raise HTTPException(status_code=409, detail="Your base currency changed after the action was proposed. Ask the assistant again.")
+    if "budget" in expected:
+        budget = _owned_budget(db, user_id, UUID(expected["budget"]["id"]), for_update=True)
+        if _budget_snapshot(budget) != expected["budget"]:
+            raise HTTPException(status_code=409, detail="This budget changed after the action was proposed. Ask the assistant again.")
+    if "goal" in expected:
+        goal = _owned_goal(db, user_id, UUID(expected["goal"]["id"]), for_update=True)
+        if _goal_snapshot(db, user_id, goal) != expected["goal"]:
+            raise HTTPException(status_code=409, detail="This goal changed after the action was proposed. Ask the assistant again.")
 
 
 def _execute_add_payment(action: AgentAction, db: Session, user_id: str) -> dict:
@@ -1857,6 +2200,98 @@ def _execute_remove_transaction(action: AgentAction, db: Session, user_id: str) 
     return {"transaction_id": str(data.transaction_id), "name": name}
 
 
+def _execute_set_budget(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = SetBudget.model_validate(action.payload_json)
+    # One budget per category: update the existing one instead of adding a second.
+    row = db.query(Budget).filter(
+        Budget.user_id == user_id, Budget.category == data.category,
+    ).with_for_update().first()
+    currency = base_currency_for(db, user_id)
+    if row is None:
+        row = Budget(user_id=user_id, category=data.category)
+        db.add(row)
+    row.monthly_limit = data.monthly_limit
+    row.currency = currency
+    db.flush()
+    return {
+        "budget_id": str(row.id),
+        "category": _enum(row.category),
+        "monthly_limit": str(data.monthly_limit),
+        "currency": row.currency,
+    }
+
+
+def _execute_remove_budget(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = RemoveBudget.model_validate(action.payload_json)
+    row = _owned_budget(db, user_id, data.budget_id)
+    category = _enum(row.category)
+    db.delete(row)
+    return {"budget_id": str(data.budget_id), "category": category}
+
+
+def _execute_create_goal(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = CreateGoal.model_validate(action.payload_json)
+    row = Goal(user_id=user_id, **data.model_dump())
+    db.add(row)
+    db.flush()
+    return {"goal_id": str(row.id), "name": row.name}
+
+
+def _execute_update_goal(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = UpdateGoal.model_validate(action.payload_json)
+    row = _owned_goal(db, user_id, data.goal_id)
+    if data.archived is not None:
+        if data.archived and row.archived_at is None:
+            row.archived_at = utcnow()
+        elif not data.archived:
+            row.archived_at = None
+    changes = {
+        key: value
+        for key, value in data.model_dump(exclude={"goal_id", "clear_fields", "archived"}).items()
+        if value is not None
+    }
+    changes.update({key: None for key in data.clear_fields})
+    for field, value in changes.items():
+        setattr(row, field, value)
+    db.flush()
+    return {"goal_id": str(row.id), "name": row.name}
+
+
+def _execute_remove_goal(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = RemoveGoal.model_validate(action.payload_json)
+    row = _owned_goal(db, user_id, data.goal_id)
+    name = row.name
+    # Deleted explicitly too, because SQLite does not enforce the cascade by default.
+    db.query(GoalContribution).filter(
+        GoalContribution.goal_id == row.id, GoalContribution.user_id == user_id,
+    ).delete(synchronize_session=False)
+    db.delete(row)
+    return {"goal_id": str(data.goal_id), "name": name}
+
+
+def _execute_add_goal_contribution(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = AddGoalContribution.model_validate(action.payload_json)
+    goal = _owned_goal(db, user_id, data.goal_id)
+    saved = _saved(_contributions(db, user_id, [goal.id])) + data.amount
+    if saved < 0:
+        raise HTTPException(status_code=409, detail=NEGATIVE_BALANCE)
+    row = GoalContribution(
+        goal_id=goal.id,
+        user_id=user_id,
+        amount=data.amount,
+        occurred_on=data.occurred_on or _local_today(db, user_id),
+        note=data.note,
+        source=TransactionSource.ai.value,
+    )
+    db.add(row)
+    db.flush()
+    return {
+        "contribution_id": str(row.id),
+        "goal_id": str(goal.id),
+        "saved": goal_progress(goal, saved, _local_today(db, user_id))["saved"],
+    }
+
+
 EXECUTORS = {
     "add_recurring_payment": _execute_add_payment,
     "update_recurring_payment": _execute_update_payment,
@@ -1874,6 +2309,12 @@ EXECUTORS = {
     "log_transaction": _execute_log_transaction,
     "update_transaction": _execute_update_transaction,
     "remove_transaction": _execute_remove_transaction,
+    "set_budget": _execute_set_budget,
+    "remove_budget": _execute_remove_budget,
+    "create_goal": _execute_create_goal,
+    "update_goal": _execute_update_goal,
+    "remove_goal": _execute_remove_goal,
+    "add_goal_contribution": _execute_add_goal_contribution,
 }
 
 

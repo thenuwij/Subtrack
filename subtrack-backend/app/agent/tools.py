@@ -21,6 +21,13 @@ from app.agent.finance import (
     saving_candidates,
     upcoming_charges,
 )
+from app.agent.goals import (
+    GOALS_OFF,
+    GOALS_TOOLS,
+    budget_status_for_month,
+    goals_enabled,
+    goals_with_progress,
+)
 from app.agent.research import ALTERNATIVE_RESEARCH_TOOL, research_alternatives
 from app.agent.spending import (
     MAX_LIST_LIMIT,
@@ -343,6 +350,33 @@ READ_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "get_budget_status",
+        "description": (
+            "Get every category budget's monthly limit, amount spent (logged expenses plus "
+            "tracked payments charged that month) and amount left for one calendar month "
+            "(defaults to this month) in the user's base currency, with the budget IDs. "
+            "Quote budget figures only from this tool."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"month": {"type": "string", "pattern": "^\\d{4}-\\d{2}$"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_goals",
+        "description": (
+            "List the user's savings goals with their IDs, target, saved, remaining, percent, "
+            "status and the amount still needed per week and per day. Archived goals are "
+            "left out unless include_archived is true. Quote goal figures only from this tool."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"include_archived": {"type": "boolean"}},
+            "additionalProperties": False,
+        },
+    },
     ALTERNATIVE_RESEARCH_TOOL,
 ]
 
@@ -361,6 +395,8 @@ def run_tool(
     """Dispatch an allow-listed read or create an inert action proposal."""
     if tool_name in SPENDING_TOOLS and not spending_enabled(db, user_id):
         return SPENDING_OFF
+    if tool_name in GOALS_TOOLS and not goals_enabled(db, user_id):
+        return GOALS_OFF
     if tool_name in ACTION_MODELS:
         if not thread_id or not assistant_message_id:
             return {"error": "Action proposals require a conversation message"}
@@ -445,6 +481,10 @@ def run_tool(
         return list_logged_transactions(db, user_id, tool_input)
     if tool_name == "get_transaction_summary":
         return logged_transaction_summary(db, user_id, tool_input)
+    if tool_name == "get_budget_status":
+        return budget_status_for_month(db, user_id, tool_input)
+    if tool_name == "list_goals":
+        return goals_with_progress(db, user_id, tool_input)
     if tool_name == "research_cheaper_alternatives":
         return research_alternatives(db, user_id, tool_input)
     return {"error": "Unknown assistant tool"}

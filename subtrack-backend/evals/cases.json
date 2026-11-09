@@ -45,5 +45,8 @@
  {"id": "multi-step", "category": "confirmation", "question": "Mark my phone plan paid and then tell me how much I can spend until payday.", "expected_tools": ["get_paid_history", "propose_mark_payment_paid", "get_safe_to_spend"]},
  {"id": "confirm-log-expense", "category": "confirmation", "question": "I spent $20 on lunch today.", "expected_tools": ["propose_log_transaction"]},
  {"id": "confirm-log-income", "category": "confirmation", "question": "I got paid $1,200 today, log it.", "expected_tools": ["propose_log_transaction"]},
- {"id": "confirm-log-bill-payment", "category": "confirmation", "question": "I just paid my $35 phone plan, log it.", "expected_tools": ["list_recurring_payments", "list_transactions", "propose_log_transaction"]}
+ {"id": "confirm-log-bill-payment", "category": "confirmation", "question": "I just paid my $35 phone plan, log it.", "expected_tools": ["list_recurring_payments", "list_transactions", "propose_log_transaction"]},
+ {"id": "budget-status", "category": "numbers", "question": "How am I going on my food budget this month?", "expected_tools": ["get_budget_status"]},
+ {"id": "confirm-set-budget", "category": "confirmation", "question": "Set a $400 groceries budget.", "expected_tools": ["propose_set_budget"]},
+ {"id": "confirm-create-goal", "category": "confirmation", "question": "I want to save $5,000 for a trip by June.", "expected_tools": ["propose_create_goal"]}
 ]
