@@ -99,7 +99,7 @@ export default function WorkspacePageView() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8 sm:py-10">
+    <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
       <Link href="/workspace" className="inline-flex min-h-11 items-center gap-1 text-xs font-medium text-primary">
         <ChevronLeft className="h-3.5 w-3.5" />All pages
       </Link>

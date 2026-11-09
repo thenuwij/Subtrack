@@ -387,7 +387,7 @@ export default function SubscriptionsPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="eyebrow mb-2">Everything you pay for</p>
-          <h1 className="page-heading">Payments</h1>
+          <h1 className="page-heading">Recurring payments</h1>
           {!loading && subscriptions.length > 0 && (
             <p className="text-sm text-muted-foreground mt-1 tabular-nums">
               {paid.length} recurring{trials.length ? ` · ${trials.length} free trial${trials.length === 1 ? '' : 's'}` : ''} ·{' '}

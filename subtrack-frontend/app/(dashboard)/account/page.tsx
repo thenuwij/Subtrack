@@ -361,7 +361,7 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
+    <div className="mx-auto w-full max-w-6xl space-y-7 px-5 py-8 sm:px-8 lg:px-10 sm:py-10">
       <header><p className="eyebrow mb-2">Make yourself at home</p><h1 className="page-heading">Account & settings</h1><p className="page-description">Your preferences, connections and privacy. All in one place.</p></header>
 
       <section className="flex flex-col gap-5 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center">

@@ -203,7 +203,7 @@ export default function DashboardPage() {
   // this worth using instead.
   if (!hasPayments) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <Sparkles className="h-7 w-7" />

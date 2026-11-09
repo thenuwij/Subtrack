@@ -12,7 +12,7 @@ import { BlockFrame, EmptyLine } from '@/components/workspace/blocks/shared'
 import { formatCategory } from '@/lib/utils/categories'
 
 const DEFAULT_TITLES: Record<string, string> = {
-  payment_list: 'Payments',
+  payment_list: 'Recurring payments',
   transaction_log: 'Spending and income',
   budget: 'Budgets',
   goal_progress: 'Goals',
