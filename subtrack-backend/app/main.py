@@ -26,6 +26,7 @@ from app.routers import (
     reminders,
     safe_to_spend,
     subscriptions,
+    transactions,
 )
 from app.routers.meta import release_metadata
 
@@ -67,6 +68,7 @@ app.add_middleware(
 
 # Routers
 app.include_router(subscriptions.router)
+app.include_router(transactions.router)
 app.include_router(rates.router)
 app.include_router(preferences.router)
 app.include_router(account.router)
