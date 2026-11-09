@@ -18,6 +18,7 @@ from app.services.workspace_blocks import (
     blocks_to_json,
     validate_blocks,
 )
+from app.services.workspace_data import resolve_page_blocks
 from app.services.workspace_templates import TEMPLATES, TemplateId
 
 router = APIRouter(prefix="/workspace", tags=["workspace"])
@@ -188,6 +189,18 @@ def get_page(
 ):
     _require_workspace(db, user_id)
     return page_payload(_owned_page(db, user_id, page_id))
+
+
+@router.get("/pages/{page_id}/data")
+def get_page_data(
+    page_id: UUID,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Each block's live data in page order; a block that fails carries its own error."""
+    _require_workspace(db, user_id)
+    page = _owned_page(db, user_id, page_id)
+    return {"id": str(page.id), "title": page.title, "blocks": resolve_page_blocks(db, user_id, page.blocks)}
 
 
 @router.patch("/pages/{page_id}")

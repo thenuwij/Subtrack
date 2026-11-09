@@ -23,6 +23,7 @@ from app.routers.workspace import (  # noqa: E402
     create_page,
     delete_page,
     get_page,
+    get_page_data,
     list_pages,
     list_templates,
     router,
@@ -282,6 +283,7 @@ class WorkspaceApiTests(unittest.TestCase):
             lambda: list_pages(user_id="owner", db=self.db),
             lambda: self.create(blocks=[NOTES]),
             lambda: get_page(page_id, user_id="owner", db=self.db),
+            lambda: get_page_data(page_id, user_id="owner", db=self.db),
             lambda: update_page(page_id, PageUpdate(title="New"), user_id="owner", db=self.db),
             lambda: delete_page(page_id, user_id="owner", db=self.db),
         )
