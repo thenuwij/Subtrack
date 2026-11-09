@@ -51,6 +51,31 @@ def _purchase_amount(value: object) -> Decimal:
     return amount
 
 
+def _month_category_totals(month: dict) -> dict:
+    """Per-category totals for one month, so the model never adds them up itself."""
+    totals: dict[str, Decimal] = {}
+    unconverted = 0
+    for charge in month["charges"]:
+        amount = charge.get("charge_amount_in_base")
+        if amount is None:
+            unconverted += 1
+            continue
+        category = charge.get("category") or "other"
+        totals[category] = totals.get(category, Decimal("0")) + Decimal(str(amount))
+    extras = sum(
+        (Decimal(str(e["amount_in_base"])) for e in month["extras"] if e["amount_in_base"] is not None),
+        Decimal("0"),
+    )
+    return {
+        "category_totals_in_base": [
+            {"category": name, "total": float(total.quantize(CENTS))}
+            for name, total in sorted(totals.items(), key=lambda item: item[1], reverse=True)
+        ],
+        "category_totals_unconverted_count": unconverted,
+        "extras_total_in_base": float(extras.quantize(CENTS)),
+    }
+
+
 READ_TOOL_DEFINITIONS = [
     {
         "name": "get_financial_overview",
@@ -253,7 +278,8 @@ READ_TOOL_DEFINITIONS = [
         "description": (
             "Get every charge dated in one calendar month, including already paid ones, plus "
             "one-off extras such as late fees. This is the real cost of that month (a weekly "
-            "payment counts 4 or 5 times) and matches the dashboard. Defaults to this month."
+            "payment counts 4 or 5 times) and matches the dashboard, with totals per category and "
+            "for extras. Defaults to this month."
         ),
         "input_schema": {
             "type": "object",
@@ -363,9 +389,10 @@ def run_tool(
                 isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high
             ):
                 return {"error": f"{key} must be a whole number from {low} to {high}"}
-        return get_calendar_month(
+        result = get_calendar_month(
             year=tool_input.get("year"), month=tool_input.get("month"), user_id=user_id, db=db,
         )
+        return {**result, **_month_category_totals(result)}
     if tool_name == "get_email_reminder_settings":
         from app.routers.email_reminders import get_email_preferences
         return get_email_preferences(user_id, db)

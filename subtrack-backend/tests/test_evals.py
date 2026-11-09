@@ -86,6 +86,12 @@ class EvalHarnessTests(unittest.TestCase):
         self.assertIn("$392.01", transcript.answer)
         self.assertTrue(all(g.passed for g in grade(transcript, case)), grade(transcript, case))
 
+    def test_a_tool_that_detaches_rows_does_not_crash_the_case(self):
+        model = scripted_model("find_duplicate_payments", {}, lambda r: "No duplicates found.")
+        with patch("app.gmail.analyzer.find_duplicates", return_value=[]):
+            transcript = run_case(self.db, "Do I have duplicates?", model)
+        self.assertEqual(transcript.answer, "No duplicates found.")
+
     def test_an_invented_amount_fails_the_numbers_grader(self):
         model = scripted_model("get_safe_to_spend", {}, lambda r: "You can spend $450.00.")
 

@@ -757,6 +757,10 @@ class NewReadToolTests(AgentActionTests):
         self.assertIn("price_rises", run_tool("get_ways_to_save", {}, self.db, "owner"))
         month = run_tool("get_month_costs", {}, self.db, "owner")
         self.assertIn("charges", month)
+        self.assertEqual(
+            sum(row["total"] for row in month["category_totals_in_base"]),
+            month["forecast_total_in_base"],
+        )
         self.assertIn("error", run_tool("get_month_costs", {"month": 13}, self.db, "owner"))
         self.assertEqual(run_tool("get_email_reminder_settings", {}, self.db, "owner")["enabled"], False)
         self.assertEqual(run_tool("get_gmail_status", {}, self.db, "owner")["connected"], False)

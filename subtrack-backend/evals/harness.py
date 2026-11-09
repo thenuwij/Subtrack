@@ -117,7 +117,9 @@ def run_case(db: Session, question: str, model: Callable[..., object] | None = N
         for active in reversed(patches):
             active.stop()
 
-    db.refresh(reply)
+    # Some tools detach every loaded row (the duplicate check releases its
+    # connection before calling the model), so look the reply up again.
+    reply = db.get(AgentMessage, reply.id)
     if reply.status != "completed":
         raise RuntimeError(f"assistant reply failed: {reply.error_code}")
     resolved = db.query(AgentAction).filter(
