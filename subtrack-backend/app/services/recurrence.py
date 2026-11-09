@@ -180,7 +180,24 @@ def rewind_anchor(anchor: datetime, unit_or_item, before: datetime, interval_cou
     periods = 1
     while add_months(anchor, -step_months * periods) > before:
         periods += 1
+    # Projection reads a month-end date as "last day of every month", so a
+    # rewind landing on one (30 Oct -> 30 Nov) or a clamped day (31 -> 28 Feb)
+    # would shift later dates. Keep stepping back to a date with the same
+    # meaning; it is still on or before ``before``.
+    def faithful(candidate: datetime) -> bool:
+        if _is_month_end(anchor):
+            return _is_month_end(candidate)
+        return candidate.day == anchor.day and not _is_month_end(candidate)
+
+    for extra in range(24):
+        candidate = add_months(anchor, -step_months * (periods + extra))
+        if faithful(candidate):
+            return candidate
     return add_months(anchor, -step_months * periods)
+
+
+def _is_month_end(value: datetime) -> bool:
+    return value.day == calendar.monthrange(value.year, value.month)[1]
 
 
 def project_next_occurrence(
