@@ -22,6 +22,12 @@ export type Category =
   | 'memberships'
   | 'donations'
   | 'business'
+  | 'shopping'
+  | 'health'
+  | 'travel'
+  | 'personal_care'
+  | 'gifts'
+  | 'income'
   | 'other'
 
 export type Currency = 'AUD' | 'USD' | 'GBP' | 'SGD' | 'EUR' | 'JPY'
@@ -185,11 +191,14 @@ export interface Rates {
   provider_date: string | null
 }
 
+export type Feature = 'spending' | 'payments' | 'goals' | 'workspace'
+
 export interface Preferences {
   base_currency: Currency
   monthly_income: number | null  // null until the user states it
   timezone: string
   onboarding_completed?: boolean
+  enabled_features?: Feature[]
   income_converted?: boolean
   income_conversion_rate_as_of?: string | null
 }

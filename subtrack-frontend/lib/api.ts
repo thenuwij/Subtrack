@@ -17,6 +17,7 @@ import type {
   Subscription,
   SubscriptionForecast,
   SubscriptionInput,
+  Feature,
 } from '@/types'
 import {
   formatCadence,
@@ -634,7 +635,7 @@ export async function getPreferences(token: string) {
 // Send only the fields you want to change — omitted fields are left untouched.
 export async function updatePreferences(
   token: string,
-  data: { base_currency?: string; monthly_income?: number | null; onboarding_completed?: boolean; timezone?: string }
+  data: { base_currency?: string; monthly_income?: number | null; onboarding_completed?: boolean; timezone?: string; enabled_features?: Feature[] }
 ): Promise<Preferences> {
   return request('/preferences', token, {
     method: 'PATCH',

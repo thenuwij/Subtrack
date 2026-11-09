@@ -12,6 +12,7 @@ from app.database import get_db
 from app.middleware.auth import verify_token
 from app.models import UserPreference
 from app.routers.rates import get_cached_rate_snapshot
+from app.services.features import Feature, enabled_features
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class PreferenceUpdate(BaseModel):
     monthly_income: float | None = Field(default=None, ge=0)
     onboarding_completed: bool | None = None
     timezone: str | None = Field(default=None, max_length=64)
+    enabled_features: list[Feature] | None = Field(default=None, min_length=1)
 
 @router.get("")
 def get_preferences(user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
@@ -35,12 +37,14 @@ def get_preferences(user_id: str = Depends(verify_token), db: Session = Depends(
             "monthly_income": None,
             "timezone": "UTC",
             "onboarding_completed": False,
+            "enabled_features": enabled_features(None),
         }
     return {
         "base_currency": pref.base_currency,
         "monthly_income": pref.monthly_income,
         "timezone": pref.timezone or "UTC",
         "onboarding_completed": pref.onboarding_completed_at is not None,
+        "enabled_features": enabled_features(pref),
     }
 
 @router.patch("")
@@ -97,6 +101,8 @@ def update_preferences(
         pref.monthly_income = body.monthly_income
     if body.timezone is not None:
         pref.timezone = body.timezone
+    if body.enabled_features is not None:
+        pref.enabled_features = sorted(set(body.enabled_features))
     if body.onboarding_completed is True and pref.onboarding_completed_at is None:
         pref.onboarding_completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     elif body.onboarding_completed is False:
@@ -109,6 +115,7 @@ def update_preferences(
         "monthly_income": pref.monthly_income,
         "timezone": pref.timezone or "UTC",
         "onboarding_completed": pref.onboarding_completed_at is not None,
+        "enabled_features": enabled_features(pref),
         "income_converted": income_converted,
         "income_conversion_rate_as_of": income_rate_as_of,
     }

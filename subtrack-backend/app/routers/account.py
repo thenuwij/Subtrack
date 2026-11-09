@@ -45,6 +45,7 @@ from app.models import (
     StatementImport,
     Subscription,
     SubscriptionChange,
+    Transaction,
     TransactionLink,
     UserPreference,
 )
@@ -271,6 +272,16 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
     ExportResource("payment_decisions", PaymentDecision, ("id", "target", "decision", "created_at"), ("created_at", "id")),
     ExportResource("email_preferences", EmailPreference, ("email", "enabled"), ("user_id",)),
     ExportResource("reminder_deliveries", ReminderDelivery, ("key", "created_at", "sent_at"), ("key",)),
+    ExportResource(
+        "transactions",
+        Transaction,
+        (
+            "id", "kind", "name", "amount", "currency", "base_amount", "base_currency",
+            "rate_as_of", "category", "occurred_on", "note", "source", "recurring_payment_id",
+            "created_at",
+        ),
+        ("occurred_on", "id"),
+    ),
 
 )
 
@@ -283,6 +294,7 @@ DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("email_preferences", EmailPreference),
     ("reminder_deliveries", ReminderDelivery),
     ("gmail_oauth_states", GmailOAuthState),
+    ("transactions", Transaction),
     ("transaction_links", TransactionLink),
     ("gmail_receipts", GmailReceipt),
     ("bank_transactions", BankTransaction),

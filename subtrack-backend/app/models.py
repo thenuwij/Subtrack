@@ -81,6 +81,12 @@ class Category(str, enum.Enum):
     memberships = "memberships"
     donations = "donations"
     business = "business"
+    shopping = "shopping"
+    health = "health"
+    travel = "travel"
+    personal_care = "personal_care"
+    gifts = "gifts"
+    income = "income"
     other = "other"
 
 class Subscription(Base):
@@ -449,6 +455,9 @@ class UserPreference(Base):
     monthly_income = Column(Float, nullable=True)     # in base currency; drives share-of-income
     timezone = Column(String(64), nullable=False, default="UTC")
     onboarding_completed_at = Column(DateTime, nullable=True)
+    # Features the user ticked at onboarding. Null means every feature, so
+    # accounts created before the picker keep everything they had.
+    enabled_features = Column(JSON, nullable=True)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
@@ -969,3 +978,52 @@ class ReminderDelivery(Base):
     payload = Column(JSON, nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     sent_at = Column(DateTime, nullable=True)
+
+
+class TransactionKind(str, enum.Enum):
+    expense = "expense"
+    income = "income"
+
+
+class TransactionSource(str, enum.Enum):
+    manual = "manual"
+    ai = "ai"
+    email = "email"
+
+
+class Transaction(Base):
+    """One day-to-day amount of money in or out.
+
+    The native amount and currency never change after a conversion; the base
+    estimate is stored only when a valid shared rate existed at write time.
+    """
+
+    __tablename__ = "transactions"
+    __table_args__ = (
+        CheckConstraint("kind IN ('expense', 'income')", name="ck_transactions_kind"),
+        CheckConstraint("source IN ('manual', 'ai', 'email')", name="ck_transactions_source"),
+        CheckConstraint("amount > 0", name="ck_transactions_amount_positive"),
+        Index("ix_transactions_user_occurred", "user_id", "occurred_on"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    kind = Column(String(8), nullable=False)
+    name = Column(String(200), nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(3), nullable=False, default="AUD")
+    base_amount = Column(Numeric(12, 2), nullable=True)
+    base_currency = Column(String(3), nullable=True)
+    rate_as_of = Column(DateTime, nullable=True)
+    category = Column(Enum(Category), nullable=False, default=Category.other)
+    occurred_on = Column(Date, nullable=False)
+    note = Column(String(500), nullable=True)
+    source = Column(String(8), nullable=False, default=TransactionSource.manual.value)
+    # Set when this is a payment of a tracked bill, so totals never count it twice.
+    recurring_payment_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("subscriptions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
