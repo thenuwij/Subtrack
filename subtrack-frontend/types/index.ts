@@ -443,3 +443,77 @@ export interface TransactionSummary {
   rate_as_of: string | null
   rate_stale: boolean
 }
+
+export interface BudgetStatus {
+  id: string
+  category: Category
+  monthly_limit: number
+  currency: Currency
+  limit_in_base: number | null
+  spent: number | null
+  spent_logged: number | null
+  spent_payments: number | null
+  left: number | null
+  share_used: number | null
+  over: boolean | null
+  near: boolean | null
+  unconverted_count: number
+}
+
+export interface BudgetOverview {
+  month: string
+  base_currency: Currency
+  budgets: BudgetStatus[]
+  rate_as_of: string | null
+  rate_stale: boolean
+}
+
+export interface BudgetInput {
+  category: Category
+  monthly_limit: number
+}
+
+export type GoalStatus = 'reached' | 'no_target_date' | 'on_the_way' | 'due_today' | 'target_date_passed'
+
+export interface GoalContribution {
+  id: string
+  goal_id: string
+  amount: number
+  occurred_on: string
+  note: string | null
+  source: string
+  created_at: string | null
+}
+
+export interface Goal {
+  id: string
+  name: string
+  target_amount: number
+  currency: Currency
+  target_date: string | null
+  archived_at: string | null
+  created_at: string | null
+  updated_at: string | null
+  saved: number
+  remaining: number
+  percent: number
+  status: GoalStatus
+  days_left: number | null
+  weeks_left: number | null
+  needed_per_week: number | null
+  needed_per_day: number | null
+  contributions: GoalContribution[]
+}
+
+export interface GoalInput {
+  name: string
+  target_amount: number
+  currency: Currency
+  target_date?: string | null
+}
+
+export interface ContributionInput {
+  amount: number
+  occurred_on?: string
+  note?: string | null
+}

@@ -16,7 +16,12 @@ import type {
   SafeToSpendProfileInput,
   Subscription,
   SubscriptionForecast,
+  BudgetInput,
+  BudgetOverview,
+  ContributionInput,
   CreatedTransaction,
+  Goal,
+  GoalInput,
   Transaction,
   TransactionInput,
   TransactionSummary,
@@ -772,4 +777,47 @@ export async function updateTransaction(
 
 export async function deleteTransaction(token: string, id: string) {
   return request(`/transactions/${id}`, token, { method: 'DELETE' })
+}
+
+// Budgets
+export async function getBudgets(token: string, month: string): Promise<BudgetOverview> {
+  return request(`/budgets?month=${month}`, token)
+}
+
+export async function createBudget(token: string, data: BudgetInput) {
+  return request('/budgets', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateBudget(token: string, id: string, data: Partial<BudgetInput>) {
+  return request(`/budgets/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function deleteBudget(token: string, id: string) {
+  return request(`/budgets/${id}`, token, { method: 'DELETE' })
+}
+
+// Goals
+export async function listGoals(token: string): Promise<Goal[]> {
+  const rows = await request('/goals', token)
+  return Array.isArray(rows) ? rows as Goal[] : []
+}
+
+export async function createGoal(token: string, data: GoalInput): Promise<Goal> {
+  return request('/goals', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function updateGoal(
+  token: string,
+  id: string,
+  data: Partial<Omit<GoalInput, 'currency'>> & { archived?: boolean },
+): Promise<Goal> {
+  return request(`/goals/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function deleteGoal(token: string, id: string) {
+  return request(`/goals/${id}`, token, { method: 'DELETE' })
+}
+
+export async function addGoalContribution(token: string, goalId: string, data: ContributionInput) {
+  return request(`/goals/${goalId}/contributions`, token, { method: 'POST', body: JSON.stringify(data) })
 }

@@ -18,6 +18,8 @@ export const apiKeys = {
   duplicates: 'duplicates',
   transactions: (month: string) => `transactions:${month}`,
   transactionSummary: (month: string) => `transaction-summary:${month}`,
+  budgets: (month: string) => `budgets:${month}`,
+  goals: 'goals',
   agentThreads: 'agent-threads',
 } as const
 
