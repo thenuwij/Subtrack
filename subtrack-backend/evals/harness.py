@@ -92,6 +92,7 @@ def run_case(db: Session, question: str, model: Callable[..., object] | None = N
     )
     db.add_all([thread, asked, reply])
     db.commit()
+    thread_id, reply_id = thread.id, reply.id
     before = _snapshot(db)
     calls: list[ToolCall] = []
     real_run_tool = agent_router.run_tool
@@ -111,7 +112,7 @@ def run_case(db: Session, question: str, model: Callable[..., object] | None = N
     for active in patches:
         active.start()
     try:
-        for _ in agent_router._stream_reply(db, thread.id, reply.id, EVAL_USER):
+        for _ in agent_router._stream_reply(db, thread_id, reply_id, EVAL_USER):
             pass
     finally:
         for active in reversed(patches):
@@ -119,7 +120,7 @@ def run_case(db: Session, question: str, model: Callable[..., object] | None = N
 
     # Some tools detach every loaded row (the duplicate check releases its
     # connection before calling the model), so look the reply up again.
-    reply = db.get(AgentMessage, reply.id)
+    reply = db.get(AgentMessage, reply_id)
     if reply.status != "completed":
         raise RuntimeError(f"assistant reply failed: {reply.error_code}")
     resolved = db.query(AgentAction).filter(
