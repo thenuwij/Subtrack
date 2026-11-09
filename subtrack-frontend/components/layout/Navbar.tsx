@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { House, CreditCard, LogOut, Settings2, Inbox, Sparkles } from 'lucide-react'
+import { House, CreditCard, LogOut, Settings2, Inbox, Sparkles, Wallet } from 'lucide-react'
 import type { Feature } from '@/types'
 import { getDetected } from '@/lib/api'
 import { apiKeys, useApi } from '@/lib/hooks/useApi'
@@ -14,6 +14,7 @@ import { useFeatures } from '@/lib/hooks/useFeatures'
 
 const links: { href: string; label: string; icon: typeof House; requires?: Feature }[] = [
   { href: '/dashboard', label: 'Overview', icon: House },
+  { href: '/spending', label: 'Spending', icon: Wallet, requires: 'spending' },
   { href: '/subscriptions', label: 'Payments', icon: CreditCard, requires: 'payments' },
   { href: '/review', label: 'Inbox', icon: Inbox, requires: 'payments' },
   { href: '/assistant', label: 'Assistant', icon: Sparkles },

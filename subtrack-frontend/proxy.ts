@@ -54,7 +54,7 @@ export async function proxy(request: NextRequest) {
 
   const isAuthPage = request.nextUrl.pathname.startsWith('/login')
   const isRoot = request.nextUrl.pathname === '/'
-  const isProtectedPage = ['/dashboard', '/subscriptions', '/review', '/assistant', '/account'].some(
+  const isProtectedPage = ['/dashboard', '/spending', '/subscriptions', '/review', '/assistant', '/account'].some(
     path => request.nextUrl.pathname.startsWith(path)
   )
 
@@ -87,6 +87,7 @@ export const config = {
   matcher: [
     '/',
     '/dashboard/:path*',
+    '/spending/:path*',
     '/subscriptions/:path*',
     '/review/:path*',
     '/assistant/:path*',

@@ -43,11 +43,14 @@ import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { getAccessToken, useIsDemo } from '@/lib/auth/session'
 import { useFeatures } from '@/lib/hooks/useFeatures'
 import { FeaturePicker } from '@/components/onboarding/FeaturePicker'
+import { ThisMonthCard } from '@/components/spending/ThisMonthCard'
 
 export default function DashboardPage() {
   const { baseCurrency, ratesLoading, isLoading: preferencesLoading } = useCurrency()
   const { has, onboardingCompleted } = useFeatures()
   const paymentsOn = has('payments')
+  const spendingOn = has('spending')
+  const moreComing = has('goals') || has('workspace')
 
   const subscriptionsQuery = useApi<Subscription[]>(
     apiKeys.subscriptions('current'), token => getSubscriptions(token),
@@ -150,14 +153,20 @@ export default function DashboardPage() {
 
   if (!paymentsOn) {
     return (
-      <div className="mx-auto max-w-xl px-4 py-16 text-center sm:px-6">
-        <div className="rounded-2xl bg-card p-8 shadow-sm">
-          <h1 className="text-xl font-semibold text-foreground">The rest is coming soon</h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            The features you picked are on their way. You can turn on monthly payments any time in Settings.
-          </p>
-          <Button asChild className="mt-5"><Link href="/account#features">Open Settings</Link></Button>
-        </div>
+      <div className="mx-auto max-w-xl space-y-4 px-4 py-16 sm:px-6">
+        {spendingOn ? <ThisMonthCard /> : null}
+        {moreComing || !spendingOn ? (
+          <div className="rounded-2xl bg-card p-8 text-center shadow-sm">
+            <h1 className="text-xl font-semibold text-foreground">The rest is coming soon</h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              {spendingOn
+                ? 'Goals and workspace are on their way. '
+                : 'The features you picked are on their way. '}
+              You can turn on monthly payments any time in Settings.
+            </p>
+            <Button asChild className="mt-5"><Link href="/account#features">Open Settings</Link></Button>
+          </div>
+        ) : null}
       </div>
     )
   }
@@ -244,6 +253,7 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start xl:gap-10">
           <div className="min-w-0 space-y-8">
+            {spendingOn ? <ThisMonthCard /> : null}
             <SafeToSpendCard />
             <ComingUp
               forecast={forecast}
