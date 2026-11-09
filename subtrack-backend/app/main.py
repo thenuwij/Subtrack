@@ -29,6 +29,7 @@ from app.routers import (
     safe_to_spend,
     subscriptions,
     transactions,
+    workspace,
 )
 from app.routers.meta import release_metadata
 
@@ -73,6 +74,7 @@ app.include_router(subscriptions.router)
 app.include_router(transactions.router)
 app.include_router(budgets.router)
 app.include_router(goals.router)
+app.include_router(workspace.router)
 app.include_router(rates.router)
 app.include_router(preferences.router)
 app.include_router(account.router)
