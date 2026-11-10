@@ -78,9 +78,11 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** the report shows real numbers from test accounts.
 
+✅ Built 10 Nov 2026 (`0035_product_events`). Events store a keyed hash of the user ID, a name and a time, and are deleted with the account; demo accounts are skipped. Payday email "opened" is counted as a click on its balance link, since plain-text email can't report opens. `venv/bin/python scripts/product_report.py --days 30` prints setup speed, second-cycle retention and payday email clicks.
+
 ## Phase 8: Pilot
 
-1. Update the README, landing page and privacy page to the new promise.
+1. Update the README, landing page and privacy page to the new promise. ✅ Done 10 Nov 2026; local setup moved to [local-setup.md](local-setup.md).
 2. Invite 20 students or shift workers. The owner uses it for their own pay cycles too.
 3. Run for 2 pay cycles. Interview 5 users.
 4. **Gate:** 10 or more still active after 2 cycles → plan email forwarding or statement upload. Fewer → revisit the wedge.

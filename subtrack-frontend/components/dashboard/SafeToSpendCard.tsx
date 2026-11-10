@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ArrowUpRight, ChevronRight, Pencil, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Preferences, SafeToSpend, SafeToSpendProfileInput } from '@/types'
-import { getPreferences, getSafeToSpend, saveSafeToSpendProfile, updatePreferences } from '@/lib/api'
+import { getPreferences, getSafeToSpend, saveSafeToSpendProfile, trackEvent, updatePreferences } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth/session'
 import { useCurrency } from '@/lib/context/currency'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
@@ -225,6 +225,18 @@ export function SafeToSpendCard() {
   }, [savedTimezone, refreshPosition, refreshPreferences])
 
   const position = query.data
+  const showsNumber = position?.safe_to_spend != null
+  // Counted once per person on the server; this only avoids repeat requests.
+  useEffect(() => {
+    if (!showsNumber) return
+    try {
+      if (localStorage.getItem('subtrack:first-number-seen')) return
+      localStorage.setItem('subtrack:first-number-seen', '1')
+    } catch {
+      // Storage can be blocked; the server still counts it once.
+    }
+    trackEvent('first_number_seen')
+  }, [showsNumber])
 
   function handleSaved(next: SafeToSpend) {
     setEditing(false)

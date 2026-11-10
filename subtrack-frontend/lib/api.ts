@@ -44,7 +44,7 @@ import {
   legacyMonthlyEquivalent,
 } from '@/lib/utils/recurrence'
 import { createClient } from '@/lib/supabase/client'
-import { endDemo } from '@/lib/auth/session'
+import { endDemo, getAccessToken } from '@/lib/auth/session'
 import { API_URL } from '@/lib/config'
 
 const REQUEST_TIMEOUT_MS = 15_000
@@ -676,6 +676,16 @@ export async function updatePreferences(
     method: 'PATCH',
     body: JSON.stringify(data),
   })
+}
+
+export type ProductEventName = 'setup_started' | 'setup_finished' | 'first_number_seen' | 'payday_link_clicked'
+
+/** Anonymous usage count; never blocks or fails what the user is doing. */
+export function trackEvent(name: ProductEventName): void {
+  void (async () => {
+    const token = await getAccessToken()
+    if (token) await request('/events', token, { method: 'POST', body: JSON.stringify({ name }) })
+  })().catch(() => undefined)
 }
 
 export async function getSafeToSpend(token: string): Promise<SafeToSpend> {

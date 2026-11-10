@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import verify_token
 from app.models import Category, SetAside, Transaction, TransactionKind, TransactionSource
+from app.services.product_events import record
 from app.services.safe_to_spend import _user_zone, safe_to_spend
 from app.services.transactions import apply_conversion, base_currency_for
 
@@ -138,6 +139,7 @@ def log_spend(body: SpendCreate, user_id: str = Depends(verify_token), db: Sessi
     apply_conversion(db, row, base_currency_for(db, user_id))
     db.add(row)
     db.commit()
+    record(db, user_id, "spend_logged")
     return safe_to_spend(db, user_id)
 
 

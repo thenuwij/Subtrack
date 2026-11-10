@@ -53,7 +53,7 @@ def payday_message(db: Session, user_id: str, *, now: datetime) -> tuple[date, d
 
     position = safe_to_spend(db, user_id, now=now)
     links = (
-        f"Add today's balance for an exact number: {settings.frontend_url}/balance\n"
+        f"Add today's balance for an exact number: {settings.frontend_url}/balance?from=payday\n"
         f"Turn off payday emails: {settings.frontend_url}/account#email-reminders"
     )
     if position.get("safe_to_spend") is None:

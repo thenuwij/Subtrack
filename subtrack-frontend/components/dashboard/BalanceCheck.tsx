@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import type { SafeToSpend } from '@/types'
-import { getSafeToSpend, saveSafeToSpendProfile } from '@/lib/api'
+import { getSafeToSpend, saveSafeToSpendProfile, trackEvent } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth/session'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { Button } from '@/components/ui/button'
@@ -20,6 +20,10 @@ export function BalanceCheck() {
   const [saving, setSaving] = useState(false)
   const position = query.data
   const profile = position?.profile
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('from') === 'payday') trackEvent('payday_link_clicked')
+  }, [])
 
   async function save(event: FormEvent) {
     event.preventDefault()

@@ -87,7 +87,7 @@ class PaydayEmailTests(unittest.TestCase):
             "  - Phone, Sun 15 Nov: A$35.00",
             "Buffer: A$50.00",
             "Free to spend: A$1,315.00, about A$93.92 a day.",
-            "https://subtrack.example/balance",
+            "https://subtrack.example/balance?from=payday",
             "https://subtrack.example/account#email-reminders",
         ):
             self.assertIn(line, payload["text"])
