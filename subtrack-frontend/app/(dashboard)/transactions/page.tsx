@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronLeft, ChevronRight, Plus, Wallet } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, RefreshCw, Wallet } from 'lucide-react'
 import { useSWRConfig } from 'swr'
 import { toast } from 'sonner'
 import {
@@ -20,6 +20,7 @@ import {
   currentMonthKey, monthLabel, shiftMonth, spendingCategoryLabel,
 } from '@/lib/utils/spending'
 import type { CreatedTransaction, PossibleDuplicate, Transaction, TransactionInput } from '@/types'
+import { useEditPayment } from '@/components/subscriptions/PaymentEditor'
 import { EntryDialog } from '@/components/spending/EntryDialog'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -31,6 +32,7 @@ interface DuplicateNotice {
 
 export default function TransactionsPage() {
   const { mutate } = useSWRConfig()
+  const editPayment = useEditPayment()
   const thisMonth = currentMonthKey(todayUtcDateKey())
   const [month, setMonth] = useState(thisMonth)
   const [dialog, setDialog] = useState<{ entry: Transaction | null } | null>(null)
@@ -40,6 +42,10 @@ export default function TransactionsPage() {
   const listQuery = useApi(apiKeys.transactions(month), token => listTransactions(token, month))
   const summaryQuery = useApi(apiKeys.transactionSummary(month), token => getTransactionSummary(token, month))
   const entries = listQuery.data ?? []
+  const paymentNames = new Map(
+    entries.filter(entry => entry.read_only && entry.recurring_payment_id)
+      .map(entry => [entry.recurring_payment_id, entry.name]),
+  )
   const summary = summaryQuery.data
   const loadError = errorMessage(listQuery.error ?? summaryQuery.error, 'Could not load your spending.')
 
@@ -186,7 +192,27 @@ export default function TransactionsPage() {
           </div>
         ) : (
           <ul className="mt-3 divide-y divide-border overflow-hidden rounded-2xl bg-card shadow-sm">
-            {entries.map(entry => (
+            {entries.map(entry => entry.read_only ? (
+              <li key={entry.id}>
+                <button type="button" onClick={() => entry.recurring_payment_id && editPayment(entry.recurring_payment_id)}
+                  className="flex min-h-14 w-full min-w-0 items-center justify-between gap-3 px-4 py-2 text-left hover:bg-muted/40">
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-2 text-sm font-medium">
+                      <span className="truncate">{entry.name}</span>
+                      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] font-normal text-muted-foreground">
+                        <RefreshCw className="h-3 w-3" aria-hidden="true" />Recurring
+                      </span>
+                    </span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {spendingCategoryLabel(entry.category)} · {formatStoredDate(entry.occurred_on, { day: 'numeric', month: 'short' })}
+                    </span>
+                  </span>
+                  <span className="shrink-0 pr-[4.5rem] text-sm font-semibold tabular-nums">
+                    {formatCurrency(entry.amount, entry.currency)}
+                  </span>
+                </button>
+              </li>
+            ) : (
               <li key={entry.id} className="flex items-center gap-2 pr-2">
                 <button type="button" onClick={() => setDialog({ entry })}
                   className="flex min-h-14 min-w-0 flex-1 items-center justify-between gap-3 px-4 py-2 text-left hover:bg-muted/40">
@@ -194,6 +220,9 @@ export default function TransactionsPage() {
                     <span className="block truncate text-sm font-medium">{entry.name}</span>
                     <span className="block truncate text-xs text-muted-foreground">
                       {spendingCategoryLabel(entry.category)} · {formatStoredDate(entry.occurred_on, { day: 'numeric', month: 'short' })}
+                      {entry.counted_in_payment
+                        ? ` · counted in ${paymentNames.get(entry.recurring_payment_id) ?? 'a recurring payment'}`
+                        : ''}
                     </span>
                   </span>
                   <span className={`shrink-0 text-sm font-semibold tabular-nums ${entry.kind === 'income' ? 'text-primary' : ''}`}>

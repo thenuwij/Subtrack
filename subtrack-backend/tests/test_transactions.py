@@ -1,9 +1,9 @@
 import os
 import re
 import unittest
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -15,7 +15,8 @@ os.environ.setdefault("SUPABASE_JWT_SECRET", "test-secret")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
 from app.database import Base  # noqa: E402
-from app.models import BillingCycle, Category, Subscription, Transaction, UserPreference  # noqa: E402
+from app.models import BillingCycle, Category, Subscription, Transaction, TransactionKind, UserPreference  # noqa: E402
+from app.routers.budgets import BudgetCreate, create_budget  # noqa: E402
 from app.routers.transactions import (  # noqa: E402
     MONTH_PATTERN,
     TransactionCreate,
@@ -26,6 +27,7 @@ from app.routers.transactions import (  # noqa: E402
     list_transactions,
     update_transaction,
 )
+from app.services.budgets import budget_status  # noqa: E402
 
 # One AUD buys 0.5 USD, so 10 USD is 20 AUD.
 RATES = {"base": "AUD", "rates": {"USD": 0.5}, "stale": False, "fetched_at": "2026-11-03T00:00:00"}
@@ -256,6 +258,114 @@ class TransactionApiTests(unittest.TestCase):
             [("transaction", first["id"])],
         )
         self.assertEqual(len(list_transactions(month="2026-11", user_id="owner", db=self.db)), 2)
+
+
+class PaymentChargesInTransactionsTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.db = sessionmaker(bind=self.engine)()
+        self.db.add(UserPreference(user_id="owner", base_currency="AUD", timezone="Australia/Sydney"))
+        self.db.commit()
+        for target in (
+            "app.routers.rates.get_cached_rate_snapshot",
+            "app.services.transactions.get_cached_rate_snapshot",
+            "app.services.budgets.get_cached_rate_snapshot",
+            "app.agent.finance.get_cached_rate_snapshot",
+        ):
+            patcher = patch(target, return_value=RATES)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
+
+    def payment(self, name="Netflix", amount=22.0, currency="AUD", category=Category.streaming):
+        row = Subscription(
+            id=uuid4(), user_id="owner", name=name, category=category,
+            amount=amount, currency=currency, cycle=BillingCycle.monthly,
+            interval_unit="month", interval_count=1, is_active=True,
+            next_due=datetime(2026, 11, 15),
+        )
+        self.db.add(row)
+        self.db.commit()
+        return row
+
+    def expense(self, amount, category=Category.food, payment=None, kind="expense", day=10):
+        self.db.add(Transaction(
+            user_id="owner", kind=kind, name="Spend", amount=amount, currency="AUD",
+            base_amount=amount, base_currency="AUD", category=category,
+            occurred_on=date(2026, 11, day), recurring_payment_id=payment.id if payment else None,
+        ))
+        self.db.commit()
+
+    def rows(self, **filters):
+        return list_transactions(month="2026-11", user_id="owner", db=self.db, **filters)
+
+    def summary(self):
+        return get_transaction_summary(month="2026-11", user_id="owner", db=self.db)
+
+    def test_charge_is_listed_as_a_read_only_recurring_row(self):
+        netflix = self.payment()
+        self.expense("5.00", day=20)
+
+        rows = self.rows(kind=None, category=None)
+
+        self.assertEqual([row["occurred_on"] for row in rows], ["2026-11-20", "2026-11-15"])
+        charge = rows[1]
+        self.assertEqual(charge["id"], f"payment:{netflix.id}:2026-11-15")
+        self.assertEqual(charge["name"], "Netflix")
+        self.assertEqual(charge["source"], "payment")
+        self.assertTrue(charge["read_only"])
+        self.assertEqual(charge["recurring_payment_id"], str(netflix.id))
+        self.assertEqual(charge["base_amount"], 22.0)
+        self.assertFalse(rows[0]["read_only"])
+
+    def test_summary_adds_charges_and_matches_budgets(self):
+        self.payment()
+        self.expense("30.00")
+        create_budget(BudgetCreate(category="food", monthly_limit="100.00"), user_id="owner", db=self.db)
+        create_budget(BudgetCreate(category="streaming", monthly_limit="100.00"), user_id="owner", db=self.db)
+
+        summary = self.summary()
+        budgets = budget_status(self.db, "owner", 2026, 11)["budgets"]
+
+        self.assertEqual(summary["expenses"], 52.0)
+        self.assertEqual(summary["expenses_by_category"], {"food": 30.0, "streaming": 22.0})
+        self.assertEqual(summary["payment_charge_count"], 1)
+        self.assertEqual(sum(row["spent"] for row in budgets), summary["expenses"])
+
+    def test_linked_expense_is_flagged_and_counted_once(self):
+        netflix = self.payment()
+        self.expense("22.00", category=Category.streaming, payment=netflix)
+
+        logged = next(row for row in self.rows(kind=None, category=None) if row["source"] != "payment")
+
+        self.assertTrue(logged["counted_in_payment"])
+        self.assertEqual(self.summary()["expenses"], 22.0)
+
+    def test_charge_without_a_rate_is_unconverted_not_one_to_one(self):
+        self.payment(name="BBC", amount=10.0, currency="GBP")
+
+        summary = self.summary()
+        charge = self.rows(kind=None, category=None)[0]
+
+        self.assertEqual(summary["expenses"], 0.0)
+        self.assertEqual(summary["unconverted_count"], 1)
+        self.assertIsNone(charge["base_amount"])
+        self.assertIsNone(charge["base_currency"])
+
+    def test_filters_apply_to_charges(self):
+        self.payment()
+        self.payment(name="AGL Energy", amount=180.0, category=Category.utilities)
+        self.expense("1000.00", kind="income", category=Category.other)
+
+        income = self.rows(kind=TransactionKind.income, category=None)
+        utilities = self.rows(kind=None, category=Category.utilities)
+
+        self.assertEqual([row["source"] for row in income], ["manual"])
+        self.assertEqual([row["name"] for row in utilities], ["AGL Energy"])
 
 
 if __name__ == "__main__":

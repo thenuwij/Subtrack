@@ -9,13 +9,12 @@ from __future__ import annotations
 
 from collections import Counter
 from decimal import Decimal
-from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.models import Budget, Category, Subscription, Transaction, TransactionKind
+from app.models import Budget, Category, Transaction, TransactionKind
 from app.routers.rates import get_cached_rate_snapshot
-from app.routers.subscriptions import get_calendar_month
+from app.services.payment_charges import charged_payment_ids, month_payment_charges
 from app.services.transactions import (
     CENTS,
     _snapshot_time,
@@ -48,32 +47,10 @@ class _CategorySpend:
 
 def _add_tracked_payments(db: Session, user_id: str, year: int, month: int, spend: _CategorySpend) -> set[str]:
     """Add the month's tracked charges and extras; return the IDs of payments charged."""
-    calendar_month = get_calendar_month(year=year, month=month, user_id=user_id, db=db)
-    charged_ids: set[str] = set()
-    for charge in calendar_month["charges"]:
-        charged_ids.add(charge["id"])
-        amount = charge.get("charge_amount_in_base")
-        spend.add(
-            spend.payments,
-            charge.get("category") or Category.other.value,
-            None if amount is None else Decimal(str(amount)),
-        )
-
-    extras = calendar_month["extras"]
-    if extras:
-        rows = db.query(Subscription.id, Subscription.category).filter(
-            Subscription.user_id == user_id,
-            Subscription.id.in_({UUID(extra["subscription_id"]) for extra in extras}),
-        ).all()
-        categories = {str(payment_id): _category_value(category) for payment_id, category in rows}
-        for extra in extras:
-            amount = extra["amount_in_base"]
-            spend.add(
-                spend.payments,
-                categories.get(extra["subscription_id"], Category.other.value),
-                None if amount is None else Decimal(str(amount)),
-            )
-    return charged_ids
+    charges = month_payment_charges(db, user_id, year, month)
+    for charge in charges:
+        spend.add(spend.payments, charge.category, charge.base_amount)
+    return charged_payment_ids(charges)
 
 
 def _add_logged_expenses(

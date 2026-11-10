@@ -416,6 +416,7 @@ def get_calendar_month(
     for extra in extras:
         in_base, _ = currency.convert(float(extra.amount), extra.currency)
         extra_rows.append({
+            "id": str(extra.id),
             "subscription_id": str(extra.subscription_id),
             "amount": float(extra.amount),
             "currency": extra.currency,

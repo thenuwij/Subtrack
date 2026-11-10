@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Category, Transaction, TransactionKind, UserPreference
 from app.routers.rates import conversion_for_storage, get_cached_rate_snapshot
+from app.services.payment_charges import charged_payment_ids, month_payment_charges
 
 CENTS = Decimal("0.01")
 DEFAULT_BASE_CURRENCY = "AUD"
@@ -97,7 +98,9 @@ def amount_in_base(row: Transaction, base: str, snapshot: dict | None) -> Decima
 def month_summary(db: Session, user_id: str, year: int, month: int) -> dict:
     """Income, expenses, net and per-category spending in the user's base currency.
 
-    Entries without a valid conversion are counted in ``unconverted_count`` and
+    Expenses include the month's tracked payment charges. A logged expense
+    linked to a payment charged that month is the same money, so only the
+    charge is counted (the same rule as budgets). Entries without a valid conversion are counted in ``unconverted_count`` and
     left out of every total; they are never treated as 1:1.
     """
     base = base_currency_for(db, user_id)
@@ -107,22 +110,33 @@ def month_summary(db: Session, user_id: str, year: int, month: int) -> dict:
         Transaction.user_id == user_id,
         Transaction.occurred_on.between(first, last),
     ).all()
+    charges = month_payment_charges(db, user_id, year, month)
+    charged_ids = charged_payment_ids(charges)
 
     income = Decimal("0")
     expenses = Decimal("0")
     by_category: dict[str, Decimal] = {}
     unconverted = 0
     for row in rows:
+        is_expense = row.kind != TransactionKind.income.value
+        if is_expense and row.recurring_payment_id is not None and str(row.recurring_payment_id) in charged_ids:
+            continue
         value = amount_in_base(row, base, snapshot)
         if value is None:
             unconverted += 1
             continue
-        if row.kind == TransactionKind.income.value:
+        if not is_expense:
             income += value
             continue
         expenses += value
         category = row.category.value if isinstance(row.category, Category) else row.category
         by_category[category] = by_category.get(category, Decimal("0")) + value
+    for charge in charges:
+        if charge.base_amount is None:
+            unconverted += 1
+            continue
+        expenses += charge.base_amount
+        by_category[charge.category] = by_category.get(charge.category, Decimal("0")) + charge.base_amount
 
     snapshot_time = _snapshot_time(snapshot)
     return {
@@ -136,6 +150,7 @@ def month_summary(db: Session, user_id: str, year: int, month: int) -> dict:
             for category, total in sorted(by_category.items(), key=lambda item: (-item[1], item[0]))
         },
         "transaction_count": len(rows),
+        "payment_charge_count": len(charges),
         "unconverted_count": unconverted,
         "rate_as_of": snapshot_time.isoformat() if snapshot_time else None,
         "rate_stale": bool(snapshot and snapshot.get("stale")),

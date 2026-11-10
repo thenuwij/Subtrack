@@ -406,6 +406,10 @@ export interface Transaction {
   recurring_payment_id: string | null
   created_at: string | null
   updated_at: string | null
+  /** A tracked payment charge shown for completeness; it cannot be edited here. */
+  read_only?: boolean
+  /** A logged expense whose linked payment is already charged this month. */
+  counted_in_payment?: boolean
 }
 
 export interface TransactionInput {
@@ -439,6 +443,7 @@ export interface TransactionSummary {
   net: number
   expenses_by_category: Record<string, number>
   transaction_count: number
+  payment_charge_count: number
   unconverted_count: number
   rate_as_of: string | null
   rate_stale: boolean

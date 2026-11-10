@@ -16,6 +16,7 @@ from app.models import (
     TransactionKind,
     TransactionSource,
 )
+from app.services.payment_charges import PaymentCharge, charged_payment_ids, month_payment_charges
 from app.services.safe_to_spend import _user_zone
 from app.services.transaction_duplicates import find_possible_duplicates
 from app.services.transactions import (
@@ -91,6 +92,29 @@ def transaction_payload(row: Transaction) -> dict:
     }
 
 
+def payment_charge_payload(charge: PaymentCharge, base: str) -> dict:
+    """A read-only expense row for one tracked payment charge."""
+    return {
+        "id": charge.row_id,
+        "kind": TransactionKind.expense.value,
+        "name": charge.name,
+        "amount": float(charge.amount),
+        "currency": charge.currency,
+        "base_amount": float(charge.base_amount) if charge.base_amount is not None else None,
+        "base_currency": base if charge.base_amount is not None else None,
+        "rate_as_of": None,
+        "category": charge.category,
+        "occurred_on": charge.occurred_on.isoformat(),
+        "note": None,
+        "source": "payment",
+        "recurring_payment_id": charge.payment_id,
+        "read_only": True,
+        "counted_in_payment": False,
+        "created_at": None,
+        "updated_at": None,
+    }
+
+
 def _owned_transaction(db: Session, user_id: str, transaction_id: UUID) -> Transaction:
     row = db.query(Transaction).filter(
         Transaction.id == transaction_id,
@@ -130,7 +154,29 @@ def list_transactions(
     rows = month_transactions(
         db, user_id, year, month_number, kind=kind, category=category, limit=MONTH_ROW_LIMIT,
     )
-    return [transaction_payload(row) for row in rows]
+    charges = month_payment_charges(db, user_id, year, month_number)
+    charged_ids = charged_payment_ids(charges)
+    entries = [
+        {
+            **transaction_payload(row),
+            "read_only": False,
+            "counted_in_payment": (
+                row.kind == TransactionKind.expense.value
+                and row.recurring_payment_id is not None
+                and str(row.recurring_payment_id) in charged_ids
+            ),
+        }
+        for row in rows
+    ]
+    if kind in (None, TransactionKind.expense):
+        base = base_currency_for(db, user_id)
+        entries.extend(
+            payment_charge_payload(charge, base)
+            for charge in charges
+            if category is None or charge.category == category.value
+        )
+    entries.sort(key=lambda entry: entry["occurred_on"], reverse=True)
+    return entries
 
 
 @router.get("/summary")
