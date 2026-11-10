@@ -1,3 +1,5 @@
+> **Superseded on 10 Nov 2026** by [plan four](plan-four-payday-copilot.md). Kept for reference.
+
 # Plan two: four-feature redesign
 
 Builds on [product-design.md](product-design.md). Covers build-order steps 1–4. Step 5 (email forwarding and domain) is [plan one](plan-one-email-forwarding.md).

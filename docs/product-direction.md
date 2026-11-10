@@ -1,5 +1,7 @@
 # Subtrack Product Direction
 
+> **Since 10 Nov 2026** the current design is [product-design.md](product-design.md) and the build plan is [plan four](plan-four-payday-copilot.md). This page is kept for its research, advice boundary and design rules.
+
 Read this before starting any product work. It has three parts:
 
 1. **[The product today](#part-1-the-product-today)**: what's live now.

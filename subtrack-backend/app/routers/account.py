@@ -45,6 +45,7 @@ from app.models import (
     ReminderDelivery,
     SafeToSpendProfile,
     SenderLink,
+    SetAside,
     StatementImport,
     Subscription,
     SubscriptionChange,
@@ -54,6 +55,7 @@ from app.models import (
     WorkspacePage,
 )
 from app.services.gmail_access import revoke_encrypted_refresh_token
+from app.services.product_events import delete_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -249,7 +251,7 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         "safe_to_spend_profile",
         SafeToSpendProfile,
         (
-            "balance", "currency", "balance_as_of", "pay_anchor_on",
+            "balance", "currency", "balance_as_of", "pay_amount", "pay_anchor_on",
             "pay_interval_unit", "pay_interval_count", "buffer",
             "created_at", "updated_at",
         ),
@@ -274,7 +276,7 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ("created_at", "id"),
     ),
     ExportResource("payment_decisions", PaymentDecision, ("id", "target", "decision", "created_at"), ("created_at", "id")),
-    ExportResource("email_preferences", EmailPreference, ("email", "enabled"), ("user_id",)),
+    ExportResource("email_preferences", EmailPreference, ("email", "enabled", "payday_enabled"), ("user_id",)),
     ExportResource("reminder_deliveries", ReminderDelivery, ("key", "created_at", "sent_at"), ("key",)),
     ExportResource(
         "transactions",
@@ -282,7 +284,7 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         (
             "id", "kind", "name", "amount", "currency", "base_amount", "base_currency",
             "rate_as_of", "category", "occurred_on", "note", "source", "recurring_payment_id",
-            "created_at",
+            "set_aside_id", "created_at",
         ),
         ("occurred_on", "id"),
     ),
@@ -305,6 +307,12 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ("occurred_on", "id"),
     ),
     ExportResource(
+        "set_asides",
+        SetAside,
+        ("id", "kind", "name", "amount_per_pay", "currency", "target_amount", "created_at", "updated_at"),
+        ("created_at", "id"),
+    ),
+    ExportResource(
         "workspace_pages",
         WorkspacePage,
         ("id", "title", "template_id", "blocks", "position", "created_at", "updated_at"),
@@ -323,6 +331,7 @@ DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("reminder_deliveries", ReminderDelivery),
     ("gmail_oauth_states", GmailOAuthState),
     ("transactions", Transaction),
+    ("set_asides", SetAside),
     ("workspace_pages", WorkspacePage),
     ("goal_contributions", GoalContribution),
     ("goals", Goal),
@@ -456,6 +465,8 @@ def _delete_owned_rows(db: Session, user_id: str) -> dict[str, int]:
     for resource_name, model in DELETE_ORDER:
         result = db.execute(delete(model).where(model.user_id == user_id))
         counts[resource_name] = max(0, result.rowcount or 0)
+    # Usage events hold no user ID, only a keyed hash of it.
+    counts["product_events"] = delete_for_user(db, user_id)
     return counts
 
 

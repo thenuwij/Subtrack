@@ -10,6 +10,7 @@ import type {
   PaymentStatus,
   RecurrenceUnit,
   SpendingType,
+  PaymentMethod,
   Subscription,
   SubscriptionInput,
 } from '@/types'
@@ -82,6 +83,7 @@ interface FormState {
   cancellation_effective_at: string
   amount_type: AmountType
   spending_type: SpendingType
+  payment_method: PaymentMethod
   share_ratio: number
   share_amount: string
 }
@@ -115,6 +117,7 @@ function createInitialForm(baseCurrency: Currency, initialData?: Subscription): 
       cancellation_effective_at: '',
       amount_type: 'fixed',
       spending_type: 'unspecified',
+      payment_method: 'automatic',
       share_ratio: 1,
       share_amount: '',
     }
@@ -146,6 +149,7 @@ function createInitialForm(baseCurrency: Currency, initialData?: Subscription): 
     cancellation_effective_at: storedDateKey(initialData.cancellation_effective_at),
     amount_type: initialData.amount_type,
     spending_type: initialData.spending_type,
+    payment_method: initialData.payment_method,
     share_ratio: initialData.split_mode === 'ratio' ? initialData.share_ratio : 1,
     share_amount: initialData.split_mode === 'fixed' ? initialData.amount.toString() : '',
   }
@@ -396,6 +400,8 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
         ? dateAtNoonUtc(form.cancellation_effective_at) : null
     }
 
+    payload.payment_method = form.payment_method
+
     if (supportsVariableAmounts) {
       payload.amount_type = form.amount_type
       payload.spending_type = form.spending_type
@@ -481,6 +487,17 @@ function OpenSubscriptionModal({ onClose, onSubmit, initialData }: Props) {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+
+            <div className="grid gap-1.5">
+              <Label htmlFor="sub-payment-method">How is it paid?</Label>
+              <Select value={form.payment_method} onValueChange={value => set('payment_method', value as PaymentMethod)} disabled={loading}>
+                <SelectTrigger id="sub-payment-method"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="automatic">Automatic</SelectItem>
+                  <SelectItem value="manual">I pay it myself</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {supportsVariableAmounts ? (

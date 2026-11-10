@@ -27,6 +27,7 @@ from app.models import (  # noqa: E402
     Transaction,
     UserPreference,
 )
+from app.services.features import ALL_FEATURES  # noqa: E402
 
 # One AUD buys 0.5 USD, so 10 USD is 20 AUD.
 RATES = {"base": "AUD", "rates": {"USD": 0.5}, "stale": False, "fetched_at": "2026-11-03T00:00:00"}
@@ -45,7 +46,7 @@ class AgentTransactionTests(unittest.TestCase):
         self.db.add_all([
             self.thread,
             self.message,
-            UserPreference(user_id="owner", base_currency="AUD", timezone="Australia/Sydney"),
+            UserPreference(user_id="owner", base_currency="AUD", timezone="Australia/Sydney", enabled_features=list(ALL_FEATURES)),
         ])
         self.db.commit()
         for target in (

@@ -36,7 +36,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { endDemo, getAccessToken, signOut } from '@/lib/auth/session'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
-import { FEATURE_OPTIONS } from '@/lib/features'
+import { DEFAULT_FEATURES, EXTRA_FEATURE_OPTIONS } from '@/lib/features'
 import { useFeatures } from '@/lib/hooks/useFeatures'
 import type { Feature } from '@/types'
 import { UserAvatar } from '@/components/layout/UserAvatar'
@@ -280,10 +280,10 @@ export default function AccountPage() {
   }
 
   async function handleToggleFeature(feature: Feature) {
-    const next = features.includes(feature)
+    const chosen = features.includes(feature)
       ? features.filter(item => item !== feature)
       : [...features, feature]
-    if (next.length === 0) return
+    const next = Array.from(new Set([...DEFAULT_FEATURES, ...chosen]))
     setFeatureSaving(true)
     try {
       await saveFeatures(next)
@@ -361,7 +361,7 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
+    <div className="mx-auto w-full max-w-6xl space-y-7 px-5 py-8 sm:px-8 lg:px-10 sm:py-10">
       <header><p className="eyebrow mb-2">Make yourself at home</p><h1 className="page-heading">Account & settings</h1><p className="page-description">Your preferences, connections and privacy. All in one place.</p></header>
 
       <section className="flex flex-col gap-5 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center">
@@ -470,19 +470,19 @@ export default function AccountPage() {
       </div>
 
       <div id="features" className="scroll-mt-20">
-      <Section title="Features">
-        {FEATURE_OPTIONS.map(option => {
+      <Section title="Extras">
+        <p className="pb-3 text-sm text-muted-foreground">Optional tools we&apos;re still testing. Turning one off hides it but keeps your data.</p>
+        {EXTRA_FEATURE_OPTIONS.map(option => {
           const on = features.includes(option.id)
-          const lastOn = on && features.length === 1
           return (
-            <Row key={option.id} title={option.title} description={lastOn ? `${option.description}. Keep at least one on.` : option.description}>
+            <Row key={option.id} title={option.title} description={option.description}>
               <Button
                 type="button"
                 variant={on ? 'default' : 'outline'}
                 role="switch"
                 aria-checked={on}
                 aria-label={option.title}
-                disabled={featureSaving || lastOn}
+                disabled={featureSaving}
                 onClick={() => void handleToggleFeature(option.id)}
               >
                 {on ? 'On' : 'Off'}

@@ -27,6 +27,7 @@ from app.models import (
     WorkspacePage,
 )
 from app.routers import agent as agent_router
+from app.services.features import ALL_FEATURES
 from evals.graders import ToolCall, Transcript
 
 EVAL_USER = "eval-user"
@@ -46,7 +47,8 @@ def load_cases() -> list[dict]:
 
 def seed(db: Session, now: datetime) -> None:
     """A user with $900, payday in 9 days, a $50 buffer and four payments."""
-    db.add(UserPreference(user_id=EVAL_USER, base_currency="AUD", timezone="UTC"))
+    # The eval user opts in to every feature so evals cover every tool.
+    db.add(UserPreference(user_id=EVAL_USER, base_currency="AUD", timezone="UTC", enabled_features=list(ALL_FEATURES)))
     db.add(SafeToSpendProfile(
         user_id=EVAL_USER,
         balance=Decimal("900.00"),

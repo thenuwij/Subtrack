@@ -29,6 +29,7 @@ from app.routers.workspace import (  # noqa: E402
     router,
     update_page,
 )
+from app.services.features import ALL_FEATURES  # noqa: E402
 from app.services.workspace_blocks import validate_blocks  # noqa: E402
 from app.services.workspace_templates import TEMPLATES, TemplateId  # noqa: E402
 
@@ -145,6 +146,9 @@ class WorkspaceApiTests(unittest.TestCase):
         self.engine = create_engine("sqlite+pysqlite:///:memory:")
         Base.metadata.create_all(self.engine)
         self.db = sessionmaker(bind=self.engine)()
+        for user_id in ("owner", "other"):
+            self.db.add(UserPreference(user_id=user_id, base_currency="AUD", enabled_features=list(ALL_FEATURES)))
+        self.db.commit()
 
     def tearDown(self):
         self.db.close()
@@ -276,7 +280,7 @@ class WorkspaceApiTests(unittest.TestCase):
 
     def test_every_route_refuses_when_workspace_is_off(self):
         page_id = UUID(self.create(blocks=[NOTES])["id"])
-        self.db.add(UserPreference(user_id="owner", base_currency="AUD", enabled_features=["spending"]))
+        self.db.get(UserPreference, "owner").enabled_features = ["spending"]
         self.db.commit()
         gated = (
             lambda: list_templates(user_id="owner", db=self.db),

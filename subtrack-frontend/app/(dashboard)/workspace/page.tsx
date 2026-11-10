@@ -125,7 +125,7 @@ export default function WorkspacePage() {
   )
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-5 py-8 sm:px-8 sm:py-10">
+    <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
       <header>
         <p className="eyebrow mb-2">Workspace</p>
         <h1 className="page-heading">Workspace</h1>
