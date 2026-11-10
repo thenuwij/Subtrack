@@ -7,7 +7,7 @@ const SUPPORT_EMAIL = process.env.NEXT_PUBLIC_SUPPORT_EMAIL
 
 export const metadata: Metadata = {
   title: 'Privacy — Subtrack',
-  description: 'How Subtrack accesses, processes, stores, and protects account and Google user data.',
+  description: 'How Subtrack accesses, processes, stores, and protects account and forwarded-email data.',
 }
 
 export default function PrivacyPage() {
@@ -21,7 +21,7 @@ export default function PrivacyPage() {
         <p className="text-sm font-medium text-primary">Last updated 10 November 2026</p>
         <h1>Privacy policy</h1>
         <p>
-          Subtrack shows what&apos;s free to spend until payday, after your bills and the money you set aside. This policy explains what information Subtrack accesses, why it is used, which services process it, how long it is kept, and the controls available to you. It applies to the Subtrack website, API, emails, Gmail connection, and AI assistant.
+          Subtrack shows what&apos;s free to spend until payday, after your bills and the money you set aside. This policy explains what information Subtrack accesses, why it is used, which services process it, how long it is kept, and the controls available to you. It applies to the Subtrack website, API, emails, forwarded bills, and AI assistant.
         </p>
 
         <h2>Information Subtrack handles</h2>
@@ -35,32 +35,26 @@ export default function PrivacyPage() {
         </p>
         <h3>Demo sessions</h3>
         <p>
-          The demo creates a private sandbox with sample data and no account. To limit abuse, Subtrack stores a one-way keyed hash of the visitor&apos;s network address with each demo, never the address itself. A demo expires 24 hours after it starts. Expired demos, including anything typed into the assistant, are deleted the next time a new demo starts or the service restarts. Demos cannot connect Gmail.
+          The demo creates a private sandbox with sample data and no account. To limit abuse, Subtrack stores a one-way keyed hash of the visitor&apos;s network address with each demo, never the address itself. A demo expires 24 hours after it starts. Expired demos, including anything typed into the assistant, are deleted the next time a new demo starts or the service restarts.
         </p>
         <h3>Assistant data</h3>
         <p>
           Subtrack stores assistant conversations, limited page context, proposed actions, confirmations, and cited alternative-research results so conversations survive refreshes and actions can be audited. Page context contains allow-listed route, filter, and record identifiers; it does not grant the assistant access to another user&apos;s records.
         </p>
 
-        <h2>Google user data</h2>
+        <h2>Bills you forward</h2>
         <p>
-          Gmail connection is optional and separate from Google sign-in. If you connect Gmail, Subtrack requests <code>gmail.readonly</code>, email identity, and OpenID scopes. The Gmail scope is read-only: Subtrack cannot send, change, move, or delete email.
+          Subtrack does not read your mailbox. To bring in bills from Gmail you set up a filter that forwards only matching emails to a private Subtrack address. Subtrack reads only the emails that filter forwards, and you can pause, replace or delete the address at any time.
         </p>
         <p>
-          When you connect Gmail, Subtrack scans straight away, searching likely receipt, invoice, renewal, cancellation, and trial emails from approximately the previous three months. After that it checks automatically once a day, reading only emails received since the last complete check. You can turn daily checks off on the Account page, or disconnect Gmail at any time. For candidate messages it temporarily reads the message to find the amount, then keeps only the sender&apos;s domain, the date, the subject and a short excerpt of the body. Before anything is sent to Anthropic&apos;s API for classification, Subtrack removes personal details from the subject and excerpt: email addresses, phone numbers, card digits, street addresses and postcodes, account, customer and reference numbers, links, greeting names, and name parts taken from your connected Gmail address. Each excerpt sent is limited to about 320 characters. This redaction is automatic and may not catch every personal detail, which is why only short excerpts of likely receipts are ever sent. Raw Gmail messages and bodies are not stored in Subtrack&apos;s database. For each receipt it also keeps the sender&apos;s domain, business name, amount and date, so you can see what has been paid; never the email text. Subtrack stores only derived review findings, confidence and evidence summaries, scan status, the connected email address, and an encrypted Google refresh token needed for later scans.
-        </p>
-        <p>
-          OAuth state is one-time, hashed, bound to the signed-in user, and expires after ten minutes. The PKCE verifier and refresh token are encrypted. Authorization credentials are returned to the browser in a URL fragment, removed immediately, and are not placed in Vercel request URLs.
-        </p>
-        <p>
-          Subtrack&apos;s use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including Limited Use requirements. Google user data is used only to provide the user-facing inbox-scanning and review feature. Subtrack does not sell it, use it for advertising, or expose it to other users.
+          Raw emails are never stored. Subtrack keeps only derived fields: the merchant, amount, date and due date, plus a hashed message identifier used to avoid counting the same email twice. Emails that look sensitive, such as verification codes, password resets and health messages, are dropped without being kept. Before anything is sent to Anthropic&apos;s API for classification, Subtrack removes personal details such as email addresses, phone numbers, card digits, addresses, reference numbers and links, and sends only a short excerpt.
         </p>
 
         <h2>How information is used</h2>
         <ul>
           <li>Operate sign-in and keep records scoped to the correct user.</li>
           <li>Calculate recurring-cost equivalents, forecast expected charges, and work out what&apos;s free to spend until payday.</li>
-          <li>Find possible recurring payments in Gmail for you to review.</li>
+          <li>Find possible recurring payments in the bills you forward, for you to review.</li>
           <li>Show in-app reminders, free trials, data-quality warnings, and possible duplicates.</li>
           <li>Send the emails you turn on: payment reminders, the payday email, and payday alerts.</li>
           <li>Count anonymous usage, as described below, to see whether Subtrack is useful.</li>
@@ -70,7 +64,7 @@ export default function PrivacyPage() {
 
         <h2>AI processing and automated decisions</h2>
         <p>
-          Anthropic processes redacted candidate email excerpts, assistant messages, and the minimum relevant recurring-payment context needed for the requested feature. When you ask for cheaper alternatives, the payment&apos;s name, category, price and cadence, plus any requirements you give, are redacted in the same way and then used to search the web for current prices. AI results can be wrong. Gmail findings enter a review queue, and every AI-proposed data change remains inert until you confirm it. Subtrack does not make investment, credit, insurance, employment, or other legally significant decisions about users.
+          Anthropic processes redacted candidate email excerpts, assistant messages, and the minimum relevant recurring-payment context needed for the requested feature. When you ask for cheaper alternatives, the payment&apos;s name, category, price and cadence, plus any requirements you give, are redacted in the same way and then used to search the web for current prices. AI results can be wrong. Findings from forwarded bills enter a review queue, and every AI-proposed data change remains inert until you confirm it. Subtrack does not make investment, credit, insurance, employment, or other legally significant decisions about users.
         </p>
 
         <h2>Emails</h2>
@@ -80,27 +74,25 @@ export default function PrivacyPage() {
         <p>To learn whether Subtrack is useful, it counts a few actions: starting and finishing setup, first seeing your number, opening Home (at most once a day), checking whether you can afford something, updating your balance, logging a spend, and opening the link in a payday email. Each count stores only the action&apos;s name, the time, and a one-way keyed code made from your account identifier, so returning users can be counted without storing who they are. Counts never include amounts, payment names, or email content. Demo sessions are not counted. Deleting your Subtrack app data deletes your counts.</p>
         <h2>Service providers and disclosure</h2>
         <p>
-          Subtrack uses Google for sign-in and optional Gmail access, Supabase for authentication, Neon for the application database, Render for the API, Vercel for the website, Anthropic for AI processing, and Frankfurter for exchange-rate data. Providers process information for their stated technical role and under their own terms and privacy practices. Information may be processed in countries where these providers operate. Subtrack may also disclose information when legally required or necessary to protect users and the service. Subtrack does not sell personal information.
+          Subtrack uses Google for sign-in, Supabase for authentication, Neon for the application database, Render for the API, Vercel for the website, Anthropic for AI processing, and Frankfurter for exchange-rate data. Providers process information for their stated technical role and under their own terms and privacy practices. Information may be processed in countries where these providers operate. Subtrack may also disclose information when legally required or necessary to protect users and the service. Subtrack does not sell personal information.
         </p>
 
         <h2>Retention</h2>
         <ul>
-          <li>Recurring-payment records, pay details, set-asides, logged spends, reminders, preferences, derived Gmail findings, and assistant history remain until you delete them or delete your Subtrack app data.</li>
+          <li>Recurring-payment records, pay details, set-asides, logged spends, reminders, preferences, derived findings from forwarded bills, and assistant history remain until you delete them or delete your Subtrack app data.</li>
           <li>Anonymous usage counts remain until you delete your Subtrack app data.</li>
-          <li>Raw Gmail message content exists only during a scan and is not retained in Subtrack&apos;s database.</li>
-          <li>The encrypted Gmail refresh token remains until you disconnect Gmail or delete your Subtrack app data.</li>
-          <li>One-time Gmail connection state expires after ten minutes and is consumed on use.</li>
+          <li>Forwarded emails are processed when they arrive and their content is not retained in Subtrack&apos;s database.</li>
           <li>Expired demo sandboxes and their hashed visitor identifier are deleted the next time a demo starts or the service restarts.</li>
           <li>Alternative-research cache entries stop being used after approximately 24 hours; an expired database row may remain until your app data is deleted.</li>
-          <li>Operational and security logs may be retained for the periods configured by the relevant hosting provider. Subtrack avoids intentionally logging email bodies, OAuth credentials, assistant financial content, and raw external error bodies.</li>
+          <li>Operational and security logs may be retained for the periods configured by the relevant hosting provider. Subtrack avoids intentionally logging email bodies, assistant financial content, and raw external error bodies.</li>
         </ul>
 
         <h2>Your choices and controls</h2>
         <ul>
-          <li>You can use core tracking without connecting Gmail and can disconnect Gmail at any time.</li>
-          <li>Disconnecting deletes the encrypted refresh token and attempts to revoke it with Google. Previously approved payment records remain until you delete them.</li>
+          <li>You can use core tracking without forwarding anything, and can pause, replace or delete your forwarding address at any time.</li>
+          <li>Deleting your forwarding address stops new bills arriving. Previously approved payment records remain until you delete them.</li>
           <li>You can approve, correct, dismiss, edit, pause, end, or delete app records from Subtrack.</li>
-          <li>You can download an authenticated JSON export from Account. It excludes refresh tokens, OAuth credentials, shared exchange-rate cache data, anonymous usage counts, and the external Supabase identity.</li>
+          <li>You can download an authenticated JSON export from Account. It excludes refresh tokens, shared exchange-rate cache data, anonymous usage counts, and the external Supabase identity.</li>
           <li>You can permanently delete all user-owned Subtrack application records from Account using an exact confirmation phrase.</li>
         </ul>
         <p>
@@ -114,7 +106,7 @@ export default function PrivacyPage() {
 
         <h2>Security</h2>
         <p>
-          Controls include API verification of access tokens, user-scoped database queries, encrypted Google credentials, one-time OAuth state and PKCE, restricted CORS configuration, bounded external calls, and confirmation-gated AI actions with expiry and replay protection. Data is protected in transit using HTTPS in production. No internet service can promise absolute security.
+          Controls include API verification of access tokens, user-scoped database queries, signed delivery of forwarded email, restricted CORS configuration, bounded external calls, and confirmation-gated AI actions with expiry and replay protection. Data is protected in transit using HTTPS in production. No internet service can promise absolute security.
         </p>
 
         <h2>Children</h2>
@@ -124,7 +116,7 @@ export default function PrivacyPage() {
 
         <h2>Policy changes</h2>
         <p>
-          Material changes will be reflected on this page with an updated date. If a change materially affects optional Google-data use, Subtrack will provide notice appropriate to the change before relying on it.
+          Material changes will be reflected on this page with an updated date. If a change materially affects how forwarded email is used, Subtrack will provide notice appropriate to the change before relying on it.
         </p>
 
         <h2>Contact</h2>

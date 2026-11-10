@@ -167,10 +167,12 @@ class ScheduledEndpointTests(unittest.TestCase):
     def tearDown(self):
         self.engine.dispose()
 
-    def call(self, secret="s3cret"):
+    def call(self, secret="s3cret", allowed="a,b,c,off"):
         db = self.Session()
         try:
             with patch.object(gmail_router.settings, "cron_secret", "s3cret"), patch.object(
+                gmail_router.settings, "gmail_oauth_user_ids", allowed
+            ), patch.object(
                 gmail_router, "gmail_is_configured", return_value=True
             ), patch.object(gmail_router._scan_executor, "submit"):
                 return gmail_router.run_scheduled_scans(x_cron_secret=secret, db=db)
@@ -193,6 +195,17 @@ class ScheduledEndpointTests(unittest.TestCase):
         finally:
             for _ in range(gmail_router.MAX_CONCURRENT_SCANS):
                 gmail_router._scan_slots.release()
+
+    def test_users_outside_the_oauth_list_are_skipped(self):
+        try:
+            result = self.call(allowed="a")
+            self.assertEqual(result["started"], 1)
+            self.assertEqual(result["remaining"], 0)
+        finally:
+            gmail_router._scan_slots.release()
+        db = self.Session()
+        self.assertEqual(db.get(GmailAccount, "b").scan_status, "done")
+        db.close()
 
     def test_switched_off_accounts_are_never_scanned(self):
         try:

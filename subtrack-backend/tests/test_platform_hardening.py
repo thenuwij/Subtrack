@@ -405,6 +405,7 @@ class CapabilityMetadataTests(unittest.TestCase):
                 "variable_amounts_v1": True,
                 "server_equivalents_v1": True,
                 "gmail_secure_oauth_v1": True,
+                "email_forwarding_v1": True,
                 "data_export_v1": True,
                 "app_data_deletion_v1": True,
                 "gmail_configured": True,

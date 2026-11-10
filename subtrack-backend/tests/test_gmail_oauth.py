@@ -48,6 +48,7 @@ class GmailOAuthSecurityTests(unittest.TestCase):
             patch.object(settings, "google_redirect_uri", "https://api.example/gmail/callback"),
             patch.object(settings, "frontend_url", "https://app.example"),
             patch.object(settings, "token_encryption_key", TEST_FERNET_KEY),
+            patch.object(settings, "gmail_oauth_user_ids", "owner,attacker"),
         )
         for setting_patch in self.setting_patches:
             setting_patch.start()
@@ -277,6 +278,45 @@ class GmailOAuthSecurityTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GmailOwnerOnlyTests(GmailOAuthSecurityTests):
+    def test_users_outside_the_list_get_404_on_connect_scan_and_settings(self):
+        from app.routers.gmail import GmailSettingsUpdate
+
+        calls = (
+            lambda: gmail.gmail_connect(user_id="normal", db=self.db),
+            lambda: gmail.start_scan(user_id="normal", db=self.db),
+            lambda: gmail.update_gmail_settings(
+                GmailSettingsUpdate(auto_scan_enabled=True), user_id="normal", db=self.db
+            ),
+        )
+        for call in calls:
+            with self.assertRaises(HTTPException) as caught:
+                call()
+            self.assertEqual(caught.exception.status_code, 404)
+
+    def test_listed_user_can_still_connect(self):
+        self.assertIn("auth_url", gmail.gmail_connect(user_id="owner", db=self.db))
+
+    def test_status_reports_availability(self):
+        self.assertFalse(gmail.gmail_status(user_id="normal", db=self.db)["available"])
+        self.assertTrue(gmail.gmail_status(user_id="owner", db=self.db)["available"])
+
+    def test_unlisted_user_with_an_old_connection_can_still_disconnect(self):
+        self.db.add(
+            GmailAccount(
+                user_id="normal", email_address="n@x", refresh_token_encrypted="e"
+            )
+        )
+        self.db.commit()
+        status = gmail.gmail_status(user_id="normal", db=self.db)
+        self.assertTrue(status["connected"])
+        self.assertFalse(status["available"])
+        with patch.object(gmail, "revoke_encrypted_refresh_token") as revoke:
+            revoke.return_value = SimpleNamespace(value="revoked")
+            gmail.gmail_disconnect(user_id="normal", db=self.db)
+        self.assertEqual(self.db.query(GmailAccount).count(), 0)
 
 
 class GmailScopeReportingTests(GmailOAuthSecurityTests):

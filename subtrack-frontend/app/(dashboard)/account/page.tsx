@@ -457,7 +457,7 @@ export default function AccountPage() {
         </div>
       )}
 
-      {gmail && (
+      {gmail && (currentUser.isDemo || gmail.connected || gmail.available) && (
         <div id="inbox" className="scroll-mt-6 rounded-2xl bg-card shadow-sm p-6 space-y-4">
           <div>
             <h2 className="text-[17px] font-semibold text-foreground">Email connection</h2>
@@ -494,7 +494,7 @@ export default function AccountPage() {
                   <Button
                     variant="outline"
                     onClick={handleScan}
-                    disabled={gmailBusy || gmail.scan_status === 'running' || gmail.configured === false}
+                    disabled={gmailBusy || gmail.scan_status === 'running' || gmail.configured === false || !gmail.available}
                   >
                     {gmail.scan_status === 'running' ? 'Checking…' : 'Check now'}
                   </Button>
@@ -517,11 +517,16 @@ export default function AccountPage() {
                   role="switch"
                   className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
                   checked={gmail.auto_scan_enabled ?? true}
-                  disabled={gmailBusy}
+                  disabled={gmailBusy || !gmail.available}
                   onChange={event => void handleAutoScan(event.target.checked)}
                 />
               </label>
 
+              {!gmail.available ? (
+                <p className="text-xs text-muted-foreground">
+                  Inbox scanning is no longer offered. Disconnect this connection and forward your bills instead.
+                </p>
+              ) : null}
               {gmail.configured === false ? (
                 <p className="text-xs text-amber-700 dark:text-amber-300">
                   Gmail credentials are not configured for this deployment. Your saved connection is retained, but scanning is unavailable until the operator fixes the server configuration.

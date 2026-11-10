@@ -34,10 +34,11 @@ Every recurring payment in one place, with what it costs this month and over a y
 
 ### Find bills in Gmail
 
-An optional read-only Gmail scan finds receipts and suggests bills you might be missing.
+Set up a Gmail filter that forwards your bills to a private Subtrack address and Subtrack suggests recurring bills you might be missing. It never reads the rest of your mailbox.
 
 - Nothing is added until you approve it on the Review page.
-- Raw emails are never stored.
+- Raw emails are never stored, only the merchant, amount and dates.
+- Pause, replace or delete your forwarding address at any time.
 
 ### Budgets and savings
 
