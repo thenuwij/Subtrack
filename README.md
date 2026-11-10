@@ -23,16 +23,6 @@ Tell Subtrack when you're paid and what comes out regularly, and you see your fi
 - Tap common Australian bills, or type them in one line ("rent 400 weekly, phone 35 monthly").
 - Add today's balance if you like. It's optional.
 
-### Safe to spend
-
-One number on Home: what's free until your next payday, and about how much a day.
-
-| Without a balance | With today's balance |
-| --- | --- |
-| Estimated from your usual pay, minus this pay cycle's bills and a small buffer | Exact, dated, and based on what's in your account today |
-
-Tap "How this is worked out" to see every bill and amount behind the number.
-
 ### Bills
 
 Every recurring payment in one place, with what it costs this month and over a year.
@@ -41,13 +31,23 @@ Every recurring payment in one place, with what it costs this month and over a y
 - Paid history for the last three months.
 - An optional read-only Gmail scan suggests bills for you to approve.
 
-### Set aside each pay
+### Budgets and savings
 
 Hold money back before you spend it, every payday.
 
+- **Budget:** "Groceries, $150 a pay", with what's left this pay.
 - **Saving:** "Trip, $100 a pay".
-- **Spending pot:** "Eating out, $60 a pay", with what's left this cycle.
-- Logging a spend is optional. A spend from a pot uses up the pot, not your free money.
+- Your bills are already counted, so Subtrack warns you if a new budget looks like one of them.
+- Logging a spend is optional. Take it from a budget or give it a category, and edit it later if the amount was wrong.
+
+### This pay
+
+Home shows where your pay goes: your bills, budgets, what you've spent, and the balance left until payday.
+
+- A bar splits your pay at a glance. Breakdown shows each category and budget as bars or a pie.
+- Got paid extra? Add it as extra income and it counts for this pay only.
+- Check my balance: enter today's balance to see exactly what's free to spend, and about how much a day.
+- Afterwards it shows as a dated "last checked" amount, since anything spent later isn't counted.
 
 ### Payday email and alerts
 
