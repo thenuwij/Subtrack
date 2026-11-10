@@ -773,6 +773,10 @@ export async function createTransaction(token: string, data: TransactionInput): 
   return request('/transactions', token, { method: 'POST', body: JSON.stringify(data) })
 }
 
+export async function parseTransactionText(token: string, text: string): Promise<{ drafts: TransactionInput[] }> {
+  return request('/transactions/parse', token, { method: 'POST', body: JSON.stringify({ text }) })
+}
+
 export async function updateTransaction(
   token: string,
   id: string,

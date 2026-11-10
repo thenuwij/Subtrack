@@ -65,7 +65,7 @@ export default function TransactionsPage() {
     return token
   }
 
-  async function handleSave(input: TransactionInput) {
+  async function handleSave(input: TransactionInput, more: boolean) {
     const token = await authToken()
     const editing = dialog?.entry ?? null
     if (editing) {
@@ -79,7 +79,7 @@ export default function TransactionsPage() {
       setNotice(match ? { entry: created, match } : null)
       if (!match) toast.success('Entry added')
     }
-    setDialog(null)
+    if (!more) setDialog(null)
     await refresh()
   }
 
@@ -108,7 +108,7 @@ export default function TransactionsPage() {
           <p className="eyebrow mb-2">Money in and out</p>
           <h1 className="page-heading">Transactions</h1>
         </div>
-        <Button onClick={() => setDialog({ entry: null })}><Plus className="h-4 w-4" />Add entry</Button>
+        <Button onClick={() => setDialog({ entry: null })}><Plus className="h-4 w-4" />Add</Button>
       </header>
 
       <div className="mt-6 flex items-center justify-between rounded-xl bg-card px-1 shadow-sm">

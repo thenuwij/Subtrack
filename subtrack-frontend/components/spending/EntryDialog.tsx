@@ -1,7 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import type { Category, Transaction, TransactionInput, TransactionKind } from '@/types'
+import { Mic } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { parseTransactionText } from '@/lib/api'
+import type { Category, Currency, Transaction, TransactionInput, TransactionKind } from '@/types'
 import { useCurrency } from '@/lib/context/currency'
 import { todayUtcDateKey } from '@/lib/utils/dates'
 import { EXPENSE_CATEGORIES, spendingCategoryLabel } from '@/lib/utils/spending'
@@ -15,8 +18,11 @@ import {
 interface EntryDialogProps {
   /** The entry being edited, or null to add a new one. */
   entry: Transaction | null
+  /** Optional suggestions that prefill a new entry; the user still confirms each one. */
+  draft?: TransactionInput[]
   onClose: () => void
-  onSave: (input: TransactionInput) => Promise<void>
+  /** `more` is true when further drafts follow, so the caller should keep the dialog open. */
+  onSave: (input: TransactionInput, more: boolean) => Promise<void>
 }
 
 const KINDS: { value: TransactionKind; label: string }[] = [
@@ -24,8 +30,28 @@ const KINDS: { value: TransactionKind; label: string }[] = [
   { value: 'income', label: 'Income' },
 ]
 
-export function EntryDialog({ entry, onClose, onSave }: EntryDialogProps) {
+interface SpeechResult { 0: { transcript: string } }
+interface Recognition {
+  lang: string
+  onresult: ((event: { results: ArrayLike<SpeechResult> }) => void) | null
+  onerror: (() => void) | null
+  onend: (() => void) | null
+  start: () => void
+}
+
+function speechRecognitionClass(): (new () => Recognition) | null {
+  if (typeof window === 'undefined') return null
+  const w = window as unknown as Record<string, new () => Recognition>
+  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
+}
+
+export function EntryDialog({ entry, draft, onClose, onSave }: EntryDialogProps) {
   const { baseCurrency } = useCurrency()
+  const [drafts, setDrafts] = useState<TransactionInput[]>(draft ?? [])
+  const [draftIndex, setDraftIndex] = useState(0)
+  const [listening, setListening] = useState(false)
+  const [heard, setHeard] = useState('')
+  const canSpeak = !entry && speechRecognitionClass() !== null
   const [kind, setKind] = useState<TransactionKind>(entry?.kind ?? 'expense')
   const [amount, setAmount] = useState(entry ? String(entry.amount) : '')
   const [name, setName] = useState(entry?.name ?? '')
@@ -35,7 +61,59 @@ export function EntryDialog({ entry, onClose, onSave }: EntryDialogProps) {
   const [date, setDate] = useState(entry?.occurred_on.slice(0, 10) ?? todayUtcDateKey())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const currency = entry?.currency ?? baseCurrency
+  const [currency, setCurrency] = useState<Currency>(entry?.currency ?? baseCurrency)
+
+  function applyDraft(item: TransactionInput) {
+    setKind(item.kind)
+    setAmount(String(item.amount))
+    setName(item.name)
+    setCategory(item.kind === 'expense' ? item.category : 'other')
+    if (item.occurred_on) setDate(item.occurred_on.slice(0, 10))
+    setCurrency(item.currency)
+  }
+
+  async function interpret(text: string) {
+    try {
+      const { data: { session } } = await createClient().auth.getSession()
+      if (!session) throw new Error('Please sign in again.')
+      const result = await parseTransactionText(session.access_token, text)
+      setDrafts(result.drafts)
+      setDraftIndex(0)
+      applyDraft(result.drafts[0])
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not understand that.')
+    }
+  }
+
+  function startListening() {
+    const Recognition = speechRecognitionClass()
+    if (!Recognition) return
+    const recognition = new Recognition()
+    recognition.lang = 'en-AU'
+    setError('')
+    setHeard('')
+    setListening(true)
+    recognition.onresult = event => {
+      const text = event.results[0][0].transcript
+      setHeard(text)
+      void interpret(text)
+    }
+    recognition.onerror = () => setError('Could not hear that. Try again or type it.')
+    recognition.onend = () => setListening(false)
+    recognition.start()
+  }
+
+  function stepDraft(index: number) {
+    setDraftIndex(index)
+    applyDraft(drafts[index])
+  }
+
+  async function afterSave() {
+    if (draftIndex + 1 < drafts.length) {
+      stepDraft(draftIndex + 1)
+      setSaving(false)
+    }
+  }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault()
@@ -52,7 +130,8 @@ export function EntryDialog({ entry, onClose, onSave }: EntryDialogProps) {
         currency,
         category: kind === 'income' ? 'income' : category,
         occurred_on: date,
-      })
+      }, draftIndex + 1 < drafts.length)
+      await afterSave()
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save this entry.')
       setSaving(false)
@@ -67,6 +146,18 @@ export function EntryDialog({ entry, onClose, onSave }: EntryDialogProps) {
             <DialogTitle>{entry ? 'Edit entry' : 'Add an entry'}</DialogTitle>
             <DialogDescription>Money you spent or money that came in.</DialogDescription>
           </DialogHeader>
+
+          {canSpeak ? (
+            <div className="space-y-1.5">
+              <Button type="button" variant="outline" onClick={startListening} disabled={listening || saving}>
+                <Mic className="h-4 w-4" />{listening ? 'Listening…' : 'Say it'}
+              </Button>
+              {heard ? <p className="text-sm text-muted-foreground">Heard: &ldquo;{heard}&rdquo;</p> : null}
+            </div>
+          ) : null}
+          {drafts.length > 1 ? (
+            <p className="text-sm font-medium">{draftIndex + 1} of {drafts.length}</p>
+          ) : null}
 
           <div role="group" aria-label="Kind" className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
             {KINDS.map(option => (
