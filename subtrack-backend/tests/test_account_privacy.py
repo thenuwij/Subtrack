@@ -35,6 +35,8 @@ from app.models import (
     GmailAccount,
     GmailOAuthState,
     GmailReceipt,
+    InboundAddress,
+    InboundMessage,
     MoneyGoal,
     MoneyRule,
     PaymentDecision,
@@ -276,6 +278,11 @@ class AccountPrivacyTests(unittest.TestCase):
                 money_goal,
                 SetAside(user_id=user_id, kind="pot", name="Eating out", amount_per_pay=60, currency="AUD"),
                 ProductEvent(actor=actor_for(user_id), name="home_viewed"),
+                InboundAddress(
+                    user_id=user_id, token=f"{user_id}-inbound-token", gmail_address=f"{user_id}@gmail.com",
+                    confirmation_code=f"{user_id}-code",
+                ),
+                InboundMessage(user_id=user_id, message_hash=hashlib.sha256(user_id.encode()).hexdigest(), outcome="accepted"),
                 safe_to_spend_profile,
                 subscription,
                 distinct_subscription,
@@ -334,6 +341,8 @@ class AccountPrivacyTests(unittest.TestCase):
         self.assertNotIn("owner-token-secret", exported_text)
         self.assertNotIn("other-token-secret", exported_text)
         self.assertNotIn("owner-pkce-secret", exported_text)
+        self.assertNotIn("owner-inbound-token", exported_text)
+        self.assertNotIn("owner-code", exported_text)
         self.assertNotIn("other-pkce-secret", exported_text)
         self.assertNotIn("other private", exported_text)
         self.assertNotIn("refresh_token_encrypted", exported_text)

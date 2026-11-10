@@ -1090,3 +1090,40 @@ class ProductEvent(Base):
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
+
+
+class InboundAddress(Base):
+    """A user's private forwarding address: ``<token>@<inbound domain>``.
+
+    Mail is accepted only from ``gmail_address``, which is learned from Gmail's
+    forwarding confirmation. The confirmation code is kept just long enough to
+    show it on the setup page.
+    """
+
+    __tablename__ = "inbound_addresses"
+
+    user_id = Column(String, primary_key=True)
+    token = Column(String(32), nullable=False, unique=True)
+    gmail_address = Column(String(320), nullable=True)
+    status = Column(String(16), nullable=False, default="pending")  # pending | active | paused
+    confirmation_code = Column(String(16), nullable=True)
+    confirmation_received_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    rotated_at = Column(DateTime, nullable=True)
+
+
+class InboundMessage(Base):
+    """One forwarded email's outcome. Never its subject, body or sender."""
+
+    __tablename__ = "inbound_messages"
+    __table_args__ = (
+        UniqueConstraint("user_id", "message_hash", name="uq_inbound_messages_user_hash"),
+        Index("ix_inbound_messages_user_received", "user_id", "received_at"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False)
+    message_hash = Column(String(64), nullable=False)
+    # accepted | filtered (sensitive email dropped) | confirmation | rejected
+    outcome = Column(String(16), nullable=False)
+    received_at = Column(DateTime, nullable=False, server_default=func.now())
