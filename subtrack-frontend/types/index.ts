@@ -495,3 +495,19 @@ export interface PossibleDuplicate {
 }
 
 
+
+export interface PayCyclePot { id: string; name: string; planned: number | null; spent: number; left: number | null; over: number | null }
+
+/** One pay cycle, payday to payday: pots planned against spent, savings and other spends. */
+export interface PayCycle {
+  start: string
+  end: string
+  current: boolean
+  pots: PayCyclePot[]
+  savings: { id: string; name: string; amount: number | null }[]
+  saved: number
+  other_spent: number
+  spends: { id: string; name: string; amount: number | null; occurred_on: string; pot: string | null }[]
+}
+
+export interface PayCycles { base_currency: Currency; cycles: PayCycle[]; note: string }

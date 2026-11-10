@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type FormEvent } from 'react'
+import Link from 'next/link'
 import { ChevronDown, PiggyBank, Plus, Receipt, Trash2, Undo2, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import type { SafeToSpend, SetAsideKind, SetAsidePosition } from '@/types'
@@ -212,7 +213,7 @@ export function SetAsidesCard() {
   }
 
   return (
-    <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6" aria-labelledby="pots-heading">
+    <section className="rounded-2xl bg-card p-5 shadow-sm sm:p-6" aria-labelledby="pots-heading" data-tour="pots">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 id="pots-heading" className="text-[17px] font-semibold">Your pots this pay</h2>
@@ -260,6 +261,7 @@ export function SetAsidesCard() {
 
       <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-border pt-4">
         <Button variant="outline" onClick={() => setLogging(true)}><Receipt className="h-4 w-4" />Log a spend</Button>
+        <Link href="/cycles" className="text-sm font-medium text-primary hover:underline">Past pay cycles</Link>
         {spends.length > 0 ? (
           <button
             type="button"
