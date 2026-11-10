@@ -216,14 +216,12 @@ export interface Rates {
   provider_date: string | null
 }
 
-export type Feature = 'spending' | 'payments' | 'goals' | 'workspace'
 
 export interface Preferences {
   base_currency: Currency
   monthly_income: number | null  // null until the user states it
   timezone: string
   onboarding_completed?: boolean
-  enabled_features?: Feature[]
   income_converted?: boolean
   income_conversion_rate_as_of?: string | null
 }
@@ -345,7 +343,8 @@ export interface PaidPayment {
   amount: number
   currency: string
   amount_in_base: number | null
-  status: 'confirmed' | 'expected' | 'unsorted' | 'skipped'
+  /** owing: the user said it was due and hasn't been paid yet. */
+  status: 'confirmed' | 'expected' | 'unsorted' | 'skipped' | 'owing'
   kind: 'receipt' | 'schedule' | 'late_fee' | 'extra' | 'above_plan'
 }
 
@@ -440,7 +439,8 @@ export interface SafeToSpend {
   pay_amount?: number | null
   buffer?: number
   committed?: number
-  commitments?: { id: string; name: string; due_at: string; amount: number; is_estimate: boolean }[]
+  /** overdue: due before this period and still unpaid, so it's owed now. */
+  commitments?: { id: string; name: string; due_at: string; amount: number; is_estimate: boolean; overdue?: boolean }[]
   /** Total taken off for savings and what's left in spending pots this pay cycle. */
   set_aside?: number
   /** Logged spends this cycle that the balance doesn't already show. */
@@ -494,269 +494,20 @@ export interface PossibleDuplicate {
   occurred_on: string | null
 }
 
-export interface CreatedTransaction extends Transaction {
-  possible_duplicates: PossibleDuplicate[]
-}
 
-export interface TransactionSummary {
-  month: string
-  base_currency: Currency
-  income: number
-  expenses: number
-  net: number
-  expenses_by_category: Record<string, number>
-  transaction_count: number
-  payment_charge_count: number
-  unconverted_count: number
-  rate_as_of: string | null
-  rate_stale: boolean
-}
 
-export interface BudgetStatus {
-  id: string
-  category: Category
-  monthly_limit: number
-  currency: Currency
-  limit_in_base: number | null
-  spent: number | null
-  spent_logged: number | null
-  spent_payments: number | null
-  left: number | null
-  share_used: number | null
-  over: boolean | null
-  near: boolean | null
-  unconverted_count: number
-}
+export interface PayCyclePot { id: string; name: string; planned: number | null; spent: number; left: number | null; over: number | null }
 
-export interface BudgetOverview {
-  month: string
-  base_currency: Currency
-  budgets: BudgetStatus[]
-  rate_as_of: string | null
-  rate_stale: boolean
-}
-
-export interface BudgetInput {
-  category: Category
-  monthly_limit: number
-}
-
-export type GoalStatus = 'reached' | 'no_target_date' | 'on_the_way' | 'due_today' | 'target_date_passed'
-
-export interface GoalContribution {
-  id: string
-  goal_id: string
-  amount: number
-  occurred_on: string
-  note: string | null
-  source: string
-  created_at: string | null
-}
-
-export interface Goal {
-  id: string
-  name: string
-  target_amount: number
-  currency: Currency
-  target_date: string | null
-  archived_at: string | null
-  created_at: string | null
-  updated_at: string | null
+/** One pay cycle, payday to payday: pots planned against spent, savings and other spends. */
+export interface PayCycle {
+  start: string
+  end: string
+  current: boolean
+  pots: PayCyclePot[]
+  savings: { id: string; name: string; amount: number | null }[]
   saved: number
-  remaining: number
-  percent: number
-  status: GoalStatus
-  days_left: number | null
-  weeks_left: number | null
-  needed_per_week: number | null
-  needed_per_day: number | null
-  contributions: GoalContribution[]
+  other_spent: number
+  spends: { id: string; name: string; amount: number | null; occurred_on: string; pot: string | null }[]
 }
 
-export interface GoalInput {
-  name: string
-  target_amount: number
-  currency: Currency
-  target_date?: string | null
-}
-
-export interface ContributionInput {
-  amount: number
-  occurred_on?: string
-  note?: string | null
-}
-
-// Workspace
-export type WorkspaceTemplateId = string
-
-export interface WorkspaceTemplate {
-  id: WorkspaceTemplateId
-  name: string
-  description: string
-  block_types: WorkspaceBlockType[]
-}
-
-export interface WorkspacePageSummary {
-  id: string
-  title: string
-  template_id: WorkspaceTemplateId | null
-  block_count: number
-  position: number
-  updated_at: string | null
-}
-
-export interface ChecklistItem {
-  text: string
-  done: boolean
-}
-
-export interface SharedCostItem {
-  label: string
-  amount: number
-  paid_by: string
-  split_between: string[]
-}
-
-interface BlockBase {
-  title?: string | null
-}
-
-export type WorkspaceBlockConfig =
-  | (BlockBase & { type: 'payment_list'; category?: Category | null; payment_ids?: string[] | null })
-  | (BlockBase & { type: 'transaction_log'; kind?: string | null; category?: Category | null; range?: string | null })
-  | (BlockBase & { type: 'budget'; categories?: Category[] | null })
-  | (BlockBase & { type: 'goal_progress'; goal_ids?: string[] | null })
-  | (BlockBase & { type: 'upcoming_payments'; days?: number })
-  | (BlockBase & { type: 'spending_trend'; months?: number; category?: Category | null })
-  | (BlockBase & { type: 'checklist'; items: ChecklistItem[] })
-  | (BlockBase & { type: 'shared_costs'; people: string[]; items: SharedCostItem[]; currency?: Currency | null })
-  | (BlockBase & { type: 'notes'; text: string })
-
-export type WorkspaceBlockType = WorkspaceBlockConfig['type']
-
-export interface WorkspacePage {
-  id: string
-  title: string
-  template_id: WorkspaceTemplateId | null
-  blocks: WorkspaceBlockConfig[]
-  position: number
-  created_at: string | null
-  updated_at: string | null
-}
-
-export interface WorkspacePageInput {
-  title: string
-  template_id: WorkspaceTemplateId
-}
-
-export interface WorkspacePageUpdate {
-  title?: string
-  blocks?: WorkspaceBlockConfig[]
-}
-
-export interface PaymentListRow {
-  id: string
-  name: string
-  category: Category
-  amount: number
-  currency: Currency
-  cadence_label: string
-  next_due: string | null
-  monthly_in_base: number | null
-}
-
-export interface PaymentListData {
-  payments: PaymentListRow[]
-  monthly_total_in_base: number
-  unconverted_count: number
-  missing_count: number
-  inactive_count: number
-}
-
-export interface TransactionLogEntry {
-  id: string
-  kind: 'income' | 'expense'
-  name: string
-  category: Category
-  amount: number
-  currency: Currency
-  occurred_on: string
-  amount_in_base: number | null
-}
-
-export interface TransactionLogData {
-  range: string
-  base_currency: Currency
-  entries: TransactionLogEntry[]
-  entry_count: number
-  income: number
-  expenses: number
-  unconverted_count: number
-}
-
-export interface UpcomingChargeRow {
-  id: string
-  name: string
-  category: Category
-  amount: number
-  currency: Currency
-  due_at: string
-  days_until_due: number
-  charge_amount_in_base: number | null
-  charge_amount_is_estimate: boolean
-}
-
-export interface UpcomingPaymentsData {
-  days: number
-  charges: UpcomingChargeRow[]
-  total_in_base: number
-  unconverted_count: number
-}
-
-export interface SpendingTrendMonth {
-  month: string
-  logged_expenses: number
-  tracked_payments: number
-  has_unconverted: boolean
-}
-
-export interface SpendingTrendData {
-  base_currency: Currency
-  category: Category | null
-  months: SpendingTrendMonth[]
-}
-
-export interface SharedCostsPerson {
-  name: string
-  paid: number
-  share: number
-  net: number
-  status: 'is_owed' | 'owes' | 'settled'
-}
-
-export interface SharedCostsData {
-  currency: Currency
-  total: number
-  people: SharedCostsPerson[]
-}
-
-export type WorkspaceBlockData =
-  | { type: 'payment_list'; data: PaymentListData }
-  | { type: 'transaction_log'; data: TransactionLogData }
-  | { type: 'budget'; data: Omit<BudgetOverview, 'month'> & { month?: string } }
-  | { type: 'goal_progress'; data: { goals: Goal[]; missing_count: number } }
-  | { type: 'upcoming_payments'; data: UpcomingPaymentsData }
-  | { type: 'spending_trend'; data: SpendingTrendData }
-  | { type: 'checklist'; data: { items: ChecklistItem[] } }
-  | { type: 'shared_costs'; data: SharedCostsData }
-  | { type: 'notes'; data: { text: string } }
-
-export type WorkspaceBlockResult =
-  | (WorkspaceBlockData & { title: string | null; error?: undefined })
-  | { type: string | null; title: string | null; error: string; data?: undefined }
-
-export interface WorkspacePageData {
-  id: string
-  title: string
-  blocks: WorkspaceBlockResult[]
-}
+export interface PayCycles { base_currency: Currency; cycles: PayCycle[]; note: string }

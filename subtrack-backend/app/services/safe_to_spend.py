@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.agent.finance import CurrencyContext, upcoming_charges
 from app.models import SafeToSpendProfile, UserPreference
+from app.services.owing import overdue_unpaid
 from app.services.recurrence import occurrences_between, project_next_occurrence, rewind_anchor
 from app.services.set_asides import set_aside_position
 
@@ -168,6 +169,9 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
     start_converted, start_quality = currency.convert(float(starting_amount), profile.currency)
     buffer, _ = currency.convert(float(profile.buffer), profile.currency)
     result["base_currency"] = currency.base
+    owing = overdue_unpaid(
+        db, user_id, before=window_start.date(), today=today, zone=zone, currency=currency,
+    )
     set_asides = set_aside_position(
         db,
         user_id,
@@ -181,6 +185,7 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         or buffer is None
         or forecast["unconverted_occurrence_count"]
         or set_asides is None
+        or owing is None
     ):
         result["status"] = "incomplete"
         result["warnings"].append(
@@ -190,6 +195,7 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
 
     charges = forecast["charges"]
     committed = sum((_to_decimal(row["charge_amount_in_base"]) for row in charges), Decimal("0"))
+    committed += sum((_to_decimal(row["amount"]) for row in owing), Decimal("0"))
     start_amount = _to_decimal(start_converted)
     buffer_amount = _to_decimal(buffer)
     reserved = set_asides["reserved"].quantize(CENTS)
@@ -228,13 +234,15 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         spent=float(spent),
         set_asides=set_asides["set_asides"],
         spends=set_asides["spends"],
-        commitments=[
+        # Overdue unpaid payments first, then bills due before payday.
+        commitments=owing + [
             {
                 "id": row["id"],
                 "name": row["name"],
                 "due_at": row["due_at"],
                 "amount": row["charge_amount_in_base"],
                 "is_estimate": row["charge_amount_is_estimate"],
+                "overdue": False,
             }
             for row in charges
         ],

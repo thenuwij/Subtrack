@@ -16,16 +16,9 @@ export const apiKeys = {
   reminders: (horizonDays: number) => `reminders:${horizonDays}`,
   preferences: 'preferences',
   safeToSpend: 'safe-to-spend',
+  payCycles: (count: number) => `pay-cycles:${count}`,
   emailSettings: 'email-reminders',
   duplicates: 'duplicates',
-  transactions: (month: string) => `transactions:${month}`,
-  transactionSummary: (month: string) => `transaction-summary:${month}`,
-  budgets: (month: string) => `budgets:${month}`,
-  goals: 'goals',
-  workspaceTemplates: 'workspace:templates',
-  workspacePages: 'workspace:pages',
-  workspacePage: (id: string) => `workspace:page:${id}`,
-  workspacePageData: (id: string) => `workspace:data:${id}`,
   agentThreads: 'agent-threads',
 } as const
 

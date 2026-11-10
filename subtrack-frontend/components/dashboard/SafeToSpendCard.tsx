@@ -178,6 +178,39 @@ function QuickBalance({ position, onSaved }: { position: SafeToSpend; onSaved: (
   )
 }
 
+/** The working behind the number, in one line: start − bills − set aside − spent − buffer = free. */
+function EquationStrip({ position, currency }: { position: SafeToSpend; currency: string }) {
+  const parts: { label: string; amount: number; minus: boolean }[] = [
+    position.mode === 'estimate'
+      ? { label: 'Usual pay', amount: position.pay_amount ?? 0, minus: false }
+      : { label: 'Balance', amount: position.balance ?? 0, minus: false },
+    { label: 'Bills', amount: position.committed ?? 0, minus: true },
+  ]
+  if (position.set_aside) parts.push({ label: 'Set aside', amount: position.set_aside, minus: true })
+  if (position.spent) parts.push({ label: 'Spent', amount: position.spent, minus: true })
+  if (position.buffer) parts.push({ label: 'Buffer', amount: position.buffer, minus: true })
+
+  return (
+    <ol className="mt-5 flex flex-wrap items-center gap-x-1.5 gap-y-2 text-xs" aria-label="How the number is worked out">
+      {parts.map((part, index) => (
+        <li key={part.label} className="flex items-center gap-1.5">
+          {index > 0 ? <span aria-hidden="true" className="text-muted-foreground">−</span> : null}
+          <span className="rounded-lg bg-foreground/5 px-2.5 py-1.5">
+            <span className="text-muted-foreground">{part.label} </span>
+            <span className="font-medium tabular-nums text-foreground">{formatCurrency(part.amount, currency)}</span>
+          </span>
+        </li>
+      ))}
+      <li className="flex items-center gap-1.5">
+        <span aria-hidden="true" className="text-muted-foreground">=</span>
+        <span className="rounded-lg bg-primary/10 px-2.5 py-1.5 font-semibold tabular-nums text-primary">
+          {position.shortfall ? `Short ${formatCurrency(position.shortfall, currency)}` : `Free ${formatCurrency(position.safe_to_spend ?? 0, currency)}`}
+        </span>
+      </li>
+    </ol>
+  )
+}
+
 function Row({ label, value, onClick }: { label: string; value: string; onClick?: () => void }) {
   if (onClick) {
     return (
@@ -290,14 +323,22 @@ export function SafeToSpendCard() {
   // on the day it was entered. Older results are shown dated and dimmed. An
   // estimate covers the whole pay cycle, so it is never dimmed.
   const isCurrent = isEstimate || position.balance_date === localDateKey()
+  const cycleStart = position.pay_cycle_start
+    ? formatStoredDate(position.pay_cycle_start, { day: 'numeric', month: 'short' })
+    : ''
 
   return (
-    <section className="money-hero h-full">
+    <section className="money-hero h-full" data-tour="free-to-spend">
       <div className="flex items-start justify-between gap-4">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          Safe to spend
-          {hasNumber && isEstimate ? <span className="rounded-full bg-foreground/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">Estimate</span> : null}
-        </h2>
+        <div>
+          {cycleStart && shortPayday ? (
+            <p className="eyebrow text-primary">This pay · {cycleStart} – {shortPayday}</p>
+          ) : null}
+          <h2 className="mt-1 flex items-center gap-2 text-sm font-semibold text-foreground">
+            Free to spend until payday
+            {hasNumber && isEstimate ? <span className="rounded-full bg-foreground/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">Estimate</span> : null}
+          </h2>
+        </div>
         {!editing ? (
           <button type="button" onClick={() => setEditing(true)} className="shrink-0 text-sm font-medium text-primary hover:underline">
             {isCurrent && !isEstimate ? 'Update balance' : 'Edit details'}
@@ -328,6 +369,7 @@ export function SafeToSpendCard() {
       {hasNumber && isCurrent && !position.shortfall ? (
         <p className="mt-4 inline-flex items-center rounded-full bg-foreground/5 px-3 py-1.5 text-xs font-medium text-foreground">{isEstimate ? 'About ' : ''}{formatCurrency(position.per_day ?? 0, currency)} a day {isEstimate ? 'this pay cycle' : 'until payday'}</p>
       ) : null}
+      {hasNumber && !editing ? <EquationStrip position={position} currency={currency} /> : null}
       {!editing && (!isCurrent || isEstimate) ? (
         <QuickBalance position={position} onSaved={handleSaved} />
       ) : null}
@@ -367,7 +409,7 @@ export function SafeToSpendCard() {
                 <Row
                   key={`${item.id}-${item.due_at}`}
                   onClick={() => { setShowBreakdown(false); editPayment(item.id) }}
-                  label={`${item.name} · ${formatStoredDate(item.due_at, { day: 'numeric', month: 'short' })}`}
+                  label={`${item.name} · ${item.overdue ? 'overdue since ' : ''}${formatStoredDate(item.due_at, { day: 'numeric', month: 'short' })}`}
                   value={`${item.is_estimate ? '≈ ' : ''}−${formatCurrency(item.amount, currency)}`}
                 />
               ))}

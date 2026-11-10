@@ -28,15 +28,12 @@ from app.models import (
     BankAccount,
     BankTransaction,
     Bill,
-    Budget,
     DetectedSubscription,
     DuplicateDismissal,
     EmailPreference,
     GmailAccount,
     GmailOAuthState,
     GmailReceipt,
-    Goal,
-    GoalContribution,
     MoneyGoal,
     MoneyRule,
     PaymentDecision,
@@ -52,7 +49,6 @@ from app.models import (
     Transaction,
     TransactionLink,
     UserPreference,
-    WorkspacePage,
 )
 from app.services.gmail_access import revoke_encrypted_refresh_token
 from app.services.product_events import delete_for_user
@@ -289,34 +285,10 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ("occurred_on", "id"),
     ),
     ExportResource(
-        "budgets",
-        Budget,
-        ("id", "category", "monthly_limit", "currency", "created_at", "updated_at"),
-        ("created_at", "id"),
-    ),
-    ExportResource(
-        "goals",
-        Goal,
-        ("id", "name", "target_amount", "currency", "target_date", "archived_at", "created_at", "updated_at"),
-        ("created_at", "id"),
-    ),
-    ExportResource(
-        "goal_contributions",
-        GoalContribution,
-        ("id", "goal_id", "amount", "occurred_on", "note", "source", "created_at"),
-        ("occurred_on", "id"),
-    ),
-    ExportResource(
         "set_asides",
         SetAside,
         ("id", "kind", "name", "amount_per_pay", "currency", "target_amount", "created_at", "updated_at"),
         ("created_at", "id"),
-    ),
-    ExportResource(
-        "workspace_pages",
-        WorkspacePage,
-        ("id", "title", "template_id", "blocks", "position", "created_at", "updated_at"),
-        ("position", "id"),
     ),
 
 )
@@ -332,10 +304,6 @@ DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("gmail_oauth_states", GmailOAuthState),
     ("transactions", Transaction),
     ("set_asides", SetAside),
-    ("workspace_pages", WorkspacePage),
-    ("goal_contributions", GoalContribution),
-    ("goals", Goal),
-    ("budgets", Budget),
     ("transaction_links", TransactionLink),
     ("gmail_receipts", GmailReceipt),
     ("bank_transactions", BankTransaction),

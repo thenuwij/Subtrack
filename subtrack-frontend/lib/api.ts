@@ -17,26 +17,13 @@ import type {
   SafeToSpendProfileInput,
   SetAside,
   SetAsideKind,
+  PayCycles,
   Subscription,
   SubscriptionForecast,
-  BudgetInput,
-  BudgetOverview,
-  ContributionInput,
-  CreatedTransaction,
-  Goal,
-  GoalInput,
-  Transaction,
   TransactionInput,
-  TransactionSummary,
   SubscriptionInput,
   BillDraft,
-  Feature,
-  WorkspacePage,
-  WorkspacePageData,
-  WorkspacePageInput,
-  WorkspacePageSummary,
-  WorkspacePageUpdate,
-  WorkspaceTemplate,
+  Transaction,
 } from '@/types'
 import {
   formatCadence,
@@ -670,7 +657,7 @@ export async function getPreferences(token: string) {
 // Send only the fields you want to change — omitted fields are left untouched.
 export async function updatePreferences(
   token: string,
-  data: { base_currency?: string; monthly_income?: number | null; onboarding_completed?: boolean; timezone?: string; enabled_features?: Feature[] }
+  data: { base_currency?: string; monthly_income?: number | null; onboarding_completed?: boolean; timezone?: string }
 ): Promise<Preferences> {
   return request('/preferences', token, {
     method: 'PATCH',
@@ -686,6 +673,10 @@ export function trackEvent(name: ProductEventName): void {
     const token = await getAccessToken()
     if (token) await request('/events', token, { method: 'POST', body: JSON.stringify({ name }) })
   })().catch(() => undefined)
+}
+
+export async function getPayCycles(token: string, count: number): Promise<PayCycles> {
+  return request(`/safe-to-spend/cycles?count=${count}`, token)
 }
 
 export async function getSafeToSpend(token: string): Promise<SafeToSpend> {
@@ -798,8 +789,16 @@ export function restoreReminder(token: string, id: string) {
   return request(`/reminders/${id}/restore`, token, { method: 'POST' })
 }
 
+/** paid, didn't happen, not paid yet (still owed), or clear the answer. */
+export type PaymentDecision = 'paid' | 'skipped' | 'unpaid' | 'undo'
+
+/** Undo marking a pay-it-myself due date paid from To pay. */
+export async function undoMarkPaid(token: string, paymentId: string, dueDate: string) {
+  return request(`/subscriptions/${paymentId}/mark-paid/${dueDate}`, token, { method: 'DELETE' })
+}
+
 export async function decidePayment(
-  token: string, target: string, decision: 'paid' | 'skipped' | 'undo', amount?: number,
+  token: string, target: string, decision: PaymentDecision, amount?: number,
 ) {
   const response = await request('/subscriptions/paid/decision', token, {
     method: 'POST', body: JSON.stringify({ target, decision, amount }),
@@ -838,110 +837,11 @@ export async function getWaysToSave(token: string): Promise<SavingsOverview> {
   return request('/subscriptions/ways-to-save', token)
 }
 
-// Spending
-export async function listTransactions(token: string, month: string): Promise<Transaction[]> {
-  const rows = await request(`/transactions?month=${month}`, token)
-  return Array.isArray(rows) ? rows as Transaction[] : []
-}
-
-export async function getTransactionSummary(token: string, month: string): Promise<TransactionSummary> {
-  return request(`/transactions/summary?month=${month}`, token)
-}
-
-export async function createTransaction(token: string, data: TransactionInput): Promise<CreatedTransaction> {
-  return request('/transactions', token, { method: 'POST', body: JSON.stringify(data) })
-}
-
 export async function parseBillText(token: string, text: string): Promise<{ bills: BillDraft[] }> {
   return request('/subscriptions/parse', token, { method: 'POST', body: JSON.stringify({ text }) })
 }
 
+// Kept only for the voice entry component still in the tree.
 export async function parseTransactionText(token: string, text: string): Promise<{ drafts: TransactionInput[] }> {
   return request('/transactions/parse', token, { method: 'POST', body: JSON.stringify({ text }) })
-}
-
-export async function updateTransaction(
-  token: string,
-  id: string,
-  data: Partial<TransactionInput>,
-): Promise<Transaction> {
-  return request(`/transactions/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
-}
-
-export async function deleteTransaction(token: string, id: string) {
-  return request(`/transactions/${id}`, token, { method: 'DELETE' })
-}
-
-// Budgets
-export async function getBudgets(token: string, month: string): Promise<BudgetOverview> {
-  return request(`/budgets?month=${month}`, token)
-}
-
-export async function createBudget(token: string, data: BudgetInput) {
-  return request('/budgets', token, { method: 'POST', body: JSON.stringify(data) })
-}
-
-export async function updateBudget(token: string, id: string, data: Partial<BudgetInput>) {
-  return request(`/budgets/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
-}
-
-export async function deleteBudget(token: string, id: string) {
-  return request(`/budgets/${id}`, token, { method: 'DELETE' })
-}
-
-// Goals
-export async function listGoals(token: string): Promise<Goal[]> {
-  const rows = await request('/goals', token)
-  return Array.isArray(rows) ? rows as Goal[] : []
-}
-
-export async function createGoal(token: string, data: GoalInput): Promise<Goal> {
-  return request('/goals', token, { method: 'POST', body: JSON.stringify(data) })
-}
-
-export async function updateGoal(
-  token: string,
-  id: string,
-  data: Partial<Omit<GoalInput, 'currency'>> & { archived?: boolean },
-): Promise<Goal> {
-  return request(`/goals/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
-}
-
-export async function deleteGoal(token: string, id: string) {
-  return request(`/goals/${id}`, token, { method: 'DELETE' })
-}
-
-export async function addGoalContribution(token: string, goalId: string, data: ContributionInput) {
-  return request(`/goals/${goalId}/contributions`, token, { method: 'POST', body: JSON.stringify(data) })
-}
-
-// Workspace
-export async function listWorkspaceTemplates(token: string): Promise<WorkspaceTemplate[]> {
-  const rows = await request('/workspace/templates', token)
-  return Array.isArray(rows) ? rows as WorkspaceTemplate[] : []
-}
-
-export async function listWorkspacePages(token: string): Promise<WorkspacePageSummary[]> {
-  const rows = await request('/workspace/pages', token)
-  return Array.isArray(rows) ? rows as WorkspacePageSummary[] : []
-}
-
-export async function createWorkspacePage(token: string, data: WorkspacePageInput): Promise<WorkspacePage> {
-  return request('/workspace/pages', token, { method: 'POST', body: JSON.stringify(data) })
-}
-
-export async function getWorkspacePage(token: string, id: string): Promise<WorkspacePage> {
-  return request(`/workspace/pages/${id}`, token)
-}
-
-export async function getWorkspacePageData(token: string, id: string): Promise<WorkspacePageData> {
-  return request(`/workspace/pages/${id}/data`, token)
-}
-
-export async function updateWorkspacePage(token: string, id: string, data: WorkspacePageUpdate): Promise<WorkspacePage> {
-  return request(`/workspace/pages/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
-}
-
-export async function deleteWorkspacePage(token: string, id: string) {
-  return request(`/workspace/pages/${id}`, token, { method: 'DELETE' })
 }

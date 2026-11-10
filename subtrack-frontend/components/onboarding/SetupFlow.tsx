@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation'
 import { useSWRConfig } from 'swr'
 import { Check, Plus, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
-import type { BillDraft, Category, Currency } from '@/types'
+import type { BillDraft, Category, Currency, SetAsideKind } from '@/types'
 import {
+  createSetAside,
   createSubscription,
   getEmailReminders,
   parseBillText,
@@ -27,8 +28,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
-type Step = 'pay' | 'bills' | 'balance'
-const STEPS: Step[] = ['pay', 'bills', 'balance']
+type Step = 'intro' | 'pay' | 'bills' | 'pots' | 'balance'
+const STEPS: Step[] = ['pay', 'bills', 'pots', 'balance']
+const POT_SUGGESTIONS: { kind: SetAsideKind; name: string; amount: string }[] = [
+  { kind: 'pot', name: 'Eating out', amount: '60' },
+  { kind: 'pot', name: 'Groceries', amount: '100' },
+  { kind: 'pot', name: 'Fuel', amount: '40' },
+  { kind: 'save', name: 'Savings', amount: '50' },
+]
 const DEFAULT_BUFFER = 50
 
 interface BillRow {
@@ -56,7 +63,8 @@ export function SetupFlow() {
   const router = useRouter()
   const { mutate } = useSWRConfig()
   const { baseCurrency } = useCurrency()
-  const [step, setStep] = useState<Step>('pay')
+  const [step, setStep] = useState<Step>('intro')
+  const [potAmounts, setPotAmounts] = useState<Record<string, string>>({})
   const [schedule, setSchedule] = useState<PaySchedule>('fortnightly')
   const [nextPayday, setNextPayday] = useState('')
   const [payAmount, setPayAmount] = useState('')
@@ -149,6 +157,10 @@ export function SetupFlow() {
         saved.add(bill.id)
         setSavedIds(new Set(saved))
       }
+      for (const pot of POT_SUGGESTIONS) {
+        const amount = Number(potAmounts[pot.name])
+        if (amount > 0) await createSetAside(token, { kind: pot.kind, name: pot.name, amount_per_pay: amount })
+      }
       if (paydayEmail && canEmail) {
         // Setup is saved either way; the switch is also in Account.
         await setEmailReminders(token, { payday: true }).catch(() => {
@@ -182,6 +194,33 @@ export function SetupFlow() {
   const payReady = nextPayday !== '' && Number(payAmount) > 0
   const billsReady = bills.every(billIsComplete)
   const stepIndex = STEPS.indexOf(step)
+
+  if (step === 'intro') {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
+        <p className="eyebrow text-primary">Welcome to Subtrack</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Know what&apos;s yours to spend until payday.</h1>
+        <ol className="mt-8 grid gap-3 sm:grid-cols-3">
+          {[
+            ['1', 'Your pay comes in', 'Tell us when you’re paid and roughly how much.'],
+            ['2', 'Bills and pots come off', 'Rent, phone, subscriptions, plus money you hold back for eating out or saving.'],
+            ['3', 'What’s left is yours', 'One number on Home, and how much that is per day.'],
+          ].map(([number, title, body]) => (
+            <li key={number} className="rounded-2xl bg-card p-5 shadow-sm">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">{number}</span>
+              <p className="mt-3 font-semibold">{title}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{body}</p>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-6 text-sm text-muted-foreground">No bank login. Setup takes about three minutes.</p>
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <Button size="lg" onClick={() => setStep('pay')}>Get started</Button>
+          <Button variant="ghost" onClick={() => void skip()}>Skip for now</Button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
@@ -289,11 +328,49 @@ export function SetupFlow() {
           ) : null}
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button size="lg" disabled={!billsReady} onClick={() => setStep('balance')}>
+            <Button size="lg" disabled={!billsReady} onClick={() => setStep('pots')}>
               {bills.length === 0 ? 'No bills, continue' : 'Next'}
             </Button>
             <Button variant="ghost" onClick={() => setStep('pay')}>Back</Button>
             {!billsReady ? <p role="status" className="text-sm text-muted-foreground">Add an amount and next charge date for each bill.</p> : null}
+          </div>
+        </div>
+      ) : null}
+
+      {step === 'pots' ? (
+        <div className="mt-4 space-y-6">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight">Hold some money back each pay?</h1>
+            <p className="mt-2 text-muted-foreground">Pots keep money aside for things you spend on, or for saving. Optional, and you can change them on Home.</p>
+          </div>
+          <ul className="divide-y divide-border rounded-2xl bg-card shadow-sm">
+            {POT_SUGGESTIONS.map(pot => (
+              <li key={pot.name} className="flex items-center justify-between gap-4 p-4">
+                <div>
+                  <p className="text-sm font-medium">{pot.name}</p>
+                  <p className="text-xs text-muted-foreground">{pot.kind === 'pot' ? 'Spending pot' : 'Saving'} · each pay</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Label htmlFor={`pot-${pot.name}`} className="sr-only">{pot.name} each pay</Label>
+                  <Input
+                    id={`pot-${pot.name}`}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    inputMode="decimal"
+                    placeholder={pot.amount}
+                    value={potAmounts[pot.name] ?? ''}
+                    onChange={event => setPotAmounts(current => ({ ...current, [pot.name]: event.target.value }))}
+                    className="w-28"
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-muted-foreground">Leave a box empty to skip that pot.</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button size="lg" onClick={() => setStep('balance')}>Next</Button>
+            <Button variant="ghost" onClick={() => setStep('bills')}>Back</Button>
           </div>
         </div>
       ) : null}
@@ -329,7 +406,7 @@ export function SetupFlow() {
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" size="lg" disabled={saving}>{saving ? 'Saving…' : 'See what I can spend'}</Button>
-            <Button type="button" variant="ghost" disabled={saving} onClick={() => setStep('bills')}>Back</Button>
+            <Button type="button" variant="ghost" disabled={saving} onClick={() => setStep('pots')}>Back</Button>
           </div>
         </form>
       ) : null}

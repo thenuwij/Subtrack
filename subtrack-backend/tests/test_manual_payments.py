@@ -14,16 +14,17 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
 from app.database import Base  # noqa: E402
 from app.models import BillingCycle, Category, Subscription, Transaction, UserPreference  # noqa: E402
-from app.routers.budgets import BudgetCreate, create_budget  # noqa: E402
 from app.routers.subscriptions import (  # noqa: E402
     MarkPaidRequest,
+    PaymentDecisionInput,
     SubscriptionCreate,
     create_subscription,
+    decide_payment,
     get_manual_due,
     mark_paid,
+    undo_mark_paid,
 )
-from app.routers.transactions import delete_transaction, get_transaction_summary, list_transactions  # noqa: E402
-from app.services.budgets import budget_status  # noqa: E402
+from app.services.paid_history import paid_history  # noqa: E402
 
 RATES = {"base": "AUD", "rates": {"USD": 0.5}, "stale": False, "fetched_at": "2026-11-03T00:00:00"}
 # Monday 9 November 2026; "today" in these tests is Thursday 12 November.
@@ -47,7 +48,6 @@ class ManualPaymentTests(unittest.TestCase):
         for target in (
             "app.routers.rates.get_cached_rate_snapshot",
             "app.services.transactions.get_cached_rate_snapshot",
-            "app.services.budgets.get_cached_rate_snapshot",
             "app.agent.finance.get_cached_rate_snapshot",
         ):
             patcher = patch(target, return_value=RATES)
@@ -68,12 +68,10 @@ class ManualPaymentTests(unittest.TestCase):
             interval_unit="week", interval_count=1, is_active=True,
             next_due=datetime(2026, 11, 9), payment_method=method,
         )
+        row.created_at = datetime(2026, 11, 1)
         self.db.add(row)
         self.db.commit()
         return row
-
-    def summary(self):
-        return get_transaction_summary(month="2026-11", user_id="owner", db=self.db)
 
     def mark(self, rent, due=MONDAY, paid_on=THURSDAY, **extra):
         return mark_paid(rent.id, MarkPaidRequest(due_date=due, paid_on=paid_on, **extra), user_id="owner", db=self.db)
@@ -86,34 +84,15 @@ class ManualPaymentTests(unittest.TestCase):
         )
         self.assertEqual(created["payment_method"], "automatic")
 
-    def test_automatic_rent_still_counts_every_scheduled_charge(self):
-        self.rent(method="automatic")
-        self.assertEqual(self.summary()["expenses"], 2500.0)  # five Mondays this month
-
-    def test_unpaid_manual_rent_is_not_counted(self):
-        self.rent()
-        create_budget(BudgetCreate(category="housing", monthly_limit="3000.00"), user_id="owner", db=self.db)
-
-        rows = list_transactions(month="2026-11", kind=None, category=None, user_id="owner", db=self.db)
-        budgets = budget_status(self.db, "owner", 2026, 11)["budgets"]
-
-        self.assertEqual(rows, [])
-        self.assertEqual(self.summary()["expenses"], 0.0)
-        self.assertEqual(budgets[0]["spent"], 0.0)
-
-    def test_marking_paid_creates_one_entry_counted_once(self):
+    def test_marking_paid_creates_one_linked_entry(self):
         rent = self.rent()
-        create_budget(BudgetCreate(category="housing", monthly_limit="3000.00"), user_id="owner", db=self.db)
 
         entry = self.mark(rent, amount="500.00")
 
         self.assertEqual(entry["occurred_on"], "2026-11-12")
         self.assertEqual(entry["note"], "Rent payment")
         self.assertEqual(entry["recurring_payment_id"], str(rent.id))
-        rows = list_transactions(month="2026-11", kind=None, category=None, user_id="owner", db=self.db)
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(self.summary()["expenses"], 500.0)
-        self.assertEqual(budget_status(self.db, "owner", 2026, 11)["budgets"][0]["spent"], 500.0)
+        self.assertEqual(self.db.query(Transaction).count(), 1)
 
     def test_amount_and_currency_default_to_the_payments(self):
         entry = self.mark(self.rent())
@@ -163,7 +142,8 @@ class ManualPaymentTests(unittest.TestCase):
     def test_deleting_the_entry_undoes_the_mark(self):
         rent = self.rent()
         entry = self.mark(rent)
-        delete_transaction(UUID(entry["id"]), user_id="owner", db=self.db)
+        self.db.delete(self.db.get(Transaction, UUID(entry["id"])))
+        self.db.commit()
 
         due_dates = [row["due_date"] for row in get_manual_due(user_id="owner", db=self.db)]
         self.assertIn("2026-11-09", due_dates)
@@ -173,6 +153,44 @@ class ManualPaymentTests(unittest.TestCase):
             self.mark(self.rent(method="automatic"))
         self.assertEqual(raised.exception.status_code, 422)
         self.assertEqual(self.db.query(Transaction).count(), 0)
+
+    def history_row(self, rent, due=MONDAY):
+        rows = paid_history(self.db, "owner", today=THURSDAY)["payments"]
+        return next(row for row in rows if row.get("target") == f"payment:{rent.id}:{due.isoformat()}")
+
+    def test_marked_paid_shows_as_paid_in_history(self):
+        rent = self.rent()
+        self.mark(rent, amount="480.00")
+
+        row = self.history_row(rent)
+
+        self.assertEqual((row["status"], row["manual"], row["paid_amount"]), ("confirmed", "marked_paid", 480.0))
+
+    def test_undoing_mark_paid_makes_it_owed_again(self):
+        rent = self.rent()
+        self.mark(rent)
+
+        undo_mark_paid(rent.id, MONDAY, user_id="owner", db=self.db)
+
+        self.assertEqual(self.history_row(rent)["status"], "expected")
+        self.assertIn("2026-11-09", [row["due_date"] for row in get_manual_due(user_id="owner", db=self.db)])
+        with self.assertRaises(HTTPException) as raised:
+            undo_mark_paid(rent.id, MONDAY, user_id="owner", db=self.db)
+        self.assertEqual(raised.exception.status_code, 404)
+
+    def test_history_answers_wait_until_mark_paid_is_undone(self):
+        rent = self.rent()
+        self.mark(rent)
+        with self.assertRaises(HTTPException) as raised:
+            decide_payment(PaymentDecisionInput(target=f"payment:{rent.id}:2026-11-09", decision="unpaid"), "owner", self.db)
+        self.assertEqual(raised.exception.status_code, 409)
+
+    def test_not_paid_yet_shows_as_owing(self):
+        rent = self.rent(method="automatic")
+
+        decide_payment(PaymentDecisionInput(target=f"payment:{rent.id}:2026-11-09", decision="unpaid"), "owner", self.db)
+
+        self.assertEqual(self.history_row(rent)["status"], "owing")
 
 
 if __name__ == "__main__":

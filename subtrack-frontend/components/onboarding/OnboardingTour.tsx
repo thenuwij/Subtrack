@@ -42,24 +42,24 @@ function firstVisible(...selectors: string[]) {
 
 const steps: DriveStep[] = [
   {
-    element: visible('[data-tour="nav-review"]'),
+    element: firstVisible('[data-tour="free-to-spend"]', '[data-tour="nav-dashboard"]'),
     popover: {
-      title: 'Your inbox findings',
-      description: 'Connect Gmail and Subtrack finds recurring payments in your receipts. Each one waits here until you approve it.',
+      title: 'What’s yours to spend',
+      description: 'Your pay or balance, minus bills and pots before payday. The line underneath shows the working.',
+    },
+  },
+  {
+    element: firstVisible('[data-tour="pots"]', '[data-tour="nav-dashboard"]'),
+    popover: {
+      title: 'Your pots',
+      description: 'Money held back each pay, like eating out or savings. They fill up again every payday.',
     },
   },
   {
     element: visible('[data-tour="nav-subscriptions"]'),
     popover: {
-      title: 'Every recurring payment',
-      description: 'Add, edit or remove anything by hand, and search, filter or sort by what is due next.',
-    },
-  },
-  {
-    element: visible('[data-tour="nav-dashboard"]'),
-    popover: {
-      title: 'Your monthly picture',
-      description: 'Your total monthly commitment, the charges coming up, and anything that changed recently.',
+      title: 'Your bills',
+      description: 'Every recurring payment, with what you’ve paid and anything still owed.',
     },
   },
   {

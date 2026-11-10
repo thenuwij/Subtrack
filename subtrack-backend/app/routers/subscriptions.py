@@ -500,8 +500,7 @@ def mark_paid(
     """Record one due date of a manual payment as a linked expense Transaction."""
     from sqlalchemy.exc import IntegrityError
 
-    from app.routers.transactions import transaction_payload
-    from app.services.transactions import apply_conversion, base_currency_for
+    from app.services.transactions import apply_conversion, base_currency_for, transaction_payload
 
     sub = db.query(Subscription).filter(
         Subscription.id == sub_id, Subscription.user_id == user_id,
@@ -539,6 +538,26 @@ def mark_paid(
     db.refresh(row)
     return transaction_payload(row)
 
+
+
+@router.delete("/{sub_id}/mark-paid/{due_date}")
+def undo_mark_paid(
+    sub_id: UUID,
+    due_date: date_type,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Undo marking one due date paid: the linked entry goes and the payment is owed again."""
+    entry = db.query(Transaction).filter(
+        Transaction.user_id == user_id,
+        Transaction.recurring_payment_id == sub_id,
+        Transaction.paid_due_on == due_date,
+    ).first()
+    if entry is None:
+        raise HTTPException(404, "That payment isn't marked paid")
+    db.delete(entry)
+    db.commit()
+    return {"undone": True}
 
 @router.get("/month")
 def get_calendar_month(
@@ -1156,7 +1175,8 @@ def delete_subscription(
 
 class PaymentDecisionInput(BaseModel):
     target: str = Field(max_length=100)
-    decision: Literal["paid", "skipped", "undo"]
+    # "unpaid": it was due and hasn't been paid yet, so it's still owed.
+    decision: Literal["paid", "skipped", "unpaid", "undo"]
     amount: float | None = Field(default=None, gt=0, le=1_000_000)
 
 
@@ -1175,10 +1195,12 @@ def decide_payment(body: PaymentDecisionInput, user_id: str = Depends(verify_tok
     else:
         if not item:
             raise HTTPException(404, "Payment occurrence not found")
-        if body.target.startswith("bill:") and body.decision == "skipped":
+        if body.target.startswith("bill:") and body.decision in ("skipped", "unpaid"):
             raise HTTPException(422, "Bills can be marked paid; their invoiced amount remains owed otherwise")
         if body.amount is not None and body.decision != "paid":
             raise HTTPException(422, "An amount can only be given when marking a payment paid")
+        if item.get("manual") == "marked_paid":
+            raise HTTPException(409, "This was marked paid from To pay; undo that first")
         amount = round(body.amount, 2) if body.amount is not None else None
         if existing:
             existing.decision = body.decision
