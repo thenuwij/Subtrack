@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import ReminderDelivery, SafeToSpendProfile, Subscription
+from app.services.email_text import email_safe_name
 from app.services.payday_message import SEND_FROM_HOUR, _short_date, is_payday, money
 from app.services.recurrence import effective_status
 from app.services.safe_to_spend import _local_date, _user_zone, safe_to_spend
@@ -74,12 +75,13 @@ def due_alerts(db: Session, user_id: str, *, now: datetime) -> list[tuple[str, d
         if not today <= ends_on <= trial_window_end or effective_status(sub, now) != "active":
             continue
         after = money(sub.amount, sub.currency)
+        name = email_safe_name(sub.name)
         candidates.append((
             f"alert/trial/{sub.id}/{ends_on.isoformat()}",
             {
-                "subject": f"{sub.name}: offer ends {_short_date(ends_on.isoformat())}",
+                "subject": f"{name}: offer ends {_short_date(ends_on.isoformat())}",
                 "text": (
-                    f"The free trial or intro price for {sub.name} ends on {_short_date(ends_on.isoformat())}. "
+                    f"The free trial or intro price for {name} ends on {_short_date(ends_on.isoformat())}. "
                     f"After that it's {after} each time it charges.\n\n{_footer()}"
                 ),
             },

@@ -10,14 +10,17 @@ from collections.abc import Generator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from typing import Any, Literal
+from urllib.parse import quote
 from uuid import UUID
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import SessionLocal, get_db
 from app.middleware.auth import reject_demo_user, verify_token
 from app.models import (
@@ -455,6 +458,30 @@ def _delete_owned_rows(db: Session, user_id: str) -> dict[str, int]:
     return counts
 
 
+def _delete_supabase_identity(user_id: str) -> bool:
+    """Delete the Supabase sign-in identity; True only when Supabase confirms it.
+
+    Needs the backend-only service role key. Without it, or on any failure,
+    the identity stays and the caller reports that truthfully.
+    """
+    key = settings.supabase_service_role_key
+    if not key or not settings.supabase_url:
+        return False
+    url = f"{settings.supabase_url.rstrip('/')}/auth/v1/admin/users/{quote(user_id, safe='')}"
+    try:
+        response = httpx.delete(
+            url, headers={"apikey": key, "Authorization": f"Bearer {key}"}, timeout=10
+        )
+    except httpx.HTTPError as exc:
+        logger.error("Supabase identity deletion failed (%s)", type(exc).__name__)
+        return False
+    # 404 means the identity is already gone.
+    if response.status_code in (200, 204, 404):
+        return True
+    logger.error("Supabase identity deletion returned HTTP %s", response.status_code)
+    return False
+
+
 @router.delete("/data")
 def delete_app_data(
     body: DeleteAppDataRequest,
@@ -463,9 +490,8 @@ def delete_app_data(
 ) -> dict[str, Any]:
     """Delete every current app-owned record for the authenticated user.
 
-    Supabase owns the sign-in identity and this backend has no service-role
-    credential, so the response says so explicitly rather than claiming the
-    external identity was removed.
+    The Supabase sign-in identity is deleted afterwards only when a
+    service-role key is configured, and the response reports what happened.
     """
 
     del body  # Pydantic has already enforced the destructive confirmation.
@@ -498,6 +524,7 @@ def delete_app_data(
         ) from exc
 
     revocation = revoke_encrypted_refresh_token(encrypted_token)
+    identity_deleted = _delete_supabase_identity(user_id)
 
     logger.info("User app data deleted", extra={"user_id": user_id})
     return {
@@ -505,10 +532,11 @@ def delete_app_data(
         "scope": "subtrack_application_data",
         "deleted_records": counts,
         "gmail_revocation": revocation.value,
-        "supabase_auth_identity_deleted": False,
+        "supabase_auth_identity_deleted": identity_deleted,
         "message": (
-            "Your Subtrack application data was deleted. Your Supabase sign-in "
-            "identity remains because this API is not configured with Supabase "
-            "administrator credentials."
+            "Your Subtrack application data and sign-in account were deleted."
+            if identity_deleted
+            else "Your Subtrack application data was deleted. Your Supabase sign-in "
+            "identity remains because it could not be deleted from this API."
         ),
     }

@@ -29,6 +29,7 @@ from app.models import (  # noqa: E402
 )
 from app.routers.email_reminders import EmailOptIn, get_email_preferences, set_email_preferences  # noqa: E402
 from app.services.email_reminders import send_due  # noqa: E402
+from app.services.email_text import email_safe_name  # noqa: E402
 
 # Payday is Tue 10 Nov 2026 in Sydney (UTC+11). 21:00 UTC on 9 Nov is 8am there.
 PAYDAY_MORNING = datetime(2026, 11, 9, 21, 0)
@@ -193,6 +194,18 @@ class AlertTests(unittest.TestCase):
         self.assertEqual(self.subjects(), ["Stan: offer ends Fri 13 Nov"])
         self.assertIn("After that it's A$15.99", self.send.call_args.kwargs["json"]["text"])
 
+    def test_a_name_with_a_link_reaches_the_email_without_it(self):
+        self.add_user()
+        self.add_trial("Locked! Verify at https://evil.example/x or evil.example", datetime(2026, 11, 13, 12, 0))
+
+        self.sent_at(self.MORNING_AFTER)
+
+        payload = self.send.call_args.kwargs["json"]
+        for part in (payload["subject"], payload["text"]):
+            self.assertNotIn("evil.example", part)
+            self.assertNotIn("https://evil", part)
+        self.assertIn("Locked! Verify at or evil example", payload["subject"])
+
     def test_no_more_than_two_alerts_per_pay_cycle(self):
         self.add_user(pay_amount=Decimal("60.00"))
         for name in ("Stan", "Binge", "Kayo"):
@@ -223,9 +236,23 @@ class PaydayOptInTests(unittest.TestCase):
         self.db.close()
         self.engine.dispose()
 
-    def request(self, email="owner@example.com"):
-        token = jwt.encode({"email": email}, "unused-secret-of-sufficient-length-32b")
+    def request(self, email="owner@example.com", **claims):
+        token = jwt.encode({"email": email, **claims}, "unused-secret-of-sufficient-length-32b")
         return SimpleNamespace(headers={"authorization": f"Bearer {token}"})
+
+    def test_anonymous_or_unverified_accounts_cannot_opt_in(self):
+        for claims in ({"is_anonymous": True}, {"user_metadata": {"email_verified": False}}):
+            with self.subTest(claims=claims), self.assertRaises(HTTPException) as caught:
+                set_email_preferences(EmailOptIn(payday=True), self.request(**claims), user_id="owner", db=self.db)
+            self.assertEqual(caught.exception.status_code, 403)
+        self.assertIsNone(self.db.get(EmailPreference, "owner"))
+
+    def test_a_verified_account_can_opt_in(self):
+        request = self.request(is_anonymous=False, user_metadata={"email_verified": True})
+
+        result = set_email_preferences(EmailOptIn(payday=True), request, user_id="owner", db=self.db)
+
+        self.assertTrue(result["payday"])
 
     def test_payday_turns_on_without_payment_reminders(self):
         result = set_email_preferences(EmailOptIn(payday=True), self.request(), user_id="owner", db=self.db)
@@ -248,6 +275,18 @@ class PaydayOptInTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as caught:
             set_email_preferences(EmailOptIn(payday=True), self.request(), user_id="demo_abc", db=self.db)
         self.assertEqual(caught.exception.status_code, 403)
+
+
+class EmailSafeNameTests(unittest.TestCase):
+    def test_links_and_domains_are_removed_or_broken_apart(self):
+        self.assertEqual(email_safe_name("Go to http://a.example/x now"), "Go to now")
+        self.assertEqual(email_safe_name("www.evil.example/login"), "A payment")
+        self.assertEqual(email_safe_name("Amazon.com Prime"), "Amazon com Prime")
+
+    def test_plain_names_are_unchanged_and_long_ones_are_cut(self):
+        self.assertEqual(email_safe_name("Netflix Premium 4K"), "Netflix Premium 4K")
+        self.assertEqual(email_safe_name("Rent\n\nPay now"), "Rent Pay now")
+        self.assertEqual(len(email_safe_name("x" * 200)), 60)
 
 
 if __name__ == "__main__":

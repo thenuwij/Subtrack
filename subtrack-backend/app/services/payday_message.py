@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import SafeToSpendProfile
+from app.services.email_text import email_safe_name
 from app.services.recurrence import occurrences_between
 from app.services.safe_to_spend import _local_date, _user_zone, safe_to_spend
 
@@ -78,11 +79,14 @@ def payday_message(db: Session, user_id: str, *, now: datetime) -> tuple[date, d
     lines.append(f"Bills before next payday: {money(position['committed'], currency)}")
     for item in commitments[:MAX_LISTED_BILLS]:
         prefix = "about " if item["is_estimate"] else ""
-        lines.append(f"  - {item['name']}, {_short_date(item['due_at'])}: {prefix}{money(item['amount'], currency)}")
+        lines.append(f"  - {email_safe_name(item['name'])}, {_short_date(item['due_at'])}: {prefix}{money(item['amount'], currency)}")
     if len(commitments) > MAX_LISTED_BILLS:
         lines.append(f"  - and {len(commitments) - MAX_LISTED_BILLS} more")
     if position.get("set_aside"):
-        parts = ", ".join(f"{item['name']} {money(item['amount'], currency)}" for item in position["set_asides"])
+        parts = ", ".join(
+            f"{email_safe_name(item['name'])} {money(item['amount'], currency)}"
+            for item in position["set_asides"]
+        )
         lines.append(f"Set aside: {money(position['set_aside'], currency)} ({parts})")
     lines.append(f"Buffer: {money(position['buffer'], currency)}")
     lines.append("")

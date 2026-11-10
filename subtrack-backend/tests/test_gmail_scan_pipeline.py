@@ -1,3 +1,4 @@
+import base64
 import os
 import time
 import unittest
@@ -17,9 +18,12 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 from app.database import Base  # noqa: E402
 from app.gmail.analyzer import AnalysisOutcome, analyze_bounded  # noqa: E402
 from app.gmail.scanner import (  # noqa: E402
+    MAX_PDF_BYTES,
     ReceiptCandidate,
     ScanResult,
     _fetch_all,
+    _pdf_attachment,
+    _read_bill_pdfs,
 )
 from app.models import GmailAccount  # noqa: E402
 from app.routers import gmail as gmail_router  # noqa: E402
@@ -259,3 +263,26 @@ class AnalysisRetryTests(unittest.TestCase):
         self._patched([capped, self._ok_response()])
 
         self.assertEqual(self.slept, [3.0])
+
+
+class BillPdfLimitTests(unittest.TestCase):
+    def payload(self, size):
+        return {"parts": [{"filename": "bill.pdf", "body": {"attachmentId": "att-1", "size": size}}]}
+
+    def test_large_pdfs_are_skipped_before_download(self):
+        self.assertEqual(_pdf_attachment(self.payload(200_000)), "att-1")
+        self.assertIsNone(_pdf_attachment(self.payload(MAX_PDF_BYTES + 1)))
+
+    def test_an_attachment_larger_than_announced_is_never_parsed(self):
+        candidate = mock.Mock(
+            bill_amount=50, bill_due_on=None, pdf_attachment_id="att-1", message_id="m1", subject="Bill",
+        )
+        service = mock.Mock()
+        oversized = base64.urlsafe_b64encode(b"%PDF" + b"0" * MAX_PDF_BYTES).decode()
+        service.users().messages().attachments().get().execute.return_value = {"data": oversized}
+
+        with patch("pypdf.PdfReader") as reader:
+            _read_bill_pdfs(service, [candidate], deadline=None)
+
+        reader.assert_not_called()
+        self.assertIsNone(candidate.bill_due_on)

@@ -144,11 +144,12 @@ class TokenIssuerTests(unittest.TestCase):
     secret = "issuer-test-secret-with-at-least-32-bytes"
     issuer = "https://project.supabase.co/auth/v1"
 
-    def _credentials(self, issuer=None, *, kid=None):
+    def _credentials(self, issuer=None, *, kid=None, **extra):
         claims = {
             "sub": "user-123",
             "aud": "authenticated",
             "exp": int(time.time()) + 300,
+            **extra,
         }
         if issuer is not None:
             claims["iss"] = issuer
@@ -186,6 +187,26 @@ class TokenIssuerTests(unittest.TestCase):
                 "user-123",
             )
         find_jwk.assert_not_called()
+
+    def test_anonymous_sessions_are_rejected(self):
+        with (
+            patch.object(settings, "supabase_jwt_secret", self.secret),
+            patch.object(settings, "supabase_url", ""),
+        ):
+            with self.assertRaises(HTTPException) as caught:
+                auth.verify_token(self._credentials(is_anonymous=True))
+            self.assertEqual(auth.verify_token(self._credentials(is_anonymous=False)), "user-123")
+        self.assertEqual(caught.exception.status_code, 401)
+
+    def test_legacy_hs256_can_be_switched_off(self):
+        with (
+            patch.object(settings, "supabase_jwt_secret", self.secret),
+            patch.object(settings, "supabase_url", ""),
+            patch.object(settings, "allow_legacy_hs256", False),
+            self.assertRaises(HTTPException) as caught,
+        ):
+            auth.verify_token(self._credentials())
+        self.assertEqual(caught.exception.status_code, 401)
 
     def test_access_token_must_have_an_expiry(self):
         token = jwt.encode(
@@ -305,6 +326,21 @@ class ProductionSettingsTests(unittest.TestCase):
 
 
 class ApiBoundaryTests(unittest.TestCase):
+    def test_production_hides_the_api_docs_and_schema(self):
+        from fastapi import FastAPI
+
+        from app.main import docs_urls
+
+        production = FastAPI(**docs_urls("production"))
+        paths = {route.path for route in production.routes}
+        self.assertFalse(paths & {"/docs", "/redoc", "/openapi.json"})
+        self.assertIn("/openapi.json", {route.path for route in FastAPI(**docs_urls("development")).routes})
+
+    def test_database_errors_never_log_query_parameters(self):
+        from app.database import engine
+
+        self.assertTrue(engine.hide_parameters)
+
     def test_response_security_headers_and_exact_cors_origin(self):
         from app.main import app
 

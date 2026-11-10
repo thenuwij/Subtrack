@@ -98,6 +98,12 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str
     # Needed to fetch JWKS for ES256-signed Supabase access tokens.
     supabase_url: str = ""
+    # Accept tokens signed with the legacy shared secret. Turn off once
+    # Supabase shows no HS256 sessions, then revoke that secret.
+    allow_legacy_hs256: bool = True
+    # Backend-only admin key; when set, account deletion also removes the
+    # Supabase sign-in identity. Never expose it to the browser.
+    supabase_service_role_key: str = ""
     allowed_origins: str = "http://localhost:3000"
     # Canonical browser URL used for redirects and public links. Keep this
     # separate from the CORS allow-list, which may contain multiple origins.
@@ -138,8 +144,12 @@ class Settings(BaseSettings):
     demo_token_secret: str = ""
     demo_session_hours: int = Field(default=24, ge=1, le=72)
     demo_sessions_per_client_per_hour: int = Field(default=15, ge=1, le=100)
-    demo_sessions_per_hour: int = Field(default=200, ge=1, le=10_000)
+    demo_sessions_per_hour: int = Field(default=50, ge=1, le=10_000)
     demo_agent_messages: int = Field(default=20, ge=1, le=200)
+    # Global daily Anthropic spend, from ai_call_traces, after which AI
+    # features return 503 until the next UTC day. 0 disables the breaker.
+    ai_daily_cost_limit_usd: float = Field(default=20.0, ge=0)
+    assistant_runs_per_day: int = Field(default=100, ge=1, le=10_000)
 
     @model_validator(mode="after")
     def resolve_frontend_url(self) -> "Settings":

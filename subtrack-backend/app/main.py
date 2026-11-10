@@ -57,7 +57,14 @@ async def lifespan(_app: FastAPI):
         on_shutdown()
 
 
-app = FastAPI(title="Subtrack API", lifespan=lifespan)
+def docs_urls(environment: str) -> dict[str, str | None]:
+    """The interactive docs and schema stay off in production."""
+    if environment == "production":
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {}
+
+
+app = FastAPI(title="Subtrack API", lifespan=lifespan, **docs_urls(settings.environment))
 
 # CORS
 app.add_middleware(

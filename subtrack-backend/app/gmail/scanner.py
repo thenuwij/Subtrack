@@ -284,9 +284,17 @@ def _to_candidate(message: dict) -> ReceiptCandidate:
     )
 
 
+# Larger PDFs are skipped before download: parsing untrusted PDFs is the
+# costliest step of a scan, and real bills are far smaller than this.
+MAX_PDF_BYTES = 2 * 1024 * 1024
+
+
 def _pdf_attachment(payload: dict) -> str | None:
     if (payload.get("filename") or "").lower().endswith(".pdf"):
-        return payload.get("body", {}).get("attachmentId")
+        body = payload.get("body", {})
+        if body.get("size", 0) > MAX_PDF_BYTES:
+            return None
+        return body.get("attachmentId")
     for part in payload.get("parts", []) or []:
         found = _pdf_attachment(part)
         if found:
@@ -318,6 +326,8 @@ def _read_bill_pdfs(service, candidates: list, deadline: float | None) -> None:
                 userId="me", messageId=candidate.message_id, id=candidate.pdf_attachment_id,
             ).execute()
             data = base64.urlsafe_b64decode(attachment["data"].encode())
+            if len(data) > MAX_PDF_BYTES:
+                continue
             pages = PdfReader(BytesIO(data)).pages[:2]
             text = "\n".join(page.extract_text() or "" for page in pages)
         except Exception as exc:  # noqa: BLE001 - a bad PDF must not stop the scan
