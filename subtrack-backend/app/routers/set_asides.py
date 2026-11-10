@@ -48,6 +48,7 @@ class SpendCreate(BaseModel):
     amount: Decimal = Money
     currency: SupportedCurrency | None = None
     set_aside_id: UUID | None = None
+    category: Category = Category.other
 
 
 def _owned(db: Session, user_id: str, set_aside_id: UUID) -> SetAside:
@@ -125,14 +126,16 @@ def log_spend(body: SpendCreate, user_id: str = Depends(verify_token), db: Sessi
     if body.set_aside_id is not None:
         pot = _owned(db, user_id, body.set_aside_id)
         if pot.kind != "pot":
-            raise HTTPException(422, "Spends can only come out of a spending pot.")
+            raise HTTPException(422, "Spends can only come out of a spending budget.")
+    if body.category == Category.income:
+        raise HTTPException(422, "A spend can't use the income category.")
     row = Transaction(
         user_id=user_id,
         kind=TransactionKind.expense.value,
         name=body.name,
         amount=body.amount,
         currency=body.currency or base_currency_for(db, user_id),
-        category=Category.other,
+        category=body.category,
         occurred_on=datetime.now(_user_zone(db, user_id)).date(),
         source=TransactionSource.manual.value,
         set_aside_id=body.set_aside_id,
@@ -141,6 +144,71 @@ def log_spend(body: SpendCreate, user_id: str = Depends(verify_token), db: Sessi
     db.add(row)
     db.commit()
     record(db, user_id, "spend_logged")
+    return safe_to_spend(db, user_id)
+
+
+class IncomeCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str = Field(min_length=1, max_length=200)
+    amount: Decimal = Money
+    currency: SupportedCurrency | None = None
+
+
+@router.post("/safe-to-spend/incomes", status_code=201)
+def log_income(body: IncomeCreate, user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+    """Record money received today on top of usual pay; it adds to this pay cycle only."""
+    row = Transaction(
+        user_id=user_id,
+        kind=TransactionKind.income.value,
+        name=body.name,
+        amount=body.amount,
+        currency=body.currency or base_currency_for(db, user_id),
+        category=Category.income,
+        occurred_on=datetime.now(_user_zone(db, user_id)).date(),
+        source=TransactionSource.manual.value,
+    )
+    apply_conversion(db, row, base_currency_for(db, user_id))
+    db.add(row)
+    db.commit()
+    record(db, user_id, "income_logged")
+    return safe_to_spend(db, user_id)
+
+
+class SpendUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    amount: Decimal | None = Field(default=None, gt=0, le=Decimal("1000000"), max_digits=12, decimal_places=2)
+    category: Category | None = None
+    set_aside_id: UUID | None = None
+
+
+@router.patch("/safe-to-spend/spends/{spend_id}")
+def edit_spend(
+    spend_id: UUID, body: SpendUpdate, user_id: str = Depends(verify_token), db: Session = Depends(get_db),
+):
+    """Fix a logged spend or extra income: its name, amount, category or budget."""
+    row = db.get(Transaction, spend_id)
+    if row is None or row.user_id != user_id or row.recurring_payment_id is not None:
+        raise HTTPException(404, "Spend not found")
+    is_income = row.kind == TransactionKind.income.value
+    if is_income and ({"category", "set_aside_id"} & body.model_fields_set):
+        raise HTTPException(422, "Extra income only has a name and an amount.")
+    if body.category == Category.income:
+        raise HTTPException(422, "A spend can't use the income category.")
+    if body.set_aside_id is not None and _owned(db, user_id, body.set_aside_id).kind != "pot":
+        raise HTTPException(422, "Spends can only come out of a spending budget.")
+    if body.name is not None:
+        row.name = body.name
+    if body.amount is not None:
+        row.amount = body.amount
+        apply_conversion(db, row, base_currency_for(db, user_id))
+    if body.category is not None:
+        row.category = body.category
+    if "set_aside_id" in body.model_fields_set:
+        row.set_aside_id = body.set_aside_id
+    db.commit()
     return safe_to_spend(db, user_id)
 
 

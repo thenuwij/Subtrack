@@ -18,7 +18,7 @@ from app.services.set_asides import _Rates, _to_base
 from app.services.transactions import amount_in_base, base_currency_for
 
 MAX_CYCLES = 26
-NOTE = "Pots and savings use their current amounts, from the pay they were added in."
+NOTE = "Budgets and savings use their current amounts, from the pay they were added in."
 
 
 def _cycle_bounds(profile: SafeToSpendProfile, today: date, count: int) -> list[tuple[date, date]]:

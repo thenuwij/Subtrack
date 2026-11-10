@@ -16,10 +16,14 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 from app.database import Base  # noqa: E402
 from app.models import SafeToSpendProfile, SetAside, Transaction, UserPreference  # noqa: E402
 from app.routers.set_asides import (  # noqa: E402
+    IncomeCreate,
     SetAsideCreate,
     SpendCreate,
+    SpendUpdate,
     create_set_aside,
     delete_set_aside,
+    edit_spend,
+    log_income,
     log_spend,
     undo_spend,
 )
@@ -144,8 +148,135 @@ class SetAsideTests(unittest.TestCase):
 
         self.assertEqual(self.position()["spent"], 0.0)
 
+    def test_pay_plan_takes_off_spends_outside_budgets_and_over_them(self):
+        self.profile(balance=Decimal("500.00"), balance_as_of=datetime(2026, 11, 2, 12, 0))
+        pot = self.set_aside("pot", "Groceries", 150)
+        self.spend(100, pot=pot)  # inside the budget: already held back
+        self.spend(70, pot=pot)  # 20 over the budget
+        self.spend(30, created_at=datetime(2026, 11, 3, 1, 0))  # outside any budget
+
+        plan = self.position()["pay_plan"]
+
+        # Spends before the balance still count here: the plan works from pay, not the balance.
+        self.assertEqual((plan["set_aside"], plan["spent"]), (150.0, 50.0))
+        self.assertEqual(plan["left"], 1200.0)  # 1400 - 150 - 50
+        self.assertEqual(plan["over_budgets"], 20.0)
+        self.assertEqual(plan["spent_by_category"], [{"category": "other", "amount": 30.0}])
+
+    def income(self, amount, *, on=date(2026, 11, 2), created_at=datetime(2026, 11, 2, 1, 0)):
+        self.db.add(Transaction(
+            user_id="owner", kind="income", name="Extra shift", amount=amount, currency="AUD",
+            occurred_on=on, created_at=created_at,
+        ))
+        self.db.commit()
+
+    def test_extra_income_adds_to_this_pay_and_to_free_money(self):
+        self.profile()
+        self.income(200)
+
+        result = self.position()
+
+        self.assertEqual((result["extra_income"], result["safe_to_spend"]), (200.0, 1550.0))
+        plan = result["pay_plan"]
+        self.assertEqual((plan["extra_income"], plan["left"]), (200.0, 1600.0))
+        self.assertEqual(plan["incomes"][0]["name"], "Extra shift")
+
+    def test_a_balance_already_shows_income_logged_before_it(self):
+        self.profile(balance=Decimal("500.00"), balance_as_of=datetime(2026, 11, 2, 12, 0))
+        self.income(100, created_at=datetime(2026, 11, 2, 1, 0))  # before the balance
+        self.income(40, created_at=datetime(2026, 11, 3, 1, 0))  # after it
+
+        result = self.position()
+
+        self.assertEqual(result["safe_to_spend"], 490.0)  # 500 - 50 buffer + 40
+        self.assertEqual(result["pay_plan"]["extra_income"], 140.0)
+
+    def test_income_from_an_earlier_pay_cycle_does_not_count(self):
+        self.profile()
+        self.income(200, on=date(2026, 10, 26))
+
+        result = self.position()
+
+        self.assertEqual((result["extra_income"], result["pay_plan"]["extra_income"]), (0.0, 0.0))
+
 
 class SetAsideApiTests(SetAsideTests):
+    def test_editing_a_spend_fixes_its_amount_category_and_budget(self):
+        self.profile()
+        pot = self.set_aside("pot", "Groceries", 150)
+
+        with (
+            patch("app.routers.set_asides.datetime", FixedClock),
+            patch("app.routers.set_asides.safe_to_spend", side_effect=lambda db, user_id: safe_to_spend(db, user_id, now=NOW)),
+        ):
+            logged = log_spend(SpendCreate(name="Coles", amount=Decimal("80")), user_id="owner", db=self.db)
+            spend_id = UUID(logged["spends"][0]["id"])
+            edited = edit_spend(
+                spend_id, SpendUpdate(amount=Decimal("60"), category="food", set_aside_id=pot.id), user_id="owner", db=self.db,
+            )
+            moved_out = edit_spend(spend_id, SpendUpdate(set_aside_id=None), user_id="owner", db=self.db)
+
+        self.assertEqual(logged["pay_plan"]["spent"], 80.0)
+        self.assertEqual(edited["spends"][0]["amount"], 60.0)
+        self.assertEqual(edited["spends"][0]["category"], "food")
+        self.assertEqual((edited["set_asides"][0]["left"], edited["pay_plan"]["spent"]), (90.0, 0.0))
+        self.assertEqual(moved_out["pay_plan"]["spent_by_category"], [{"category": "food", "amount": 60.0}])
+
+    def test_editing_extra_income_only_changes_name_and_amount(self):
+        self.profile()
+        self.income(100)
+        income_id = UUID(self.position()["incomes"][0]["id"])
+
+        with patch("app.routers.set_asides.safe_to_spend", side_effect=lambda db, user_id: safe_to_spend(db, user_id, now=NOW)):
+            edited = edit_spend(income_id, SpendUpdate(amount=Decimal("150")), user_id="owner", db=self.db)
+            with self.assertRaises(HTTPException) as caught:
+                edit_spend(income_id, SpendUpdate(category="food"), user_id="owner", db=self.db)
+
+        self.assertEqual(edited["pay_plan"]["extra_income"], 150.0)
+        self.assertEqual(caught.exception.status_code, 422)
+
+    def test_you_can_only_edit_your_own_spends(self):
+        self.profile()
+        self.db.add(Transaction(
+            user_id="someone-else", kind="expense", name="Theirs", amount=10, currency="AUD", occurred_on=date(2026, 11, 2),
+        ))
+        self.db.commit()
+        theirs = self.db.query(Transaction).filter(Transaction.user_id == "someone-else").one()
+
+        with self.assertRaises(HTTPException) as caught:
+            edit_spend(theirs.id, SpendUpdate(amount=Decimal("1")), user_id="owner", db=self.db)
+
+        self.assertEqual(caught.exception.status_code, 404)
+
+    def test_a_spend_keeps_its_category_and_cannot_be_income(self):
+        self.profile()
+
+        with (
+            patch("app.routers.set_asides.datetime", FixedClock),
+            patch("app.routers.set_asides.safe_to_spend", side_effect=lambda db, user_id: safe_to_spend(db, user_id, now=NOW)),
+        ):
+            after = log_spend(SpendCreate(name="Uber", amount=Decimal("18"), category="transport"), user_id="owner", db=self.db)
+            with self.assertRaises(HTTPException) as caught:
+                log_spend(SpendCreate(name="Oops", amount=Decimal("5"), category="income"), user_id="owner", db=self.db)
+
+        self.assertEqual(after["spends"][0]["category"], "transport")
+        self.assertEqual(after["pay_plan"]["spent_by_category"], [{"category": "transport", "amount": 18.0}])
+        self.assertEqual(caught.exception.status_code, 422)
+
+    def test_logging_income_returns_the_new_number_and_undo_restores_it(self):
+        self.profile()
+
+        with (
+            patch("app.routers.set_asides.datetime", FixedClock),
+            patch("app.routers.set_asides.safe_to_spend", side_effect=lambda db, user_id: safe_to_spend(db, user_id, now=NOW)),
+        ):
+            after = log_income(IncomeCreate(name="Extra shift", amount=Decimal("120")), user_id="owner", db=self.db)
+            income_id = after["incomes"][0]["id"]
+            undone = undo_spend(UUID(income_id), user_id="owner", db=self.db)
+
+        self.assertEqual(after["pay_plan"]["left"], 1520.0)
+        self.assertEqual(undone["pay_plan"]["left"], 1400.0)
+
     def test_logging_a_spend_returns_the_new_number_and_undo_restores_it(self):
         self.profile()
         pot = self.set_aside("pot", "Eating out", 60)

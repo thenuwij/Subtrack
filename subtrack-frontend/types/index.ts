@@ -420,6 +420,27 @@ export interface SetAsidePosition {
   left?: number
 }
 
+/** overdue: due before this period and still unpaid, so it's owed now. */
+export interface BillRow { id: string; name: string; category: string; due_at: string; amount: number; is_estimate: boolean; overdue?: boolean }
+
+export interface IncomeRow { id: string; name: string; amount: number; occurred_on: string }
+
+export interface PayPlan {
+  pay_amount: number | null
+  /** Money received this cycle on top of usual pay. */
+  extra_income: number
+  incomes: IncomeRow[]
+  bills: number
+  bill_list: BillRow[]
+  set_aside: number
+  /** Logged spends outside any budget, plus anything spent over a budget. */
+  spent: number
+  spent_by_category: { category: string; amount: number }[]
+  over_budgets: number
+  /** Pay plus extra income, minus bills, set-asides and spends; null without a usual pay. */
+  left: number | null
+}
+
 export interface SafeToSpend {
   status: 'needs_setup' | 'ready' | 'balance_outdated' | 'incomplete'
   /** "balance" uses today's balance; "estimate" uses usual pay for the whole pay cycle. */
@@ -439,14 +460,20 @@ export interface SafeToSpend {
   pay_amount?: number | null
   buffer?: number
   committed?: number
-  /** overdue: due before this period and still unpaid, so it's owed now. */
-  commitments?: { id: string; name: string; due_at: string; amount: number; is_estimate: boolean; overdue?: boolean }[]
+  commitments?: BillRow[]
+  /** When the saved balance was entered (UTC), shown so an old result reads as a past snapshot. */
+  balance_checked_at?: string | null
+  /** Where this pay goes, from pay alone; it doesn't go stale as the user spends. */
+  pay_plan?: PayPlan | null
   /** Total taken off for savings and what's left in spending pots this pay cycle. */
   set_aside?: number
   /** Logged spends this cycle that the balance doesn't already show. */
   spent?: number
+  /** Extra income logged this cycle that the balance doesn't already show. */
+  extra_income?: number
+  incomes?: IncomeRow[]
   set_asides?: SetAsidePosition[]
-  spends?: { id: string; name: string; amount: number; occurred_on: string; set_aside_id: string | null }[]
+  spends?: { id: string; name: string; amount: number; category: string; occurred_on: string; set_aside_id: string | null }[]
   profile?: Omit<SafeToSpendProfileInput, 'next_payday'>
   warnings?: string[]
 }

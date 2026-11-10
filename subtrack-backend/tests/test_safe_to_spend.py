@@ -19,6 +19,7 @@ from app.models import (  # noqa: E402
     Category,
     PaymentDecision,
     SafeToSpendProfile,
+    SetAside,
     Subscription,
     Transaction,
     UserPreference,
@@ -314,6 +315,33 @@ class SafeToSpendTests(unittest.TestCase):
         result = safe_to_spend(self.db, "owner", now=NOW)
 
         self.assertEqual((result["mode"], result["balance"]), ("balance", 620.0))
+
+    def test_pay_plan_covers_the_whole_cycle_even_with_a_mid_cycle_balance(self):
+        self.add_profile(pay_amount=Decimal("1400.00"))
+        self.add_cycle_payments()
+        self.db.add(SetAside(user_id="owner", kind="pot", name="Food", amount_per_pay=Decimal("100.00"), currency="AUD"))
+        self.db.commit()
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        # The balance only counts bills from 3 Nov; the plan counts the whole pay, like the estimate.
+        self.assertEqual(result["mode"], "balance")
+        self.assertEqual(result["committed"], 105.0)
+        plan = result["pay_plan"]
+        self.assertEqual((plan["pay_amount"], plan["bills"], plan["set_aside"]), (1400.0, 505.0, 100.0))
+        self.assertEqual(plan["left"], 795.0)
+        self.assertEqual(len(plan["bill_list"]), 5)
+        self.assertTrue(all(row["category"] == list(Category)[0].value for row in plan["bill_list"]))
+        self.assertEqual(result["balance_checked_at"], "2026-11-03T02:00:00Z")
+
+    def test_pay_plan_lists_bills_without_a_usual_pay(self):
+        self.add_profile(balance_as_of=datetime(2026, 10, 20), pay_anchor_on=date(2026, 10, 27))
+        self.add_payment("Streaming", 30, datetime(2026, 11, 8))
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        self.assertEqual(result["status"], "balance_outdated")
+        self.assertEqual((result["pay_plan"]["bills"], result["pay_plan"]["left"]), (30.0, None))
 
     def test_an_outdated_balance_without_pay_has_no_number(self):
         self.add_profile(balance_as_of=datetime(2026, 10, 20), pay_anchor_on=date(2026, 10, 27))
