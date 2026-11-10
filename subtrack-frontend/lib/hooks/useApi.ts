@@ -16,6 +16,7 @@ export const apiKeys = {
   reminders: (horizonDays: number) => `reminders:${horizonDays}`,
   preferences: 'preferences',
   safeToSpend: 'safe-to-spend',
+  emailSettings: 'email-reminders',
   duplicates: 'duplicates',
   transactions: (month: string) => `transactions:${month}`,
   transactionSummary: (month: string) => `transaction-summary:${month}`,

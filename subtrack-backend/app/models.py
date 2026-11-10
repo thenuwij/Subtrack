@@ -977,7 +977,10 @@ class EmailPreference(Base):
     __tablename__ = "email_preferences"
     user_id = Column(String, primary_key=True)
     email = Column(String(320), nullable=False)
+    # Payment reminder emails.
     enabled = Column(Boolean, nullable=False, default=False)
+    # The payday message: what's spoken for and what's free until next payday.
+    payday_enabled = Column(Boolean, nullable=False, default=False, server_default=false())
 
 
 class ReminderDelivery(Base):

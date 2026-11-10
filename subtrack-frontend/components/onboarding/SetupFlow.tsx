@@ -6,10 +6,18 @@ import { useSWRConfig } from 'swr'
 import { Check, Plus, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BillDraft, Category, Currency } from '@/types'
-import { createSubscription, parseBillText, saveSafeToSpendProfile, updatePreferences } from '@/lib/api'
-import { getAccessToken } from '@/lib/auth/session'
+import {
+  createSubscription,
+  getEmailReminders,
+  parseBillText,
+  saveSafeToSpendProfile,
+  setEmailReminders,
+  updatePreferences,
+  type EmailSettings,
+} from '@/lib/api'
+import { getAccessToken, useIsDemo } from '@/lib/auth/session'
 import { useCurrency } from '@/lib/context/currency'
-import { apiKeys, errorMessage } from '@/lib/hooks/useApi'
+import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { PAY_SCHEDULES, type PaySchedule } from '@/lib/payday'
 import { COMMON_BILLS, HOW_OFTEN, howOftenOf, type HowOften } from '@/lib/setup/commonBills'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -55,6 +63,10 @@ export function SetupFlow() {
   const [line, setLine] = useState('')
   const [parsing, setParsing] = useState(false)
   const [balance, setBalance] = useState('')
+  const [paydayEmail, setPaydayEmail] = useState(false)
+  const emailSettings = useApi<EmailSettings>(apiKeys.emailSettings, getEmailReminders)
+  const demo = useIsDemo()
+  const canEmail = !demo && Boolean(emailSettings.data?.configured)
   const [saving, setSaving] = useState(false)
   // Bills already saved, so a retry after a failure doesn't add them twice.
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
@@ -134,7 +146,14 @@ export function SetupFlow() {
         saved.add(bill.id)
         setSavedIds(new Set(saved))
       }
+      if (paydayEmail && canEmail) {
+        // Setup is saved either way; the switch is also in Account.
+        await setEmailReminders(token, { payday: true }).catch(() => {
+          toast.error('Could not turn on the payday email. You can turn it on in Account.')
+        })
+      }
       await Promise.all([
+        mutate(apiKeys.emailSettings),
         mutate(apiKeys.safeToSpend),
         mutate(apiKeys.subscriptions('current')),
         mutate(apiKeys.preferences),
@@ -285,6 +304,22 @@ export function SetupFlow() {
             <Label htmlFor="setup-balance">Everyday account balance</Label>
             <Input id="setup-balance" type="number" step="0.01" inputMode="decimal" value={balance} onChange={event => setBalance(event.target.value)} />
           </div>
+          {canEmail ? (
+            <label className="flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 accent-primary"
+                checked={paydayEmail}
+                onChange={event => setPaydayEmail(event.target.checked)}
+              />
+              <span>
+                Email me on payday
+                <span className="block text-xs text-muted-foreground">
+                  The bills before your next pay and what&apos;s free to spend. Turn it off any time in Account.
+                </span>
+              </span>
+            </label>
+          ) : null}
           <p className="text-xs text-muted-foreground">
             We keep a {formatCurrency(DEFAULT_BUFFER, currency)} buffer aside. You can change it later. Subtrack never connects to your bank.
           </p>

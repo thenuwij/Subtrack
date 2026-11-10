@@ -49,6 +49,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** a test account gets exactly one correct message per payday.
 
+✅ Built 10 Nov 2026 (`0033_payday_email`). It's a separate switch from payment reminders, sent from 7am local time on payday by the existing hourly job, and links to `/balance`. Still needs Resend set up in production to actually send.
+
 ## Phase 5: Goals and big spends feed the number
 
 1. Each goal's per-pay target comes off free-to-spend as "set aside".

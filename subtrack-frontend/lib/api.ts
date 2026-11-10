@@ -760,11 +760,25 @@ export async function decidePayment(
   return response
 }
 
-export async function getEmailReminders(token: string) {
-  return request('/email-reminders', token) as Promise<{enabled: boolean; email: string | null; configured: boolean}>
+export interface EmailSettings {
+  /** Payment reminder emails. */
+  enabled: boolean
+  /** The payday email. */
+  payday: boolean
+  email: string | null
+  configured: boolean
 }
-export async function setEmailReminders(token: string, enabled: boolean) {
-  return request('/email-reminders', token, {method: 'PUT', body: JSON.stringify({enabled})})
+
+export async function getEmailReminders(token: string): Promise<EmailSettings> {
+  return request('/email-reminders', token)
+}
+
+/** Change either switch; a field left out keeps its current value. */
+export async function setEmailReminders(
+  token: string,
+  changes: { enabled?: boolean; payday?: boolean },
+): Promise<EmailSettings> {
+  return request('/email-reminders', token, { method: 'PUT', body: JSON.stringify(changes) })
 }
 
 export interface SavingsOverview {

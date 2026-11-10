@@ -274,7 +274,7 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ("created_at", "id"),
     ),
     ExportResource("payment_decisions", PaymentDecision, ("id", "target", "decision", "created_at"), ("created_at", "id")),
-    ExportResource("email_preferences", EmailPreference, ("email", "enabled"), ("user_id",)),
+    ExportResource("email_preferences", EmailPreference, ("email", "enabled", "payday_enabled"), ("user_id",)),
     ExportResource("reminder_deliveries", ReminderDelivery, ("key", "created_at", "sent_at"), ("key",)),
     ExportResource(
         "transactions",
