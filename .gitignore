@@ -16,3 +16,4 @@ subtrack-frontend/.next/
 .claude/
 CLAUDE.md
 subtrack-frontend/CLAUDE.md.claude/pipeline/
+.claude/pipeline/
