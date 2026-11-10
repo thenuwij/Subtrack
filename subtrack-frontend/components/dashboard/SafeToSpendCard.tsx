@@ -328,7 +328,7 @@ export function SafeToSpendCard() {
     : ''
 
   return (
-    <section className="money-hero h-full">
+    <section className="money-hero h-full" data-tour="free-to-spend">
       <div className="flex items-start justify-between gap-4">
         <div>
           {cycleStart && shortPayday ? (

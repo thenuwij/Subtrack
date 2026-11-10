@@ -5,13 +5,14 @@ from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.middleware.auth import verify_token
 from app.models import Category, SetAside, Transaction, TransactionKind, TransactionSource
+from app.services.pay_cycles import pay_cycles
 from app.services.product_events import record
 from app.services.safe_to_spend import _user_zone, safe_to_spend
 from app.services.transactions import apply_conversion, base_currency_for
@@ -151,3 +152,13 @@ def undo_spend(spend_id: UUID, user_id: str = Depends(verify_token), db: Session
     db.delete(row)
     db.commit()
     return safe_to_spend(db, user_id)
+
+
+@router.get("/safe-to-spend/cycles")
+def list_pay_cycles(
+    count: int = Query(default=6, ge=1, le=26),
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """This pay cycle and earlier ones: pots planned against spent, savings and other spends."""
+    return pay_cycles(db, user_id, count=count)
