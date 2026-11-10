@@ -82,7 +82,7 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 ## Phase 8: Pilot
 
-1. Update the README, landing page and privacy page to the new promise.
+1. Update the README, landing page and privacy page to the new promise. ✅ Done 10 Nov 2026; local setup moved to [local-setup.md](local-setup.md).
 2. Invite 20 students or shift workers. The owner uses it for their own pay cycles too.
 3. Run for 2 pay cycles. Interview 5 users.
 4. **Gate:** 10 or more still active after 2 cycles → plan email forwarding or statement upload. Fewer → revisit the wedge.
