@@ -2,13 +2,12 @@
 
 import { useState } from 'react'
 import { Mic } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
-import { parseTransactionText } from '@/lib/api'
 import type { Category, Currency, Transaction, TransactionInput, TransactionKind } from '@/types'
 import { useCurrency } from '@/lib/context/currency'
 import { todayUtcDateKey } from '@/lib/utils/dates'
 import { EXPENSE_CATEGORIES, spendingCategoryLabel } from '@/lib/utils/spending'
 import { Button } from '@/components/ui/button'
+import { VoiceEntry, beginRecognition, speechRecognitionClass, type StartedVoice } from './VoiceEntry'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
@@ -30,27 +29,12 @@ const KINDS: { value: TransactionKind; label: string }[] = [
   { value: 'income', label: 'Income' },
 ]
 
-interface SpeechResult { 0: { transcript: string } }
-interface Recognition {
-  lang: string
-  onresult: ((event: { results: ArrayLike<SpeechResult> }) => void) | null
-  onerror: (() => void) | null
-  onend: (() => void) | null
-  start: () => void
-}
-
-function speechRecognitionClass(): (new () => Recognition) | null {
-  if (typeof window === 'undefined') return null
-  const w = window as unknown as Record<string, new () => Recognition>
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
-}
-
 export function EntryDialog({ entry, draft, onClose, onSave }: EntryDialogProps) {
   const { baseCurrency } = useCurrency()
   const [drafts, setDrafts] = useState<TransactionInput[]>(draft ?? [])
   const [draftIndex, setDraftIndex] = useState(0)
-  const [listening, setListening] = useState(false)
-  const [heard, setHeard] = useState('')
+  const [voice, setVoice] = useState<'record' | 'type' | null>(null)
+  const [started, setStarted] = useState<StartedVoice | null>(null)
   const canSpeak = !entry && speechRecognitionClass() !== null
   const [kind, setKind] = useState<TransactionKind>(entry?.kind ?? 'expense')
   const [amount, setAmount] = useState(entry ? String(entry.amount) : '')
@@ -70,37 +54,6 @@ export function EntryDialog({ entry, draft, onClose, onSave }: EntryDialogProps)
     setCategory(item.kind === 'expense' ? item.category : 'other')
     if (item.occurred_on) setDate(item.occurred_on.slice(0, 10))
     setCurrency(item.currency)
-  }
-
-  async function interpret(text: string) {
-    try {
-      const { data: { session } } = await createClient().auth.getSession()
-      if (!session) throw new Error('Please sign in again.')
-      const result = await parseTransactionText(session.access_token, text)
-      setDrafts(result.drafts)
-      setDraftIndex(0)
-      applyDraft(result.drafts[0])
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not understand that.')
-    }
-  }
-
-  function startListening() {
-    const Recognition = speechRecognitionClass()
-    if (!Recognition) return
-    const recognition = new Recognition()
-    recognition.lang = 'en-AU'
-    setError('')
-    setHeard('')
-    setListening(true)
-    recognition.onresult = event => {
-      const text = event.results[0][0].transcript
-      setHeard(text)
-      void interpret(text)
-    }
-    recognition.onerror = () => setError('Could not hear that. Try again or type it.')
-    recognition.onend = () => setListening(false)
-    recognition.start()
   }
 
   function stepDraft(index: number) {
@@ -141,18 +94,31 @@ export function EntryDialog({ entry, draft, onClose, onSave }: EntryDialogProps)
   return (
     <Dialog open onOpenChange={open => { if (!open && !saving) onClose() }}>
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
+        {voice ? (
+          <div className="space-y-4">
+            <DialogHeader>
+              <DialogTitle>Add by voice or text</DialogTitle>
+              <DialogDescription>Nothing is saved until you approve it.</DialogDescription>
+            </DialogHeader>
+            <VoiceEntry started={voice === 'record' ? started : null} onSave={onSave}
+              onCancel={() => setVoice(null)}
+              onEdit={item => { setDrafts([item]); setDraftIndex(0); applyDraft(item); setVoice(null) }} />
+          </div>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4">
           <DialogHeader>
             <DialogTitle>{entry ? 'Edit entry' : 'Add an entry'}</DialogTitle>
             <DialogDescription>Money you spent or money that came in.</DialogDescription>
           </DialogHeader>
 
-          {canSpeak ? (
-            <div className="space-y-1.5">
-              <Button type="button" variant="outline" onClick={startListening} disabled={listening || saving}>
-                <Mic className="h-4 w-4" />{listening ? 'Listening…' : 'Say it'}
-              </Button>
-              {heard ? <p className="text-sm text-muted-foreground">Heard: &ldquo;{heard}&rdquo;</p> : null}
+          {!entry ? (
+            <div className="flex flex-wrap gap-2">
+              {canSpeak ? (
+                <Button type="button" variant="outline" onClick={() => { setStarted(beginRecognition()); setVoice('record') }} disabled={saving}>
+                  <Mic className="h-4 w-4" />Say it
+                </Button>
+              ) : null}
+              <Button type="button" variant="ghost" onClick={() => setVoice('type')} disabled={saving}>Type instead</Button>
             </div>
           ) : null}
           {drafts.length > 1 ? (
@@ -205,6 +171,7 @@ export function EntryDialog({ entry, draft, onClose, onSave }: EntryDialogProps)
             <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
           </DialogFooter>
         </form>
+        )}
       </DialogContent>
     </Dialog>
   )
