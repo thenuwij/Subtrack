@@ -57,7 +57,7 @@ export default function PrivacyPage() {
           <li>Find possible recurring payments in the bills you forward, for you to review.</li>
           <li>Show in-app reminders, free trials, data-quality warnings, and possible duplicates.</li>
           <li>Send the emails you turn on: payment reminders, the payday email, and payday alerts.</li>
-          <li>Count anonymous usage, as described below, to see whether Subtrack is useful.</li>
+          <li>Count pseudonymous usage, as described below, to see whether Subtrack is useful.</li>
           <li>Answer assistant questions and prepare changes that require your confirmation.</li>
           <li>Protect, diagnose, and improve the reliability and security of the service.</li>
         </ul>
@@ -70,17 +70,17 @@ export default function PrivacyPage() {
         <h2>Emails</h2>
         <p>All emails are optional and off by default. There are two switches in Account: payment reminders, and the payday email and alerts (which you can also turn on during setup). To deliver them, Subtrack shares your account email address and the email&apos;s content with Resend. A reminder contains a payment name and date. The payday email contains your usual pay or balance, the names, dates and amounts of bills before your next payday, your set-asides, your buffer and what&apos;s free to spend. An alert contains a shortfall amount or a trial&apos;s name, end date and price. Subtrack keeps delivery metadata and a copy of each email to prevent duplicate sends. You can turn either switch off in Account at any time. Deleting your Subtrack app data removes these settings and delivery records.</p>
 
-        <h2>Anonymous usage counts</h2>
-        <p>To learn whether Subtrack is useful, it counts a few actions: starting and finishing setup, first seeing your number, opening Home (at most once a day), checking whether you can afford something, updating your balance, logging a spend, and opening the link in a payday email. Each count stores only the action&apos;s name, the time, and a one-way keyed code made from your account identifier, so returning users can be counted without storing who they are. Counts never include amounts, payment names, or email content. Demo sessions are not counted. Deleting your Subtrack app data deletes your counts.</p>
+        <h2>Pseudonymous usage counts</h2>
+        <p>To learn whether Subtrack is useful, it counts a few actions: starting and finishing setup, first seeing your number, opening Home (at most once a day), checking whether you can afford something, updating your balance, logging a spend, and opening the link in a payday email. Each count stores only the action&apos;s name, the time, and a keyed hash of your account identifier (a pseudonym, not your identity), so returning users can be counted without storing who they are. Counts never include amounts, payment names, or email content. Demo sessions are not counted. Deleting your Subtrack app data deletes your counts.</p>
         <h2>Service providers and disclosure</h2>
         <p>
-          Subtrack uses Google for sign-in, Supabase for authentication, Neon for the application database, Render for the API, Vercel for the website, Anthropic for AI processing, and Frankfurter for exchange-rate data. Providers process information for their stated technical role and under their own terms and privacy practices. Information may be processed in countries where these providers operate. Subtrack may also disclose information when legally required or necessary to protect users and the service. Subtrack does not sell personal information.
+          Subtrack uses Google for sign-in, Supabase for authentication, Neon for the application database, Render for the API, Vercel for the website, Anthropic for AI processing, Resend for email delivery, and Frankfurter for exchange-rate data. Providers process information for their stated technical role and under their own terms and privacy practices. Information may be processed in countries where these providers operate. Subtrack may also disclose information when legally required or necessary to protect users and the service. Subtrack does not sell personal information.
         </p>
 
         <h2>Retention</h2>
         <ul>
           <li>Recurring-payment records, pay details, set-asides, logged spends, reminders, preferences, derived findings from forwarded bills, and assistant history remain until you delete them or delete your Subtrack app data.</li>
-          <li>Anonymous usage counts remain until you delete your Subtrack app data.</li>
+          <li>Pseudonymous usage counts remain until you delete your Subtrack app data.</li>
           <li>Forwarded emails are processed when they arrive and their content is not retained in Subtrack&apos;s database.</li>
           <li>Expired demo sandboxes and their hashed visitor identifier are deleted the next time a demo starts or the service restarts.</li>
           <li>Alternative-research cache entries stop being used after approximately 24 hours; an expired database row may remain until your app data is deleted.</li>
@@ -92,7 +92,7 @@ export default function PrivacyPage() {
           <li>You can use core tracking without forwarding anything, and can pause, replace or delete your forwarding address at any time.</li>
           <li>Deleting your forwarding address stops new bills arriving. Previously approved payment records remain until you delete them.</li>
           <li>You can approve, correct, dismiss, edit, pause, end, or delete app records from Subtrack.</li>
-          <li>You can download an authenticated JSON export from Account. It excludes refresh tokens, shared exchange-rate cache data, anonymous usage counts, and the external Supabase identity.</li>
+          <li>You can download an authenticated JSON export from Account. It excludes refresh tokens, shared exchange-rate cache data, pseudonymous usage counts, and the external Supabase identity.</li>
           <li>You can permanently delete all user-owned Subtrack application records from Account using an exact confirmation phrase.</li>
         </ul>
         <p>
@@ -124,7 +124,7 @@ export default function PrivacyPage() {
           For privacy questions, access concerns, or deletion assistance, {SUPPORT_EMAIL ? (
             <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
           ) : (
-            <>use the operator contact listed on Subtrack&apos;s Google OAuth consent screen. A dedicated public support email must be configured before broad public release. Do not post personal or financial information in a public issue.</>
+            <>you can request a data export or deletion from the Account page. A support email will be listed here. Do not post personal or financial information in a public issue.</>
           )}
         </p>
       </article>

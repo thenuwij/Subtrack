@@ -107,7 +107,8 @@ export function ReminderDialog({
   }, [subscription.id])
 
   useEffect(() => {
-    if (open) void load()
+    // Deferred so state updates never run synchronously in the effect body.
+    if (open) queueMicrotask(() => { void load() })
   }, [load, open])
 
   const parsedDays = Number(daysBefore)
