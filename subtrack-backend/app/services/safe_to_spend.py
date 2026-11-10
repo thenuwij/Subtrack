@@ -30,7 +30,7 @@ ESTIMATE_SCOPE_NOTE = (
 )
 SET_ASIDE_NOTE = (
     " Money you set aside comes off each pay cycle in full; spending you log "
-    "from a pot uses up that pot first."
+    "from a budget uses up that budget first."
 )
 ESTIMATE_WARNING = (
     "This is an estimate from your usual pay. Add today's balance for an exact number."
@@ -94,6 +94,64 @@ def _to_decimal(value: float | Decimal) -> Decimal:
     return Decimal(str(value)).quantize(CENTS)
 
 
+def _bill_rows(forecast: dict, owing: list[dict]) -> list[dict]:
+    """Overdue unpaid payments first, then bills in the window."""
+    return owing + [
+        {
+            "id": row["id"],
+            "name": row["name"],
+            "category": row["category"],
+            "due_at": row["due_at"],
+            "amount": row["charge_amount_in_base"],
+            "is_estimate": row["charge_amount_is_estimate"],
+            "overdue": False,
+        }
+        for row in forecast["charges"]
+    ]
+
+
+def _pay_plan(
+    forecast: dict, owing: list[dict] | None, pay_amount: float | None, set_asides: dict | None,
+) -> dict | None:
+    """Where this pay goes: bills for the whole cycle and set-asides, from pay plus extra income.
+
+    It doesn't use the balance; every spend logged this cycle counts, whenever it was logged.
+    """
+    if owing is None or set_asides is None or forecast["unconverted_occurrence_count"]:
+        return None
+    bills = _bill_rows(forecast, owing)
+    bills_total = sum((_to_decimal(row["amount"]) for row in bills), Decimal("0"))
+    set_aside_total = sum((_to_decimal(item["amount"]) for item in set_asides["set_asides"]), Decimal("0"))
+    extra = set_asides["extra_income"].quantize(CENTS)
+    # A spend from a budget uses that budget's money; only going over it, or
+    # spending outside any budget, comes off what's left of this pay.
+    over_budgets = sum(
+        (max(_to_decimal(item["spent"]) - _to_decimal(item["amount"]), Decimal("0"))
+         for item in set_asides["set_asides"] if item["kind"] == "pot"),
+        Decimal("0"),
+    )
+    by_category: dict[str, Decimal] = {}
+    for spend in set_asides["spends"]:
+        if spend["set_aside_id"] is None:
+            by_category[spend["category"]] = by_category.get(spend["category"], Decimal("0")) + _to_decimal(spend["amount"])
+    spent = over_budgets + sum(by_category.values(), Decimal("0"))
+    pay = _to_decimal(pay_amount) if pay_amount is not None else None
+    return {
+        "pay_amount": float(pay) if pay is not None else None,
+        "extra_income": float(extra),
+        "incomes": set_asides["incomes"],
+        "bills": float(bills_total),
+        "bill_list": bills,
+        "set_aside": float(set_aside_total),
+        "spent": float(spent),
+        "spent_by_category": [
+            {"category": category, "amount": float(amount)} for category, amount in by_category.items()
+        ],
+        "over_budgets": float(over_budgets),
+        "left": float(pay + extra - bills_total - set_aside_total - spent) if pay is not None else None,
+    }
+
+
 def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> dict:
     """What's free until payday, from today's balance or, without one, from usual pay.
 
@@ -140,37 +198,21 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
 
     cycle_start = _previous_payday(profile, next_payday, today)
     result["pay_cycle_start"] = cycle_start.isoformat()
-    if mode == "estimate":
-        if profile.pay_amount is None:
-            result["status"] = "balance_outdated"
-            result["warnings"].append("A payday has passed since this balance. Update your balance.")
-            return result
-        # Bills on the last payday came out of the previous pay unless pay lands first.
-        start_day = cycle_start if profile.payday_bills_after_pay else cycle_start + timedelta(days=1)
-        starting_amount = profile.pay_amount
-        window_start = _midnight(start_day)
-        spread_days = (next_payday - cycle_start).days
-        result["scope"] = ESTIMATE_SCOPE_NOTE
-        result["warnings"].append(ESTIMATE_WARNING)
-    else:
-        starting_amount = profile.balance
-        window_start = _midnight(balance_day)
-        spread_days = result["days_until_payday"]
-
-    forecast = upcoming_charges(
-        db,
-        user_id,
-        now=now,
-        start_at=window_start,
-        end_at=_bills_end(profile, next_payday),
-        include_past=mode == "estimate",
+    result["balance_checked_at"] = (
+        profile.balance_as_of.isoformat() + "Z" if profile.balance is not None and profile.balance_as_of else None
     )
+    # Bills on the last payday came out of the previous pay unless pay lands first.
+    cycle_window_start = _midnight(
+        cycle_start if profile.payday_bills_after_pay else cycle_start + timedelta(days=1)
+    )
+    bills_end = _bills_end(profile, next_payday)
     currency = CurrencyContext.for_user(db, user_id)
-    start_converted, start_quality = currency.convert(float(starting_amount), profile.currency)
-    buffer, _ = currency.convert(float(profile.buffer), profile.currency)
     result["base_currency"] = currency.base
-    owing = overdue_unpaid(
-        db, user_id, before=window_start.date(), today=today, zone=zone, currency=currency,
+    cycle_forecast = upcoming_charges(
+        db, user_id, now=now, start_at=cycle_window_start, end_at=bills_end, include_past=True,
+    )
+    cycle_owing = overdue_unpaid(
+        db, user_id, before=cycle_window_start.date(), today=today, zone=zone, currency=currency,
     )
     set_asides = set_aside_position(
         db,
@@ -180,6 +222,41 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         cycle_end=next_payday,
         balance_as_of=profile.balance_as_of if mode == "balance" else None,
     )
+    pay_converted = (
+        currency.convert(float(profile.pay_amount), profile.currency)[0]
+        if profile.pay_amount is not None
+        else None
+    )
+    result["pay_plan"] = (
+        None
+        if profile.pay_amount is not None and pay_converted is None
+        else _pay_plan(cycle_forecast, cycle_owing, pay_converted, set_asides)
+    )
+
+    if mode == "estimate":
+        if profile.pay_amount is None:
+            result["status"] = "balance_outdated"
+            result["warnings"].append("A payday has passed since this balance. Update your balance.")
+            return result
+        starting_amount = profile.pay_amount
+        window_start = cycle_window_start
+        spread_days = (next_payday - cycle_start).days
+        forecast, owing = cycle_forecast, cycle_owing
+        result["scope"] = ESTIMATE_SCOPE_NOTE
+        result["warnings"].append(ESTIMATE_WARNING)
+    else:
+        starting_amount = profile.balance
+        window_start = _midnight(balance_day)
+        spread_days = result["days_until_payday"]
+        forecast = upcoming_charges(
+            db, user_id, now=now, start_at=window_start, end_at=bills_end, include_past=False,
+        )
+        owing = overdue_unpaid(
+            db, user_id, before=window_start.date(), today=today, zone=zone, currency=currency,
+        )
+
+    start_converted, start_quality = currency.convert(float(starting_amount), profile.currency)
+    buffer, _ = currency.convert(float(profile.buffer), profile.currency)
     if (
         start_converted is None
         or buffer is None
@@ -200,7 +277,8 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
     buffer_amount = _to_decimal(buffer)
     reserved = set_asides["reserved"].quantize(CENTS)
     spent = set_asides["spent"].quantize(CENTS)
-    remaining = start_amount - committed - buffer_amount - reserved - spent
+    extra_income = set_asides["extra_income_counted"].quantize(CENTS)
+    remaining = start_amount + extra_income - committed - buffer_amount - reserved - spent
     if set_asides["set_asides"]:
         result["scope"] += SET_ASIDE_NOTE
     safe_amount = max(remaining, Decimal("0"))
@@ -232,20 +310,11 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         committed=float(committed),
         set_aside=float(reserved),
         spent=float(spent),
+        extra_income=float(extra_income),
+        incomes=set_asides["incomes"],
         set_asides=set_asides["set_asides"],
         spends=set_asides["spends"],
-        # Overdue unpaid payments first, then bills due before payday.
-        commitments=owing + [
-            {
-                "id": row["id"],
-                "name": row["name"],
-                "due_at": row["due_at"],
-                "amount": row["charge_amount_in_base"],
-                "is_estimate": row["charge_amount_is_estimate"],
-                "overdue": False,
-            }
-            for row in charges
-        ],
+        commitments=_bill_rows(forecast, owing),
     )
     return result
 

@@ -5,6 +5,8 @@
   the pot leaves free money unchanged until the pot runs out.
 - Every logged spend comes off the money available, unless the balance
   already shows it (it was logged before the balance was entered).
+- Extra income logged this cycle adds to this pay, and to the money
+  available on the same terms as spends.
 """
 from __future__ import annotations
 
@@ -38,6 +40,49 @@ def _to_base(amount: Decimal, currency: str, base: str, rates: _Rates) -> Decima
     if not isinstance(rate, (int, float)) or rate <= 0:
         return None
     return (Decimal(amount) / Decimal(str(rate))).quantize(CENTS)
+
+
+def _extra_income(
+    db: Session,
+    user_id: str,
+    base: str,
+    rates: _Rates,
+    cycle_start: date,
+    cycle_end: date,
+    balance_as_of: datetime | None,
+) -> dict | None:
+    """Money received this cycle on top of usual pay, or None if a currency can't be converted.
+
+    All of it adds to this pay; only income logged after the balance adds to
+    what's free, since the balance already shows anything received before it.
+    """
+    rows = (
+        db.query(Transaction)
+        .filter(
+            Transaction.user_id == user_id,
+            Transaction.kind == TransactionKind.income.value,
+            Transaction.recurring_payment_id.is_(None),
+            Transaction.occurred_on >= cycle_start,
+            Transaction.occurred_on < cycle_end,
+        )
+        .order_by(Transaction.occurred_on, Transaction.created_at)
+        .all()
+    )
+    total = counted = Decimal("0")
+    listed = []
+    for row in rows:
+        foreign = row.currency != base and not (row.base_amount is not None and row.base_currency == base)
+        value = amount_in_base(row, base, rates.snapshot if foreign else None)
+        if value is None:
+            return None
+        total += value
+        if balance_as_of is None or row.created_at > balance_as_of:
+            counted += value
+        listed.append({
+            "id": str(row.id), "name": row.name, "amount": float(value),
+            "occurred_on": row.occurred_on.isoformat(),
+        })
+    return {"extra_income": total, "extra_income_counted": counted, "incomes": listed}
 
 
 def set_aside_position(
@@ -101,9 +146,14 @@ def set_aside_position(
             spent_counted += value
         spend_rows.append({
             "id": str(spend.id), "name": spend.name, "amount": float(value),
+            "category": spend.category.value if spend.category else "other",
             "occurred_on": spend.occurred_on.isoformat(),
             "set_aside_id": str(spend.set_aside_id) if pot else None,
         })
+
+    income = _extra_income(db, user_id, base, rates, cycle_start, cycle_end, balance_as_of)
+    if income is None:
+        return None
 
     reserved = Decimal("0")
     for item in items:
@@ -117,6 +167,7 @@ def set_aside_position(
     return {
         "reserved": reserved,
         "spent": spent_counted,
+        **income,
         "set_asides": [
             {
                 "id": item["id"], "kind": item["kind"], "name": item["name"],

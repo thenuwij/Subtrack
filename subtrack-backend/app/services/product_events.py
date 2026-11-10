@@ -18,11 +18,13 @@ logger = logging.getLogger(__name__)
 
 # Events the browser may report; everything else is recorded by the server.
 CLIENT_EVENTS = frozenset({"setup_started", "setup_finished", "first_number_seen", "payday_link_clicked"})
-SERVER_EVENTS = frozenset({"home_viewed", "afford_check", "balance_updated", "spend_logged"})
+SERVER_EVENTS = frozenset({"home_viewed", "afford_check", "balance_updated", "spend_logged", "income_logged"})
 ONCE_PER_USER = frozenset({"setup_started", "setup_finished", "first_number_seen"})
 ONCE_PER_DAY = frozenset({"home_viewed"})
 # Any of these means the person came back and used Subtrack.
-ACTIVE_EVENTS = frozenset({"home_viewed", "afford_check", "balance_updated", "spend_logged", "payday_link_clicked"})
+ACTIVE_EVENTS = frozenset({
+    "home_viewed", "afford_check", "balance_updated", "spend_logged", "income_logged", "payday_link_clicked",
+})
 FAST_SETUP = timedelta(minutes=3)
 CYCLE = timedelta(days=14)
 

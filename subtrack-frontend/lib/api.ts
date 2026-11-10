@@ -1,5 +1,6 @@
 import type {
   CalendarMonthCharges,
+  Category,
   PaidHistory,
   PaymentExtrasSummary,
   ApiCapabilities,
@@ -716,14 +717,29 @@ export async function deleteSetAside(token: string, id: string): Promise<void> {
   await request(`/set-asides/${id}`, token, { method: 'DELETE' })
 }
 
-/** Log money spent today, from a pot or from free money; returns the new position. */
+/** Log money spent today, from a budget or from free money; returns the new position. */
 export async function logSpend(
   token: string,
-  data: { name: string; amount: number; set_aside_id?: string | null },
+  data: { name: string; amount: number; category?: Category; set_aside_id?: string | null },
 ): Promise<SafeToSpend> {
   return request('/safe-to-spend/spends', token, { method: 'POST', body: JSON.stringify(data) })
 }
 
+/** Fix a logged spend (or extra income: name and amount only). */
+export async function editSpend(
+  token: string,
+  id: string,
+  data: { name?: string; amount?: number; category?: Category; set_aside_id?: string | null },
+): Promise<SafeToSpend> {
+  return request(`/safe-to-spend/spends/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+/** Log money received today on top of usual pay; it adds to this pay cycle only. */
+export async function logIncome(token: string, data: { name: string; amount: number }): Promise<SafeToSpend> {
+  return request('/safe-to-spend/incomes', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+/** Undo a logged spend or extra income. */
 export async function undoSpend(token: string, id: string): Promise<SafeToSpend> {
   return request(`/safe-to-spend/spends/${id}`, token, { method: 'DELETE' })
 }

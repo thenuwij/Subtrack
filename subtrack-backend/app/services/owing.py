@@ -88,6 +88,7 @@ def overdue_unpaid(
         rows.append({
             "id": sub_id,
             "name": sub.name,
+            "category": sub.category.value,
             "due_at": datetime.combine(due_on, time(12)).isoformat(),
             "amount": round(amount, 2),
             "is_estimate": False,
