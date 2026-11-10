@@ -9,45 +9,93 @@
 ![Claude API](https://img.shields.io/badge/Claude_API-20232A?logo=anthropic&logoColor=D97757)
 [![MIT License](https://img.shields.io/badge/License-MIT-20232A?labelColor=555)](LICENSE)
 
-Subtrack tells you what's actually yours to spend until payday.
+Subtrack shows where your pay goes and what's actually yours to spend until payday.
 
-It's for people paid weekly or fortnightly who don't want to track every purchase. You enter your pay and your bills once, and Subtrack sets aside what's already spoken for. No bank login.
+It's for people paid weekly or fortnightly who don't want to track every purchase. You enter your pay and bills once, Subtrack holds back what's already spoken for, and an AI assistant can answer questions and make changes for you. No bank login.
 
 ## Key Features
 
 ### Three-minute setup
 
-Tell Subtrack when you're paid and what comes out regularly, and you see your first number straight away.
+Tell Subtrack when you're paid and what comes out regularly, and you see where your pay goes straight away.
 
-- Pick your pay schedule, next payday and usual pay after tax.
+- Pick your pay schedule (weekly, fortnightly or monthly), next payday and usual pay after tax.
 - Tap common Australian bills, or type them in one line ("rent 400 weekly, phone 35 monthly").
-- Add today's balance if you like. It's optional.
+- Optionally hold money back for groceries or a trip, and add today's balance.
 
 ### Bills
 
 Every recurring payment in one place, with what it costs this month and over a year.
 
-- Subscriptions, rent, utilities, trials and intro prices.
-- Paid history for the last three months.
-- An optional read-only Gmail scan suggests bills for you to approve.
+- Subscriptions, rent, utilities and shared bills where you pay only your share.
+- Free trials, intro prices, variable bills, and paused or cancelling payments.
+- Paid history: mark a payment paid, not paid yet, or didn't happen. Unpaid bills still count as owed.
+- Reminders before a bill is due or a trial ends.
+
+### Find bills in Gmail
+
+An optional read-only Gmail scan finds receipts and suggests bills you might be missing.
+
+- Nothing is added until you approve it on the Review page.
+- Raw emails are never stored.
 
 ### Budgets and savings
 
 Hold money back before you spend it, every payday.
 
-- **Budget:** "Groceries, $150 a pay", with what's left this pay.
+- **Budget:** "Groceries, $150 a pay", with a bar showing what's left this pay.
 - **Saving:** "Trip, $100 a pay".
 - Your bills are already counted, so Subtrack warns you if a new budget looks like one of them.
-- Logging a spend is optional. Take it from a budget or give it a category, and edit it later if the amount was wrong.
+- Logging a spend is optional. Take it from a budget or give it a category, and edit or undo it later.
+- Past pay cycles show how each pay went, budget by budget.
 
 ### This pay
 
-Home shows where your pay goes: your bills, budgets, what you've spent, and the balance left until payday.
+Home shows where your current pay goes, from payday to payday.
 
-- A bar splits your pay at a glance. Breakdown shows each category and budget as bars or a pie.
-- Got paid extra? Add it as extra income and it counts for this pay only.
-- Check my balance: enter today's balance to see exactly what's free to spend, and about how much a day.
-- Afterwards it shows as a dated "last checked" amount, since anything spent later isn't counted.
+| You see | What it means |
+| --- | --- |
+| Your pay | Usual pay, plus any extra income you added this pay |
+| Bills this pay | Every bill due before payday. Tap to list them |
+| Budgets | Money held back for your budgets and savings |
+| Spent | Spends outside a budget, or past one |
+| Balance | What's left of this pay |
+
+- **Breakdown** shows each category and budget as bars or a pie.
+- **Extra income:** got an extra shift or a refund? Add it and it counts for this pay only.
+
+### Check my balance and Can I afford it?
+
+Two quick checks for the moments you need an exact answer.
+
+| Check my balance | Can I afford it? |
+| --- | --- |
+| Enter today's balance to see what's free to spend and about how much a day | Type an amount and get a yes or no, with what you'd have left until payday |
+| Shows afterwards as a dated "last checked" amount, since later spending isn't counted | Add Subtrack to your phone's home screen for a one-tap shortcut |
+
+### Ways to save
+
+One page of things worth a look before your next bill.
+
+- Price rises, possible duplicate payments and late fees.
+- Free trials and intro offers ending in the next 30 days.
+
+### AI Assistant
+
+Ask about your own money in plain words, and let the assistant make changes for you.
+
+| Ask things like | Or have it do things like |
+| --- | --- |
+| "What's left until payday?" | "I spent $18 on Uber" |
+| "Can I afford $120 on Friday?" | "Make my groceries budget $120" |
+| "Where is this pay going?" | "I got $200 extra this week" |
+| "Which subscriptions went up?" | "Add Netflix, $18.99 monthly" |
+| "Are there cheaper phone plans?" | "Mark rent as paid" or "my payday is now Friday" |
+
+- Every change waits for you to press Confirm, and is checked again before it's applied.
+- It can manage bills, budgets, spends, extra income, pay details, reminders and Gmail suggestions.
+- It can search the web for cheaper alternatives to a bill.
+- It doesn't give investment or financial product advice.
 
 ### Payday email and alerts
 
@@ -55,19 +103,7 @@ On payday morning, an email shows the bills before your next pay, what's set asi
 
 - Turn it on during setup or in Account.
 - At most two alerts a pay cycle: if bills won't fit, or a free trial is about to end.
-
-### Can I afford it?
-
-Type an amount and get a yes or no, with what you'd have left until payday.
-
-- Add Subtrack to your phone's home screen for a one-tap shortcut.
-
-### AI Assistant
-
-Ask questions about your own bills and spending in plain words.
-
-- Every change it suggests waits for your approval.
-- It doesn't give investment or financial product advice.
+- Export or delete all your data from Account at any time.
 
 ## Built With
 
