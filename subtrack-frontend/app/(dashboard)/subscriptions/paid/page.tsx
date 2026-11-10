@@ -178,7 +178,7 @@ export default function PaidPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-7 px-5 py-8 sm:px-8 sm:py-10">
+    <div className="mx-auto w-full max-w-6xl space-y-7 px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
       <PaymentsTabs />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>

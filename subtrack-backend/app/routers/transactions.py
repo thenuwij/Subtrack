@@ -16,8 +16,11 @@ from app.models import (
     TransactionKind,
     TransactionSource,
 )
+from app.services.parse_rate_limit import enforce_parse_rate_limit
+from app.services.payment_charges import PaymentCharge, charged_payment_ids, month_payment_charges
 from app.services.safe_to_spend import _user_zone
 from app.services.transaction_duplicates import find_possible_duplicates
+from app.services.transaction_parse import MAX_TEXT, ParseError, parse_transactions
 from app.services.transactions import (
     MONTH_ROW_LIMIT,
     apply_conversion,
@@ -71,6 +74,12 @@ class TransactionUpdate(BaseModel):
         return self
 
 
+class ParseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    text: str = Field(min_length=1, max_length=MAX_TEXT)
+
+
 def transaction_payload(row: Transaction) -> dict:
     return {
         "id": str(row.id),
@@ -88,6 +97,29 @@ def transaction_payload(row: Transaction) -> dict:
         "recurring_payment_id": str(row.recurring_payment_id) if row.recurring_payment_id else None,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+    }
+
+
+def payment_charge_payload(charge: PaymentCharge, base: str) -> dict:
+    """A read-only expense row for one tracked payment charge."""
+    return {
+        "id": charge.row_id,
+        "kind": TransactionKind.expense.value,
+        "name": charge.name,
+        "amount": float(charge.amount),
+        "currency": charge.currency,
+        "base_amount": float(charge.base_amount) if charge.base_amount is not None else None,
+        "base_currency": base if charge.base_amount is not None else None,
+        "rate_as_of": None,
+        "category": charge.category,
+        "occurred_on": charge.occurred_on.isoformat(),
+        "note": None,
+        "source": "payment",
+        "recurring_payment_id": charge.payment_id,
+        "read_only": True,
+        "counted_in_payment": False,
+        "created_at": None,
+        "updated_at": None,
     }
 
 
@@ -130,7 +162,29 @@ def list_transactions(
     rows = month_transactions(
         db, user_id, year, month_number, kind=kind, category=category, limit=MONTH_ROW_LIMIT,
     )
-    return [transaction_payload(row) for row in rows]
+    charges = month_payment_charges(db, user_id, year, month_number)
+    charged_ids = charged_payment_ids(charges)
+    entries = [
+        {
+            **transaction_payload(row),
+            "read_only": False,
+            "counted_in_payment": (
+                row.kind == TransactionKind.expense.value
+                and row.recurring_payment_id is not None
+                and str(row.recurring_payment_id) in charged_ids
+            ),
+        }
+        for row in rows
+    ]
+    if kind in (None, TransactionKind.expense):
+        base = base_currency_for(db, user_id)
+        entries.extend(
+            payment_charge_payload(charge, base)
+            for charge in charges
+            if category is None or charge.category == category.value
+        )
+    entries.sort(key=lambda entry: entry["occurred_on"], reverse=True)
+    return entries
 
 
 @router.get("/summary")
@@ -141,6 +195,35 @@ def get_transaction_summary(
 ):
     year, month_number = _year_month(db, user_id, month)
     return month_summary(db, user_id, year, month_number)
+
+
+@router.post("/parse")
+def parse_transaction_text(
+    data: ParseRequest,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Suggest drafts from free text. Nothing is saved."""
+    enforce_parse_rate_limit(user_id)
+    today = datetime.now(_user_zone(db, user_id)).date()
+    try:
+        drafts = parse_transactions(data.text, today, base_currency_for(db, user_id))
+    except ParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "drafts": [
+            {
+                "kind": draft.kind.value,
+                "amount": float(draft.amount),
+                "currency": draft.currency,
+                "category": "income" if draft.kind == TransactionKind.income else draft.category.value,
+                "name": draft.name,
+                "occurred_on": draft.occurred_on.isoformat(),
+                "note": draft.note,
+            }
+            for draft in drafts
+        ]
+    }
 
 
 @router.post("", status_code=201)

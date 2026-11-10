@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { House, CreditCard, LogOut, Settings2, Inbox, Sparkles, Wallet } from 'lucide-react'
+import { House, CreditCard, LogOut, MessageCircle, Settings2, Target, Wallet, LayoutGrid } from 'lucide-react'
 import type { Feature } from '@/types'
 import { getDetected } from '@/lib/api'
 import { apiKeys, useApi } from '@/lib/hooks/useApi'
@@ -13,11 +13,12 @@ import { Logo, LogoMark } from '@/components/layout/Logo'
 import { useFeatures } from '@/lib/hooks/useFeatures'
 
 const links: { href: string; label: string; icon: typeof House; requires?: Feature }[] = [
-  { href: '/dashboard', label: 'Overview', icon: House },
-  { href: '/spending', label: 'Spending', icon: Wallet, requires: 'spending' },
-  { href: '/subscriptions', label: 'Payments', icon: CreditCard, requires: 'payments' },
-  { href: '/review', label: 'Inbox', icon: Inbox, requires: 'payments' },
-  { href: '/assistant', label: 'Assistant', icon: Sparkles },
+  { href: '/dashboard', label: 'Home', icon: House },
+  { href: '/subscriptions', label: 'Bills', icon: CreditCard },
+  { href: '/assistant', label: 'Ask', icon: MessageCircle },
+  { href: '/transactions', label: 'Transactions', icon: Wallet, requires: 'spending' },
+  { href: '/goals', label: 'Goals', icon: Target, requires: 'goals' },
+  { href: '/workspace', label: 'Workspace', icon: LayoutGrid, requires: 'workspace' },
 ]
 
 export default function Navbar() {
@@ -36,7 +37,7 @@ export default function Navbar() {
 
   function navItems(mobile = false) {
     return visibleLinks.map(({ href, label, icon: Icon }) => {
-      const active = pathname === href || pathname.startsWith(`${href}/`)
+      const active = pathname === href || pathname.startsWith(`${href}/`) || (href === '/subscriptions' && pathname === '/review')
       return (
         <Link key={href} href={href} data-tour={`nav-${href.slice(1)}`}
           aria-current={active ? 'page' : undefined}
@@ -44,10 +45,10 @@ export default function Navbar() {
             ? `relative flex min-h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors ${active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`
             : `flex min-h-11 items-center gap-3 rounded-xl px-3 text-[13px] font-medium transition-colors ${active ? 'bg-card text-primary shadow-sm' : 'text-foreground hover:bg-card/60'}`}>
           <span className="relative"><Icon className={mobile ? 'h-5 w-5' : 'h-[18px] w-[18px]'} strokeWidth={active ? 2 : 1.7} />
-            {mobile && href === '/review' && pendingCount > 0 ? <span className="absolute -right-2 -top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-card" /> : null}
+            {mobile && href === '/subscriptions' && pendingCount > 0 ? <span className="absolute -right-2 -top-1 h-2 w-2 rounded-full bg-primary ring-2 ring-card" /> : null}
           </span>
           <span>{label}</span>
-          {href === '/review' && pendingCount > 0 ? <span className={mobile ? 'sr-only' : 'ml-auto rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] tabular-nums text-primary'}>{pendingCount}<span className="sr-only"> waiting for review</span></span> : null}
+          {href === '/subscriptions' && pendingCount > 0 ? <span className={mobile ? 'sr-only' : 'ml-auto rounded-md bg-primary/10 px-1.5 py-0.5 text-[11px] tabular-nums text-primary'}>{pendingCount}<span className="sr-only"> waiting for review</span></span> : null}
         </Link>
       )
     })

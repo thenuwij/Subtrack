@@ -1,10 +1,11 @@
 import type { Feature } from '@/types'
 
-export const ALL_FEATURES: Feature[] = ['spending', 'payments', 'goals', 'workspace']
+/** Bills and safe to spend: the core product, always on. */
+export const DEFAULT_FEATURES: Feature[] = ['payments']
 
-export const FEATURE_OPTIONS: { id: Feature; title: string; description: string }[] = [
+/** Parked features a user can turn on in Settings. Their data is kept either way. */
+export const EXTRA_FEATURE_OPTIONS: { id: Feature; title: string; description: string }[] = [
   { id: 'spending', title: 'Expenses and income', description: 'Log day-to-day spending and money in' },
-  { id: 'payments', title: 'Monthly payments and subscriptions', description: 'Bills, subscriptions and rent, found from your email' },
   { id: 'goals', title: 'Goals and budgets', description: 'Set limits and save towards something' },
   { id: 'workspace', title: 'Custom workspace', description: 'Ask the AI to build a page for your situation' },
 ]

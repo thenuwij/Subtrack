@@ -21,6 +21,13 @@ from app.agent.finance import (
     saving_candidates,
     upcoming_charges,
 )
+from app.agent.goals import (
+    GOALS_OFF,
+    GOALS_TOOLS,
+    budget_status_for_month,
+    goals_enabled,
+    goals_with_progress,
+)
 from app.agent.research import ALTERNATIVE_RESEARCH_TOOL, research_alternatives
 from app.agent.spending import (
     MAX_LIST_LIMIT,
@@ -29,6 +36,15 @@ from app.agent.spending import (
     list_logged_transactions,
     logged_transaction_summary,
     spending_enabled,
+)
+from app.agent.workspace import (
+    PAGE_TEXT_TOOLS,
+    WORKSPACE_OFF_ERROR,
+    WORKSPACE_TOOLS,
+    advice_refusal,
+    workspace_enabled,
+    workspace_pages,
+    workspace_templates,
 )
 from app.models import Category, TransactionKind
 from app.services.safe_to_spend import can_i_afford, safe_to_spend
@@ -343,6 +359,49 @@ READ_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "get_budget_status",
+        "description": (
+            "Get every category budget's monthly limit, amount spent (logged expenses plus "
+            "tracked payments charged that month) and amount left for one calendar month "
+            "(defaults to this month) in the user's base currency, with the budget IDs. "
+            "Quote budget figures only from this tool."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"month": {"type": "string", "pattern": "^\\d{4}-\\d{2}$"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_goals",
+        "description": (
+            "List the user's savings goals with their IDs, target, saved, remaining, percent, "
+            "status and the amount still needed per week and per day. Archived goals are "
+            "left out unless include_archived is true. Quote goal figures only from this tool."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"include_archived": {"type": "boolean"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_workspace_templates",
+        "description": (
+            "List the ready-made workspace page templates with their ID, name, description and "
+            "block types. Read this before proposing a page and start from the closest one."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "list_workspace_pages",
+        "description": (
+            "List the user's workspace pages with their IDs, titles, template, current blocks and "
+            "when they were updated. Use before changing or removing a page."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
     ALTERNATIVE_RESEARCH_TOOL,
 ]
 
@@ -361,6 +420,14 @@ def run_tool(
     """Dispatch an allow-listed read or create an inert action proposal."""
     if tool_name in SPENDING_TOOLS and not spending_enabled(db, user_id):
         return SPENDING_OFF
+    if tool_name in GOALS_TOOLS and not goals_enabled(db, user_id):
+        return GOALS_OFF
+    if tool_name in WORKSPACE_TOOLS and not workspace_enabled(db, user_id):
+        return WORKSPACE_OFF_ERROR
+    if tool_name in PAGE_TEXT_TOOLS:
+        refusal = advice_refusal(tool_input)
+        if refusal:
+            return refusal
     if tool_name in ACTION_MODELS:
         if not thread_id or not assistant_message_id:
             return {"error": "Action proposals require a conversation message"}
@@ -445,6 +512,14 @@ def run_tool(
         return list_logged_transactions(db, user_id, tool_input)
     if tool_name == "get_transaction_summary":
         return logged_transaction_summary(db, user_id, tool_input)
+    if tool_name == "get_budget_status":
+        return budget_status_for_month(db, user_id, tool_input)
+    if tool_name == "list_goals":
+        return goals_with_progress(db, user_id, tool_input)
+    if tool_name == "list_workspace_templates":
+        return workspace_templates(db, user_id)
+    if tool_name == "list_workspace_pages":
+        return workspace_pages(db, user_id)
     if tool_name == "research_cheaper_alternatives":
         return research_alternatives(db, user_id, tool_input)
     return {"error": "Unknown assistant tool"}

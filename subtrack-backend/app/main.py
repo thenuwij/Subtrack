@@ -16,17 +16,22 @@ from app.database import engine
 from app.routers import (
     account,
     agent,
+    budgets,
     demo,
     detected,
     email_reminders,
+    events,
     gmail,
+    goals,
     meta,
     preferences,
     rates,
     reminders,
     safe_to_spend,
+    set_asides,
     subscriptions,
     transactions,
+    workspace,
 )
 from app.routers.meta import release_metadata
 
@@ -69,6 +74,9 @@ app.add_middleware(
 # Routers
 app.include_router(subscriptions.router)
 app.include_router(transactions.router)
+app.include_router(budgets.router)
+app.include_router(goals.router)
+app.include_router(workspace.router)
 app.include_router(rates.router)
 app.include_router(preferences.router)
 app.include_router(account.router)
@@ -78,6 +86,8 @@ app.include_router(detected.router)
 app.include_router(reminders.router)
 app.include_router(email_reminders.router)
 app.include_router(safe_to_spend.router)
+app.include_router(set_asides.router)
+app.include_router(events.router)
 app.include_router(meta.router)
 app.include_router(demo.router)
 
