@@ -197,8 +197,8 @@ function PotRow({ item, currency, onRemove }: { item: SetAsidePosition; currency
         {item.kind === 'pot' ? <Wallet className="h-4 w-4" aria-hidden="true" /> : <PiggyBank className="h-4 w-4" aria-hidden="true" />}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-3">
-          <p className="truncate text-sm font-medium">{item.name}</p>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3">
+          <p className="max-w-full truncate text-sm font-medium">{item.name}</p>
           <p className={`shrink-0 text-sm tabular-nums ${over ? 'text-amber-700 dark:text-amber-300' : ''}`}>
             {item.kind === 'pot'
               ? over
@@ -266,10 +266,6 @@ export function SetAsidesCard() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 id="pots-heading" className="text-[17px] font-semibold">Your budgets this pay</h2>
-          <p className="mt-3 flex items-start gap-2 rounded-xl bg-primary/5 p-3 text-sm text-foreground">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-            <span>Your bills (rent, phone, subscriptions) are already counted, so don&apos;t add them here.</span>
-          </p>
         </div>
         {setAsides.length > 0 ? (
           <Button onClick={() => setAdding(null)} className="shrink-0">
@@ -277,6 +273,10 @@ export function SetAsidesCard() {
           </Button>
         ) : null}
       </div>
+      <p className="mt-3 flex items-start gap-2 rounded-xl bg-primary/5 p-3 text-sm text-foreground">
+        <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+        <span>Your bills (rent, phone, subscriptions) are already counted, so don&apos;t add them here.</span>
+      </p>
 
       {setAsides.length === 0 ? (
         <div className="mt-5 rounded-xl border border-dashed border-border p-4">
