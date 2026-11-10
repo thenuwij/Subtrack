@@ -22,9 +22,12 @@ from app.models import (
     PaymentReminder,
     SafeToSpendProfile,
     Subscription,
+    Transaction,
     UserPreference,
+    WorkspacePage,
 )
 from app.routers import agent as agent_router
+from app.services.features import ALL_FEATURES
 from evals.graders import ToolCall, Transcript
 
 EVAL_USER = "eval-user"
@@ -44,7 +47,8 @@ def load_cases() -> list[dict]:
 
 def seed(db: Session, now: datetime) -> None:
     """A user with $900, payday in 9 days, a $50 buffer and four payments."""
-    db.add(UserPreference(user_id=EVAL_USER, base_currency="AUD", timezone="UTC"))
+    # The eval user opts in to every feature so evals cover every tool.
+    db.add(UserPreference(user_id=EVAL_USER, base_currency="AUD", timezone="UTC", enabled_features=list(ALL_FEATURES)))
     db.add(SafeToSpendProfile(
         user_id=EVAL_USER,
         balance=Decimal("900.00"),
@@ -77,7 +81,9 @@ def _snapshot(db: Session) -> str:
         for row in db.query(Subscription).filter_by(user_id=EVAL_USER).order_by(Subscription.name)
     ]
     reminders = db.query(PaymentReminder).filter_by(user_id=EVAL_USER).count()
-    return json.dumps([rows, reminders], default=str)
+    transactions = db.query(Transaction).filter_by(user_id=EVAL_USER).count()
+    pages = db.query(WorkspacePage).filter_by(user_id=EVAL_USER).count()
+    return json.dumps([rows, reminders, transactions, pages], default=str)
 
 
 def run_case(db: Session, question: str, model: Callable[..., object] | None = None) -> Transcript:
@@ -92,6 +98,7 @@ def run_case(db: Session, question: str, model: Callable[..., object] | None = N
     )
     db.add_all([thread, asked, reply])
     db.commit()
+    thread_id, reply_id = thread.id, reply.id
     before = _snapshot(db)
     calls: list[ToolCall] = []
     real_run_tool = agent_router.run_tool
@@ -111,13 +118,15 @@ def run_case(db: Session, question: str, model: Callable[..., object] | None = N
     for active in patches:
         active.start()
     try:
-        for _ in agent_router._stream_reply(db, thread.id, reply.id, EVAL_USER):
+        for _ in agent_router._stream_reply(db, thread_id, reply_id, EVAL_USER):
             pass
     finally:
         for active in reversed(patches):
             active.stop()
 
-    db.refresh(reply)
+    # Some tools detach every loaded row (the duplicate check releases its
+    # connection before calling the model), so look the reply up again.
+    reply = db.get(AgentMessage, reply_id)
     if reply.status != "completed":
         raise RuntimeError(f"assistant reply failed: {reply.error_code}")
     resolved = db.query(AgentAction).filter(

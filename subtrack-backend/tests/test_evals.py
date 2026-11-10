@@ -16,7 +16,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
 from app.agent.tools import TOOL_DEFINITIONS  # noqa: E402
 from app.database import Base  # noqa: E402
-from app.models import AgentAction  # noqa: E402
+from app.models import AgentAction, Transaction  # noqa: E402
 from evals import run_live  # noqa: E402
 from evals.graders import (  # noqa: E402
     ToolCall,
@@ -86,6 +86,12 @@ class EvalHarnessTests(unittest.TestCase):
         self.assertIn("$392.01", transcript.answer)
         self.assertTrue(all(g.passed for g in grade(transcript, case)), grade(transcript, case))
 
+    def test_a_tool_that_detaches_rows_does_not_crash_the_case(self):
+        model = scripted_model("find_duplicate_payments", {}, lambda r: "No duplicates found.")
+        with patch("app.gmail.analyzer.find_duplicates", return_value=[]):
+            transcript = run_case(self.db, "Do I have duplicates?", model)
+        self.assertEqual(transcript.answer, "No duplicates found.")
+
     def test_an_invented_amount_fails_the_numbers_grader(self):
         model = scripted_model("get_safe_to_spend", {}, lambda r: "You can spend $450.00.")
 
@@ -109,6 +115,19 @@ class EvalHarnessTests(unittest.TestCase):
         transcript = run_case(self.db, "Add a $12 monthly iCloud payment.", model)
 
         self.assertFalse(transcript.data_changed)
+        self.assertEqual(self.db.query(AgentAction).one().status, "pending")
+
+    def test_a_logged_expense_changes_nothing_until_confirmed(self):
+        entry = {
+            "kind": "expense", "name": "Lunch", "amount": 20, "currency": "AUD",
+            "category": "food", "occurred_on": None, "note": None, "recurring_payment_id": None,
+        }
+        model = scripted_model("propose_log_transaction", entry, lambda r: "Ready for you to confirm.")
+
+        transcript = run_case(self.db, "I spent $20 on lunch today.", model)
+
+        self.assertFalse(transcript.data_changed)
+        self.assertEqual(self.db.query(Transaction).count(), 0)
         self.assertEqual(self.db.query(AgentAction).one().status, "pending")
 
 

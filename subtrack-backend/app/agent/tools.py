@@ -21,8 +21,32 @@ from app.agent.finance import (
     saving_candidates,
     upcoming_charges,
 )
+from app.agent.goals import (
+    GOALS_OFF,
+    GOALS_TOOLS,
+    budget_status_for_month,
+    goals_enabled,
+    goals_with_progress,
+)
 from app.agent.research import ALTERNATIVE_RESEARCH_TOOL, research_alternatives
-from app.models import Category
+from app.agent.spending import (
+    MAX_LIST_LIMIT,
+    SPENDING_OFF,
+    SPENDING_TOOLS,
+    list_logged_transactions,
+    logged_transaction_summary,
+    spending_enabled,
+)
+from app.agent.workspace import (
+    PAGE_TEXT_TOOLS,
+    WORKSPACE_OFF_ERROR,
+    WORKSPACE_TOOLS,
+    advice_refusal,
+    workspace_enabled,
+    workspace_pages,
+    workspace_templates,
+)
+from app.models import Category, TransactionKind
 from app.services.safe_to_spend import can_i_afford, safe_to_spend
 
 CATEGORIES = [item.value for item in Category]
@@ -49,6 +73,31 @@ def _purchase_amount(value: object) -> Decimal:
     if amount != amount.quantize(CENTS):
         raise ValueError("amount can have at most 2 decimal places")
     return amount
+
+
+def _month_category_totals(month: dict) -> dict:
+    """Per-category totals for one month, so the model never adds them up itself."""
+    totals: dict[str, Decimal] = {}
+    unconverted = 0
+    for charge in month["charges"]:
+        amount = charge.get("charge_amount_in_base")
+        if amount is None:
+            unconverted += 1
+            continue
+        category = charge.get("category") or "other"
+        totals[category] = totals.get(category, Decimal("0")) + Decimal(str(amount))
+    extras = sum(
+        (Decimal(str(e["amount_in_base"])) for e in month["extras"] if e["amount_in_base"] is not None),
+        Decimal("0"),
+    )
+    return {
+        "category_totals_in_base": [
+            {"category": name, "total": float(total.quantize(CENTS))}
+            for name, total in sorted(totals.items(), key=lambda item: item[1], reverse=True)
+        ],
+        "category_totals_unconverted_count": unconverted,
+        "extras_total_in_base": float(extras.quantize(CENTS)),
+    }
 
 
 READ_TOOL_DEFINITIONS = [
@@ -224,6 +273,135 @@ READ_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "get_paid_history",
+        "description": (
+            "Get past payment occurrences: confirmed when a Gmail receipt or the user marked it paid, "
+            "expected when nothing was seen, or skipped. Also returns bills with their paid status, "
+            "late fees total and amounts above the regular price. Each row has a target used by "
+            "propose_mark_payment_paid. Use for 'did X go through', 'what did I pay in October' "
+            "and late-fee questions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"months": {"type": "integer", "minimum": 1, "maximum": 12}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_ways_to_save",
+        "description": (
+            "Get the same list the Ways to save page shows: price rises in the last 90 days, "
+            "trials and intro prices ending within 30 days, late fees and above-plan totals, "
+            "and recurring payments' share of income. Use find_duplicate_payments for duplicates."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_month_costs",
+        "description": (
+            "Get every charge dated in one calendar month, including already paid ones, plus "
+            "one-off extras such as late fees. This is the real cost of that month (a weekly "
+            "payment counts 4 or 5 times) and matches the dashboard, with totals per category and "
+            "for extras. Defaults to this month."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "year": {"type": "integer", "minimum": 2000, "maximum": 2100},
+                "month": {"type": "integer", "minimum": 1, "maximum": 12},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_email_reminder_settings",
+        "description": "Get whether email reminders before payments and trial ends are turned on.",
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_gmail_status",
+        "description": (
+            "Get whether Gmail is connected, when it was last scanned, whether the daily scan "
+            "is on and any scan error."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "list_transactions",
+        "description": (
+            "List expenses and income the user logged in Subtrack for one calendar month "
+            "(defaults to this month), newest first, optionally by kind or category. "
+            "These are what the user recorded, not bank data. Use before logging to spot "
+            "an entry that is already there, and to find the ID to edit or remove."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "month": {"type": "string", "pattern": "^\\d{4}-\\d{2}$"},
+                "kind": {"type": "string", "enum": [item.value for item in TransactionKind]},
+                "category": {"type": "string", "enum": CATEGORIES},
+                "limit": {"type": "integer", "minimum": 1, "maximum": MAX_LIST_LIMIT},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_transaction_summary",
+        "description": (
+            "Get logged income, expenses, net and expenses per category for one calendar "
+            "month (defaults to this month) in the user's base currency. Quote logged "
+            "spending totals only from this tool."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"month": {"type": "string", "pattern": "^\\d{4}-\\d{2}$"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "get_budget_status",
+        "description": (
+            "Get every category budget's monthly limit, amount spent (logged expenses plus "
+            "tracked payments charged that month) and amount left for one calendar month "
+            "(defaults to this month) in the user's base currency, with the budget IDs. "
+            "Quote budget figures only from this tool."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"month": {"type": "string", "pattern": "^\\d{4}-\\d{2}$"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_goals",
+        "description": (
+            "List the user's savings goals with their IDs, target, saved, remaining, percent, "
+            "status and the amount still needed per week and per day. Archived goals are "
+            "left out unless include_archived is true. Quote goal figures only from this tool."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"include_archived": {"type": "boolean"}},
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "list_workspace_templates",
+        "description": (
+            "List the ready-made workspace page templates with their ID, name, description and "
+            "block types. Read this before proposing a page and start from the closest one."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "list_workspace_pages",
+        "description": (
+            "List the user's workspace pages with their IDs, titles, template, current blocks and "
+            "when they were updated. Use before changing or removing a page."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
     ALTERNATIVE_RESEARCH_TOOL,
 ]
 
@@ -240,6 +418,16 @@ def run_tool(
     assistant_message_id: UUID | None = None,
 ):
     """Dispatch an allow-listed read or create an inert action proposal."""
+    if tool_name in SPENDING_TOOLS and not spending_enabled(db, user_id):
+        return SPENDING_OFF
+    if tool_name in GOALS_TOOLS and not goals_enabled(db, user_id):
+        return GOALS_OFF
+    if tool_name in WORKSPACE_TOOLS and not workspace_enabled(db, user_id):
+        return WORKSPACE_OFF_ERROR
+    if tool_name in PAGE_TEXT_TOOLS:
+        refusal = advice_refusal(tool_input)
+        if refusal:
+            return refusal
     if tool_name in ACTION_MODELS:
         if not thread_id or not assistant_message_id:
             return {"error": "Action proposals require a conversation message"}
@@ -293,6 +481,45 @@ def run_tool(
         except ValueError as exc:
             return {"error": str(exc)}
         return can_i_afford(db, user_id, amount)
+    if tool_name == "get_paid_history":
+        from app.services.paid_history import paid_history
+        months = tool_input.get("months", 3)
+        if isinstance(months, bool) or not isinstance(months, int) or not 1 <= months <= 12:
+            return {"error": "months must be a whole number from 1 to 12"}
+        return paid_history(db, user_id, months=months)
+    if tool_name == "get_ways_to_save":
+        from app.routers.subscriptions import ways_to_save
+        return ways_to_save(user_id=user_id, db=db)
+    if tool_name == "get_month_costs":
+        from app.routers.subscriptions import get_calendar_month
+        for key, low, high in (("year", 2000, 2100), ("month", 1, 12)):
+            value = tool_input.get(key)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high
+            ):
+                return {"error": f"{key} must be a whole number from {low} to {high}"}
+        result = get_calendar_month(
+            year=tool_input.get("year"), month=tool_input.get("month"), user_id=user_id, db=db,
+        )
+        return {**result, **_month_category_totals(result)}
+    if tool_name == "get_email_reminder_settings":
+        from app.routers.email_reminders import get_email_preferences
+        return get_email_preferences(user_id, db)
+    if tool_name == "get_gmail_status":
+        from app.routers.gmail import gmail_status
+        return gmail_status(user_id=user_id, db=db)
+    if tool_name == "list_transactions":
+        return list_logged_transactions(db, user_id, tool_input)
+    if tool_name == "get_transaction_summary":
+        return logged_transaction_summary(db, user_id, tool_input)
+    if tool_name == "get_budget_status":
+        return budget_status_for_month(db, user_id, tool_input)
+    if tool_name == "list_goals":
+        return goals_with_progress(db, user_id, tool_input)
+    if tool_name == "list_workspace_templates":
+        return workspace_templates(db, user_id)
+    if tool_name == "list_workspace_pages":
+        return workspace_pages(db, user_id)
     if tool_name == "research_cheaper_alternatives":
         return research_alternatives(db, user_id, tool_input)
     return {"error": "Unknown assistant tool"}

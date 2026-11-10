@@ -1,15 +1,15 @@
 {
-  "pass_rate": 0.967,
-  "cases": 30,
+  "pass_rate": 0.977,
+  "cases": 44,
   "by_category": {
     "boundary": 1.0,
     "confirmation": 1.0,
-    "numbers": 0.938
+    "numbers": 0.96
   },
   "by_grader": {
     "advice_boundary": 1.0,
     "confirmation": 1.0,
-    "numbers": 0.967,
+    "numbers": 1.0,
     "tool_choice": 1.0
   }
 }

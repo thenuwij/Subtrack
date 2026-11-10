@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
-from typing import Literal
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Literal, get_args
 from uuid import UUID, uuid4
 
 from fastapi import HTTPException
@@ -18,35 +19,65 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.agent.goals import GOALS_FEATURE, GOALS_OFF, GOALS_TOOLS
+from app.agent.spending import SPENDING_FEATURE, SPENDING_OFF, SPENDING_TOOLS
+from app.agent.workspace import WORKSPACE_FEATURE, WORKSPACE_OFF_ERROR, WORKSPACE_TOOLS
 from app.models import (
     AgentAction,
     AgentMessage,
     AgentResearchCache,
     AmountType,
     BillingCycle,
+    Budget,
     Category,
     ChangeKind,
     DetectedSubscription,
     DetectionStatus,
+    EmailPreference,
+    Goal,
+    GoalContribution,
+    PaymentDecision,
     PaymentReminder,
     PaymentStatus,
     RecurrenceUnit,
+    SafeToSpendProfile,
     SpendingType,
     Subscription,
     SubscriptionChange,
+    Transaction,
+    TransactionKind,
+    TransactionSource,
     UserPreference,
+    WorkspacePage,
 )
 from app.routers.detected import ApproveOverrides, apply_approval
+from app.routers.goals import NEGATIVE_BALANCE, _contributions, _saved
 from app.routers.rates import conversion_for_storage
 from app.routers.subscriptions import (
     log_change,
     retarget_detection_links,
+)
+from app.routers.transactions import (
+    EARLIEST_DATE,
+    LATEST_DATE,
+    MAX_AMOUNT,
+    SupportedCurrency,
+    _require_owned_payment,
+)
+from app.routers.workspace import (
+    MAX_PAGES_PER_USER,
+    PAGE_LIMIT_REACHED,
+    _owned_page,
+    _require_owned_references,
+    add_page,
 )
 from app.services.duplicates import (
     canonical_duplicate_pair,
     delete_duplicate_dismissals_for_subscription,
     persist_duplicate_dismissal,
 )
+from app.services.features import Feature, feature_enabled
+from app.services.goals import goal_progress
 from app.services.recurrence import (
     Cadence,
     cadence_for,
@@ -56,11 +87,17 @@ from app.services.recurrence import (
     monthly_equivalent,
 )
 from app.services.reminders import reminder_occurrence
+from app.services.safe_to_spend import _user_zone
 from app.services.schedules import utc_naive
+from app.services.transaction_duplicates import PossibleDuplicate, find_possible_duplicates
+from app.services.transactions import apply_conversion, base_currency_for
 from app.services.trials import sync_trial_reminder
+from app.services.workspace_blocks import Block, PageBlocks, blocks_to_json, page_blocks_adapter, validate_blocks
+from app.services.workspace_templates import TEMPLATES, TemplateId
 
 ACTION_EXPIRES_AFTER = timedelta(hours=24)
 ACTION_TOOL_PREFIX = "propose_"
+PAGE_TITLE_MAX_LENGTH = 120
 
 
 def utcnow() -> datetime:
@@ -265,6 +302,157 @@ class DismissReminder(StrictAction):
     reminder_id: UUID
 
 
+class MarkPaid(StrictAction):
+    target: str = Field(min_length=1, max_length=100)
+    decision: Literal["paid", "skipped", "undo"]
+    amount: float | None = Field(default=None, gt=0, le=1_000_000)
+
+
+class UpdateBalance(StrictAction):
+    balance: Decimal = Field(max_digits=12, decimal_places=2)
+
+
+class SetEmailReminders(StrictAction):
+    enabled: bool
+
+
+def _upper_currency(value: object) -> object:
+    return value.upper() if isinstance(value, str) else value
+
+
+class LogTransaction(StrictAction):
+    kind: TransactionKind
+    name: str = Field(min_length=1, max_length=200)
+    amount: Decimal = Field(gt=0, le=MAX_AMOUNT, decimal_places=2)
+    currency: SupportedCurrency
+    category: Category = Category.other
+    occurred_on: date | None = Field(default=None, ge=EARLIEST_DATE, le=LATEST_DATE)
+    note: str | None = Field(default=None, max_length=500)
+    recurring_payment_id: UUID | None = None
+
+    _currency = field_validator("currency", mode="before")(_upper_currency)
+
+
+class UpdateTransaction(StrictAction):
+    transaction_id: UUID
+    kind: TransactionKind | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    amount: Decimal | None = Field(default=None, gt=0, le=MAX_AMOUNT, decimal_places=2)
+    currency: SupportedCurrency | None = None
+    category: Category | None = None
+    occurred_on: date | None = Field(default=None, ge=EARLIEST_DATE, le=LATEST_DATE)
+    note: str | None = Field(default=None, max_length=500)
+    recurring_payment_id: UUID | None = None
+    # Null means "leave unchanged" in tool payloads, so clearing the optional
+    # note or bill link is an explicit, confirmation-gated instruction.
+    clear_fields: list[Literal["note", "recurring_payment_id"]] = Field(
+        default_factory=list, max_length=2,
+    )
+
+    _currency = field_validator("currency", mode="before")(_upper_currency)
+
+    @model_validator(mode="after")
+    def has_change(self):
+        values = self.model_dump(exclude={"transaction_id", "clear_fields"})
+        if not any(value is not None for value in values.values()) and not self.clear_fields:
+            raise ValueError("At least one field must be changed")
+        conflicts = [field for field in self.clear_fields if getattr(self, field) is not None]
+        if conflicts:
+            raise ValueError(f"Cannot both set and clear {', '.join(conflicts)}")
+        return self
+
+
+class RemoveTransaction(StrictAction):
+    transaction_id: UUID
+
+
+class SetBudget(StrictAction):
+    category: Category
+    monthly_limit: Decimal = Field(gt=0, le=MAX_AMOUNT, decimal_places=2)
+
+
+class RemoveBudget(StrictAction):
+    budget_id: UUID
+
+
+class CreateGoal(StrictAction):
+    name: str = Field(min_length=1, max_length=120)
+    target_amount: Decimal = Field(gt=0, le=MAX_AMOUNT, decimal_places=2)
+    currency: SupportedCurrency
+    target_date: date | None = Field(default=None, ge=EARLIEST_DATE, le=LATEST_DATE)
+
+    _currency = field_validator("currency", mode="before")(_upper_currency)
+
+
+class UpdateGoal(StrictAction):
+    """Currency is fixed at creation because contributions are stored in it."""
+
+    goal_id: UUID
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    target_amount: Decimal | None = Field(default=None, gt=0, le=MAX_AMOUNT, decimal_places=2)
+    target_date: date | None = Field(default=None, ge=EARLIEST_DATE, le=LATEST_DATE)
+    archived: bool | None = None
+    # Null means "leave unchanged", so removing the target date is explicit.
+    clear_fields: list[Literal["target_date"]] = Field(default_factory=list, max_length=1)
+
+    @model_validator(mode="after")
+    def has_change(self):
+        values = self.model_dump(exclude={"goal_id", "clear_fields"})
+        if not any(value is not None for value in values.values()) and not self.clear_fields:
+            raise ValueError("At least one field must be changed")
+        if "target_date" in self.clear_fields and self.target_date is not None:
+            raise ValueError("Cannot both set and clear target_date")
+        return self
+
+
+class AddGoalContribution(StrictAction):
+    goal_id: UUID
+    amount: Decimal = Field(ge=-MAX_AMOUNT, le=MAX_AMOUNT, decimal_places=2)
+    occurred_on: date | None = Field(default=None, ge=EARLIEST_DATE, le=LATEST_DATE)
+    note: str | None = Field(default=None, max_length=500)
+
+    @field_validator("amount")
+    @classmethod
+    def amount_is_not_zero(cls, amount: Decimal) -> Decimal:
+        if amount == 0:
+            raise ValueError("Amount cannot be zero")
+        return amount
+
+
+class RemoveGoal(StrictAction):
+    goal_id: UUID
+
+
+class CreateWorkspacePage(StrictAction):
+    """A page from a template's blocks, explicit blocks, or both (explicit blocks win)."""
+
+    title: str = Field(min_length=1, max_length=PAGE_TITLE_MAX_LENGTH)
+    template_id: TemplateId | None = None
+    blocks: PageBlocks | None = None
+
+    @model_validator(mode="after")
+    def has_a_layout(self):
+        if self.template_id is None and self.blocks is None:
+            raise ValueError("Choose a template or add at least one block")
+        return self
+
+
+class UpdateWorkspacePage(StrictAction):
+    page_id: UUID
+    title: str | None = Field(default=None, min_length=1, max_length=PAGE_TITLE_MAX_LENGTH)
+    blocks: PageBlocks | None = None
+
+    @model_validator(mode="after")
+    def has_change(self):
+        if self.title is None and self.blocks is None:
+            raise ValueError("Change the title or the blocks")
+        return self
+
+
+class RemoveWorkspacePage(StrictAction):
+    page_id: UUID
+
+
 ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_add_recurring_payment": AddPayment,
     "propose_update_recurring_payment": UpdatePayment,
@@ -276,7 +464,33 @@ ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_approve_inbox_detection": ApproveDetection,
     "propose_dismiss_inbox_detection": DismissDetection,
     "propose_dismiss_payment_reminder": DismissReminder,
+    "propose_mark_payment_paid": MarkPaid,
+    "propose_update_balance": UpdateBalance,
+    "propose_set_email_reminders": SetEmailReminders,
+    "propose_log_transaction": LogTransaction,
+    "propose_update_transaction": UpdateTransaction,
+    "propose_remove_transaction": RemoveTransaction,
+    "propose_set_budget": SetBudget,
+    "propose_remove_budget": RemoveBudget,
+    "propose_create_goal": CreateGoal,
+    "propose_update_goal": UpdateGoal,
+    "propose_remove_goal": RemoveGoal,
+    "propose_add_goal_contribution": AddGoalContribution,
+    "propose_create_workspace_page": CreateWorkspacePage,
+    "propose_update_workspace_page": UpdateWorkspacePage,
+    "propose_remove_workspace_page": RemoveWorkspacePage,
 }
+
+
+def _blocks_schema() -> tuple[dict, dict]:
+    """The JSON schema for a page's blocks, from the same models that validate them."""
+    schema = page_blocks_adapter.json_schema()
+    definitions = schema.pop("$defs")
+    schema["items"].pop("discriminator", None)
+    return schema, definitions
+
+
+PAGE_BLOCKS_SCHEMA, BLOCK_DEFINITIONS = _blocks_schema()
 
 
 ACTION_TOOL_DEFINITIONS = [
@@ -538,7 +752,308 @@ ACTION_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "propose_mark_payment_paid",
+        "description": (
+            "Prepare marking one past payment or bill as paid, as didn't happen (skipped), or "
+            "undoing an earlier choice. Use the exact target from get_paid_history. An amount can "
+            "only be given with paid, when the user says they paid a different amount. Bills "
+            "can't be skipped."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "maxLength": 100},
+                "decision": {"type": "string", "enum": ["paid", "skipped", "undo"]},
+                "amount": {"type": ["number", "null"], "exclusiveMinimum": 0, "maximum": 1_000_000},
+            },
+            "required": ["target", "decision"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_update_balance",
+        "description": (
+            "Prepare updating today's bank balance used by safe to spend, in the currency already "
+            "saved. Payday and buffer stay the same. Only use a balance the user stated."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"balance": {"type": "number"}},
+            "required": ["balance"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_set_email_reminders",
+        "description": "Prepare turning email reminders before payments and trial ends on or off.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"enabled": {"type": "boolean"}},
+            "required": ["enabled"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_log_transaction",
+        "description": (
+            "Prepare logging one day-to-day expense or income entry for confirmation. Only use "
+            "an amount the user stated. Leave occurred_on null for today. Set "
+            "recurring_payment_id only when the entry pays a tracked bill the user confirmed. "
+            "The card warns about possible duplicates; repeat that warning."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": [item.value for item in TransactionKind]},
+                "name": {"type": "string", "minLength": 1, "maxLength": 200},
+                "amount": {"type": "number", "exclusiveMinimum": 0, "maximum": float(MAX_AMOUNT)},
+                "currency": {"type": "string", "enum": list(get_args(SupportedCurrency))},
+                "category": {"type": "string", "enum": [item.value for item in Category]},
+                "occurred_on": {"type": ["string", "null"], "format": "date"},
+                "note": {"type": ["string", "null"], "maxLength": 500},
+                "recurring_payment_id": {"type": ["string", "null"], "format": "uuid"},
+            },
+            "required": [
+                "kind", "name", "amount", "currency", "category", "occurred_on", "note",
+                "recurring_payment_id",
+            ],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_update_transaction",
+        "description": (
+            "Prepare changes to one logged expense or income entry. Use the exact ID from "
+            "list_transactions. Null leaves a field unchanged; use clear_fields to remove a "
+            "note or bill link."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "transaction_id": {"type": "string", "format": "uuid"},
+                "kind": {
+                    "type": ["string", "null"],
+                    "enum": [item.value for item in TransactionKind] + [None],
+                },
+                "name": {"type": ["string", "null"], "minLength": 1, "maxLength": 200},
+                "amount": {
+                    "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": float(MAX_AMOUNT),
+                },
+                "currency": {
+                    "type": ["string", "null"], "enum": list(get_args(SupportedCurrency)) + [None],
+                },
+                "category": {
+                    "type": ["string", "null"], "enum": [item.value for item in Category] + [None],
+                },
+                "occurred_on": {"type": ["string", "null"], "format": "date"},
+                "note": {"type": ["string", "null"], "maxLength": 500},
+                "recurring_payment_id": {"type": ["string", "null"], "format": "uuid"},
+                "clear_fields": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["note", "recurring_payment_id"]},
+                    "maxItems": 2,
+                    "uniqueItems": True,
+                },
+            },
+            "required": [
+                "transaction_id", "kind", "name", "amount", "currency", "category",
+                "occurred_on", "note", "recurring_payment_id", "clear_fields",
+            ],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_remove_transaction",
+        "description": (
+            "Prepare removing one logged expense or income entry. Use the exact ID from "
+            "list_transactions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"transaction_id": {"type": "string", "format": "uuid"}},
+            "required": ["transaction_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_set_budget",
+        "description": (
+            "Prepare a monthly spending limit for one category in the user's base currency. "
+            "If the category already has a budget, its limit is changed instead of adding a "
+            "second one. Only use a limit the user stated."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {"type": "string", "enum": [item.value for item in Category]},
+                "monthly_limit": {
+                    "type": "number", "exclusiveMinimum": 0, "maximum": float(MAX_AMOUNT),
+                },
+            },
+            "required": ["category", "monthly_limit"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_remove_budget",
+        "description": "Prepare removing one category budget. Use the exact ID from get_budget_status.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"budget_id": {"type": "string", "format": "uuid"}},
+            "required": ["budget_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_create_goal",
+        "description": (
+            "Prepare a new savings goal: the user's own target, not a financial product. "
+            "Only use a target amount the user stated. Leave target_date null when they "
+            "gave no date."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 1, "maxLength": 120},
+                "target_amount": {
+                    "type": "number", "exclusiveMinimum": 0, "maximum": float(MAX_AMOUNT),
+                },
+                "currency": {"type": "string", "enum": list(get_args(SupportedCurrency))},
+                "target_date": {"type": ["string", "null"], "format": "date"},
+            },
+            "required": ["name", "target_amount", "currency", "target_date"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_update_goal",
+        "description": (
+            "Prepare changes to one savings goal: rename it, change its target or date, or "
+            "archive or restore it. Use the exact ID from list_goals. Null leaves a field "
+            "unchanged; use clear_fields to remove the target date. The currency can't change."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal_id": {"type": "string", "format": "uuid"},
+                "name": {"type": ["string", "null"], "minLength": 1, "maxLength": 120},
+                "target_amount": {
+                    "type": ["number", "null"], "exclusiveMinimum": 0, "maximum": float(MAX_AMOUNT),
+                },
+                "target_date": {"type": ["string", "null"], "format": "date"},
+                "archived": {"type": ["boolean", "null"]},
+                "clear_fields": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["target_date"]},
+                    "maxItems": 1,
+                    "uniqueItems": True,
+                },
+            },
+            "required": ["goal_id", "name", "target_amount", "target_date", "archived", "clear_fields"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_remove_goal",
+        "description": (
+            "Prepare deleting one savings goal and its contribution history. Use the exact ID "
+            "from list_goals. Suggest archiving instead when the user may want the history."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"goal_id": {"type": "string", "format": "uuid"}},
+            "required": ["goal_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_add_goal_contribution",
+        "description": (
+            "Prepare putting money towards a savings goal, or taking it out with a negative "
+            "amount, in the goal's currency. Use the exact ID from list_goals and only an "
+            "amount the user stated. Leave occurred_on null for today. The card shows the new "
+            "saved total and weekly amount; quote those instead of working them out."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "goal_id": {"type": "string", "format": "uuid"},
+                "amount": {
+                    "type": "number", "minimum": -float(MAX_AMOUNT), "maximum": float(MAX_AMOUNT),
+                },
+                "occurred_on": {"type": ["string", "null"], "format": "date"},
+                "note": {"type": ["string", "null"], "maxLength": 500},
+            },
+            "required": ["goal_id", "amount", "occurred_on", "note"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_create_workspace_page",
+        "description": (
+            "Prepare a new workspace page for the user's situation. Start from the closest "
+            "template in list_workspace_templates and adjust its blocks, using only the listed "
+            "block types and config. Payment and goal IDs must come from list_recurring_payments "
+            "and list_goals. Pass blocks null to use the template's blocks unchanged. Page text "
+            "tracks and organises; it never contains financial-product advice."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "minLength": 1, "maxLength": PAGE_TITLE_MAX_LENGTH},
+                "template_id": {"type": ["string", "null"], "enum": [*TEMPLATES, None]},
+                "blocks": {"anyOf": [PAGE_BLOCKS_SCHEMA, {"type": "null"}]},
+            },
+            "required": ["title", "template_id", "blocks"],
+            "additionalProperties": False,
+            "$defs": BLOCK_DEFINITIONS,
+        },
+    },
+    {
+        "name": "propose_update_workspace_page",
+        "description": (
+            "Prepare renaming a workspace page or replacing its blocks. Use the exact ID and "
+            "current blocks from list_workspace_pages; blocks is the full new list, not a change "
+            "list. Null leaves a field unchanged."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "page_id": {"type": "string", "format": "uuid"},
+                "title": {"type": ["string", "null"], "minLength": 1, "maxLength": PAGE_TITLE_MAX_LENGTH},
+                "blocks": {"anyOf": [PAGE_BLOCKS_SCHEMA, {"type": "null"}]},
+            },
+            "required": ["page_id", "title", "blocks"],
+            "additionalProperties": False,
+            "$defs": BLOCK_DEFINITIONS,
+        },
+    },
+    {
+        "name": "propose_remove_workspace_page",
+        "description": (
+            "Prepare deleting one workspace page. Use the exact ID from list_workspace_pages. "
+            "The payments, goals and entries it shows are not affected."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"page_id": {"type": "string", "format": "uuid"}},
+            "required": ["page_id"],
+            "additionalProperties": False,
+        },
+    },
 ]
+
+ACTION_FEATURES: dict[str, tuple[Feature, dict]] = {
+    tool.removeprefix(ACTION_TOOL_PREFIX): (feature, off)
+    for feature, off, tools in (
+        (SPENDING_FEATURE, SPENDING_OFF, SPENDING_TOOLS),
+        (GOALS_FEATURE, GOALS_OFF, GOALS_TOOLS),
+        (WORKSPACE_FEATURE, WORKSPACE_OFF_ERROR, WORKSPACE_TOOLS),
+    )
+    for tool in tools
+    if tool.startswith(ACTION_TOOL_PREFIX)
+}
 
 
 def _owned_subscription(
@@ -601,6 +1116,159 @@ def _owned_reminder(
     return row
 
 
+def _owned_transaction(
+    db: Session,
+    user_id: str,
+    identifier: UUID,
+    *,
+    for_update: bool = False,
+) -> Transaction:
+    query = db.query(Transaction).filter(
+        Transaction.id == identifier,
+        Transaction.user_id == user_id,
+    )
+    if for_update:
+        query = query.with_for_update()
+    row = query.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Logged entry not found")
+    return row
+
+
+def _transaction_snapshot(row: Transaction) -> dict:
+    return {
+        "id": str(row.id),
+        "kind": row.kind,
+        "name": row.name,
+        "amount": str(row.amount),
+        "currency": row.currency,
+        "category": _enum(row.category),
+        "occurred_on": row.occurred_on.isoformat(),
+        "note": row.note,
+        "recurring_payment_id": str(row.recurring_payment_id) if row.recurring_payment_id else None,
+    }
+
+
+def _owned_budget(
+    db: Session,
+    user_id: str,
+    identifier: UUID,
+    *,
+    for_update: bool = False,
+) -> Budget:
+    query = db.query(Budget).filter(Budget.id == identifier, Budget.user_id == user_id)
+    if for_update:
+        query = query.with_for_update()
+    row = query.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Budget not found")
+    return row
+
+
+def _budget_snapshot(row: Budget) -> dict:
+    return {
+        "id": str(row.id),
+        "category": _enum(row.category),
+        "monthly_limit": str(row.monthly_limit),
+        "currency": row.currency,
+    }
+
+
+def _owned_goal(
+    db: Session,
+    user_id: str,
+    identifier: UUID,
+    *,
+    for_update: bool = False,
+) -> Goal:
+    query = db.query(Goal).filter(Goal.id == identifier, Goal.user_id == user_id)
+    if for_update:
+        query = query.with_for_update()
+    row = query.first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Goal not found")
+    return row
+
+
+def _goal_snapshot(db: Session, user_id: str, row: Goal) -> dict:
+    """The goal and its saved total, so a contribution made meanwhile also counts as a change."""
+    contributions = _contributions(db, user_id, [row.id])
+    return {
+        "id": str(row.id),
+        "name": row.name,
+        "target_amount": str(row.target_amount),
+        "currency": row.currency,
+        "target_date": row.target_date.isoformat() if row.target_date else None,
+        "archived_at": _iso(row.archived_at),
+        "saved": str(_saved(contributions)),
+        "contribution_count": len(contributions),
+    }
+
+
+def _page_snapshot(row: WorkspacePage) -> dict:
+    return {"id": str(row.id), "title": row.title, "blocks": row.blocks}
+
+
+BLOCK_LABELS = {
+    "payment_list": "Payments",
+    "transaction_log": "Expenses and income",
+    "budget": "Budgets",
+    "goal_progress": "Goal progress",
+    "upcoming_payments": "Upcoming payments",
+    "spending_trend": "Spending trend",
+    "checklist": "Checklist",
+    "shared_costs": "Shared costs",
+    "notes": "Notes",
+}
+
+
+def _count(number: int, noun: str) -> str:
+    return f"{number} {noun}{'' if number == 1 else 's'}"
+
+
+def _block_detail(block: dict) -> str | None:
+    kind = block["type"]
+    if kind == "payment_list":
+        if block.get("payment_ids"):
+            return _count(len(block["payment_ids"]), "payment")
+        return block["category"].replace("_", " ") if block.get("category") else None
+    if kind == "transaction_log":
+        return block["range"].replace("_", " ") if block.get("range") else None
+    if kind == "goal_progress" and block.get("goal_ids"):
+        return _count(len(block["goal_ids"]), "goal")
+    if kind == "upcoming_payments":
+        return f"{block['days']} days"
+    if kind == "spending_trend":
+        return f"{block['months']} months"
+    if kind == "checklist":
+        return _count(len(block["items"]), "item")
+    if kind == "shared_costs" and block["people"]:
+        people = len(block["people"])
+        return f"{people} {'person' if people == 1 else 'people'}"
+    return None
+
+
+def _blocks_line(blocks: list[dict]) -> str:
+    """One line naming each block, such as "Upcoming payments (30 days), Checklist (6 items), Notes"."""
+    labels = []
+    for block in blocks:
+        label = block.get("title") or BLOCK_LABELS[block["type"]]
+        detail = _block_detail(block)
+        labels.append(f"{label} ({detail})" if detail else label)
+    return ", ".join(labels)
+
+
+def _local_today(db: Session, user_id: str) -> date:
+    return datetime.now(_user_zone(db, user_id)).date()
+
+
+def _duplicate_hint(match: PossibleDuplicate) -> str:
+    amount = f"{match.currency} {match.amount:.2f}"
+    if match.occurred_on is None:
+        return f"your tracked payment {match.name} {amount}"
+    return f"{match.name} {amount} on {match.occurred_on.day} {match.occurred_on:%b}"
+
+
 def _subscription_snapshot(row: Subscription) -> dict:
     cadence = cadence_for(row)
     return {
@@ -651,6 +1319,27 @@ def _reminder_snapshot(row: PaymentReminder) -> dict:
         "dismissed_for": _iso(row.dismissed_for),
         "is_active": bool(row.is_active),
     }
+
+
+def _decision_snapshot(db: Session, user_id: str, target: str) -> dict:
+    row = db.query(PaymentDecision).filter_by(user_id=user_id, target=target).first()
+    return {
+        "target": target,
+        "decision": row.decision if row else None,
+        "amount": str(row.amount) if row and row.amount is not None else None,
+    }
+
+
+def _profile_snapshot(row: SafeToSpendProfile) -> dict:
+    return {
+        "balance": str(row.balance) if row.balance is not None else None,
+        "currency": row.currency,
+        "balance_as_of": _iso(row.balance_as_of),
+    }
+
+
+def _email_snapshot(row: EmailPreference | None) -> dict:
+    return {"enabled": bool(row and row.enabled), "email": row.email if row else None}
 
 
 def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str):
@@ -844,6 +1533,261 @@ def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str
         }
         summary = f"Dismiss reminder for {sub.name}"
         description = "Dismiss this occurrence. If it repeats, the reminder will return for the next billing cycle."
+    elif tool_name == "propose_mark_payment_paid":
+        item = data
+        assert isinstance(item, MarkPaid)
+        from app.services.paid_history import paid_history
+        history = paid_history(db, user_id, months=24)
+        row = next(
+            (r for r in history["payments"] + history["bills"] if r.get("target") == item.target),
+            None,
+        )
+        if item.decision != "undo" and not row:
+            raise HTTPException(status_code=404, detail="Payment occurrence not found")
+        if item.target.startswith("bill:") and item.decision == "skipped":
+            raise HTTPException(
+                status_code=422,
+                detail="Bills can be marked paid; their invoiced amount remains owed otherwise",
+            )
+        if item.amount is not None and item.decision != "paid":
+            raise HTTPException(status_code=422, detail="An amount can only be given when marking a payment paid")
+        current = _decision_snapshot(db, user_id, item.target)
+        if item.decision == "undo" and current["decision"] is None:
+            raise HTTPException(status_code=409, detail="There is no earlier choice to undo")
+        expected = {"decision": current}
+        name = row["name"] if row else "payment"
+        when = (row.get("date") or row.get("due_on") or row.get("issued_on")) if row else None
+        label = f"{name} ({when})" if when else name
+        if item.decision == "paid":
+            summary = f"Mark {label} paid"
+            description = "Show this payment as paid in History."
+            if item.amount is not None:
+                description += f" Record {item.amount:.2f} as the amount actually paid."
+        elif item.decision == "skipped":
+            summary = f"Mark {label} as didn't happen"
+            description = "Show this payment as didn't happen in History."
+        else:
+            summary = f"Undo your choice for {label}"
+            description = "Clear the paid or didn't happen choice so History works it out again."
+    elif tool_name == "propose_update_balance":
+        item = data
+        assert isinstance(item, UpdateBalance)
+        profile = db.get(SafeToSpendProfile, user_id)
+        if profile is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Safe to spend isn't set up yet. Add a balance and payday on the dashboard first.",
+            )
+        expected = {"profile": _profile_snapshot(profile)}
+        summary = "Update today's balance"
+        description = (
+            f"Set today's balance to {profile.currency} {item.balance:.2f}, dated today. "
+            "Payday and buffer stay the same."
+        )
+    elif tool_name == "propose_set_email_reminders":
+        item = data
+        assert isinstance(item, SetEmailReminders)
+        from app.config import settings
+        from app.middleware.auth import reject_demo_user
+        reject_demo_user(user_id, "Email reminders")
+        pref = db.get(EmailPreference, user_id)
+        if item.enabled:
+            if not settings.resend_api_key or not settings.reminder_email_from:
+                raise HTTPException(status_code=503, detail="Email delivery is not configured yet")
+            if pref is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail="Turn email reminders on from the Account page the first time so Subtrack can confirm your email.",
+                )
+        expected = {"email_pref": _email_snapshot(pref)}
+        if item.enabled:
+            summary = "Turn on email reminders"
+            description = f"Email {pref.email} before payments are due and trials end."
+        else:
+            summary = "Turn off email reminders"
+            description = "Stop reminder emails. In-app reminders stay."
+    elif tool_name == "propose_log_transaction":
+        item = data
+        assert isinstance(item, LogTransaction)
+        if item.recurring_payment_id is not None:
+            _require_owned_payment(db, user_id, item.recurring_payment_id)
+        occurred_on = item.occurred_on or _local_today(db, user_id)
+        # Store the date the card shows, so confirming after midnight can't move it.
+        payload["occurred_on"] = occurred_on.isoformat()
+        summary = f"Log {item.name}"
+        entry = "an expense" if item.kind == TransactionKind.expense else "income"
+        description = (
+            f"Record {entry} of {item.currency} {item.amount:.2f} "
+            f"({_enum(item.category).replace('_', ' ')}) on {occurred_on.isoformat()}."
+        )
+        if item.recurring_payment_id is not None:
+            description += " It will be linked to the tracked payment so it isn't counted twice."
+        duplicates = find_possible_duplicates(
+            db, user_id, name=item.name, amount=item.amount, currency=item.currency,
+            occurred_on=occurred_on,
+        )
+        if duplicates:
+            description += (
+                f" Looks like {'; '.join(_duplicate_hint(match) for match in duplicates)}"
+                " — confirm only if this is new."
+            )
+    elif tool_name == "propose_update_transaction":
+        item = data
+        assert isinstance(item, UpdateTransaction)
+        row = _owned_transaction(db, user_id, item.transaction_id)
+        if item.recurring_payment_id is not None:
+            _require_owned_payment(db, user_id, item.recurring_payment_id)
+        expected = {"transaction": _transaction_snapshot(row)}
+        summary = f"Update {row.name}"
+        changed = [
+            key.replace("_", " ")
+            for key, value in item.model_dump(exclude={"transaction_id", "clear_fields"}).items()
+            if value is not None
+        ]
+        changed.extend(f"clear {key.replace('_', ' ')}" for key in item.clear_fields)
+        description = f"Change {', '.join(changed)} after confirmation."
+    elif tool_name == "propose_remove_transaction":
+        item = data
+        assert isinstance(item, RemoveTransaction)
+        row = _owned_transaction(db, user_id, item.transaction_id)
+        expected = {"transaction": _transaction_snapshot(row)}
+        summary = f"Remove {row.name}"
+        description = (
+            f"Delete this logged {row.kind} of {row.currency} {Decimal(row.amount):.2f} "
+            f"on {row.occurred_on.isoformat()}."
+        )
+    elif tool_name == "propose_set_budget":
+        item = data
+        assert isinstance(item, SetBudget)
+        base = base_currency_for(db, user_id)
+        category = _enum(item.category).replace("_", " ")
+        existing = db.query(Budget).filter(
+            Budget.user_id == user_id, Budget.category == item.category,
+        ).first()
+        # The limit is stored in the base currency at confirmation, so a base
+        # change in the meantime would make the card wrong.
+        expected = {"base_currency": base}
+        limit = f"{base} {item.monthly_limit:.2f}"
+        if existing is None:
+            summary = f"Set {category} budget"
+            description = f"Set a monthly {category} budget of {limit}."
+        else:
+            expected["budget"] = _budget_snapshot(existing)
+            summary = f"Update {category} budget"
+            description = (
+                f"Change the monthly {category} budget from {existing.currency} "
+                f"{Decimal(existing.monthly_limit):.2f} to {limit}."
+            )
+    elif tool_name == "propose_remove_budget":
+        item = data
+        assert isinstance(item, RemoveBudget)
+        row = _owned_budget(db, user_id, item.budget_id)
+        expected = {"budget": _budget_snapshot(row)}
+        category = _enum(row.category).replace("_", " ")
+        summary = f"Remove {category} budget"
+        description = (
+            f"Delete the monthly {category} budget of {row.currency} {Decimal(row.monthly_limit):.2f}. "
+            "Logged spending stays."
+        )
+    elif tool_name == "propose_create_goal":
+        item = data
+        assert isinstance(item, CreateGoal)
+        summary = f"Add goal {item.name}"
+        description = f"Save {item.currency} {item.target_amount:.2f} for {item.name}"
+        description += f" by {item.target_date.isoformat()}." if item.target_date else "."
+    elif tool_name == "propose_update_goal":
+        item = data
+        assert isinstance(item, UpdateGoal)
+        goal = _owned_goal(db, user_id, item.goal_id)
+        expected = {"goal": _goal_snapshot(db, user_id, goal)}
+        summary = f"Update {goal.name}"
+        changed = [
+            key.replace("_", " ")
+            for key, value in item.model_dump(exclude={"goal_id", "clear_fields", "archived"}).items()
+            if value is not None
+        ]
+        changed.extend(f"clear {key.replace('_', ' ')}" for key in item.clear_fields)
+        if item.archived is not None:
+            changed.append("archive it" if item.archived else "restore it")
+        description = f"Change {', '.join(changed)} after confirmation."
+    elif tool_name == "propose_remove_goal":
+        item = data
+        assert isinstance(item, RemoveGoal)
+        goal = _owned_goal(db, user_id, item.goal_id)
+        expected = {"goal": _goal_snapshot(db, user_id, goal)}
+        saved = Decimal(expected["goal"]["saved"])
+        summary = f"Remove {goal.name}"
+        description = (
+            f"Delete this goal and its {expected['goal']['contribution_count']} contributions "
+            f"({goal.currency} {saved:.2f} saved). Money you've set aside elsewhere isn't affected."
+        )
+    elif tool_name == "propose_add_goal_contribution":
+        item = data
+        assert isinstance(item, AddGoalContribution)
+        goal = _owned_goal(db, user_id, item.goal_id)
+        expected = {"goal": _goal_snapshot(db, user_id, goal)}
+        new_saved = Decimal(expected["goal"]["saved"]) + item.amount
+        if new_saved < 0:
+            raise HTTPException(status_code=409, detail=NEGATIVE_BALANCE)
+        today = _local_today(db, user_id)
+        occurred_on = item.occurred_on or today
+        # Store the date the card shows, so confirming after midnight can't move it.
+        payload["occurred_on"] = occurred_on.isoformat()
+        progress = goal_progress(goal, new_saved, today)
+        amount = f"{goal.currency} {abs(item.amount):.2f}"
+        if item.amount > 0:
+            summary = f"Add to {goal.name}"
+            description = f"Put {amount} towards {goal.name} on {occurred_on.isoformat()}."
+        else:
+            summary = f"Take out of {goal.name}"
+            description = f"Take {amount} out of {goal.name} on {occurred_on.isoformat()}."
+        description += (
+            f" Saved will be {goal.currency} {progress['saved']:.2f} of "
+            f"{goal.currency} {Decimal(goal.target_amount):.2f}."
+        )
+        if progress["needed_per_week"] is not None:
+            description += (
+                f" That leaves {goal.currency} {progress['needed_per_week']:.2f} a week "
+                f"to reach it by {goal.target_date.isoformat()}."
+            )
+        elif progress["status"] == "reached":
+            description += " That reaches the goal."
+    elif tool_name == "propose_create_workspace_page":
+        item = data
+        assert isinstance(item, CreateWorkspacePage)
+        blocks: list[Block] = item.blocks if item.blocks is not None else validate_blocks(
+            list(TEMPLATES[item.template_id].blocks)
+        )
+        _require_owned_references(db, user_id, blocks)
+        # Store the blocks the card lists, so confirming creates exactly that page.
+        payload["blocks"] = blocks_to_json(blocks)
+        if db.query(WorkspacePage).filter(WorkspacePage.user_id == user_id).count() >= MAX_PAGES_PER_USER:
+            raise HTTPException(status_code=409, detail=PAGE_LIMIT_REACHED)
+        summary = f"Add page {item.title}"
+        description = f"Create a workspace page with: {_blocks_line(payload['blocks'])}."
+    elif tool_name == "propose_update_workspace_page":
+        item = data
+        assert isinstance(item, UpdateWorkspacePage)
+        page = _owned_page(db, user_id, item.page_id)
+        expected = {"page": _page_snapshot(page)}
+        changes = []
+        if item.title is not None:
+            changes.append(f"Rename it to {item.title}.")
+        if item.blocks is not None:
+            _require_owned_references(db, user_id, item.blocks)
+            changes.append(f"Replace its blocks with: {_blocks_line(payload['blocks'])}.")
+        summary = f"Update page {page.title}"
+        description = " ".join(changes)
+    elif tool_name == "propose_remove_workspace_page":
+        item = data
+        assert isinstance(item, RemoveWorkspacePage)
+        page = _owned_page(db, user_id, item.page_id)
+        expected = {"page": _page_snapshot(page)}
+        summary = f"Remove page {page.title}"
+        description = (
+            f"Delete this page and its {_count(len(page.blocks), 'block')}, including any checklists, "
+            "notes and shared costs on it. The payments, goals and entries it shows aren't affected."
+        )
     else:
         raise HTTPException(status_code=400, detail="Unknown assistant action")
     return payload, expected, summary, description
@@ -1002,6 +1946,36 @@ def _assert_fresh(action: AgentAction, db: Session, user_id: str) -> None:
         )
         if not matches(_reminder_snapshot(reminder), expected["reminder"]):
             raise HTTPException(status_code=409, detail="This reminder changed after the action was proposed.")
+    if "decision" in expected and (
+        _decision_snapshot(db, user_id, expected["decision"]["target"]) != expected["decision"]
+    ):
+        raise HTTPException(status_code=409, detail="This payment's History changed after the action was proposed.")
+    if "profile" in expected:
+        profile = db.query(SafeToSpendProfile).filter_by(user_id=user_id).with_for_update().first()
+        if profile is None or _profile_snapshot(profile) != expected["profile"]:
+            raise HTTPException(status_code=409, detail="Your balance changed after the action was proposed.")
+    if "email_pref" in expected:
+        pref = db.query(EmailPreference).filter_by(user_id=user_id).with_for_update().first()
+        if _email_snapshot(pref) != expected["email_pref"]:
+            raise HTTPException(status_code=409, detail="Email reminder settings changed after the action was proposed.")
+    if "transaction" in expected:
+        row = _owned_transaction(db, user_id, UUID(expected["transaction"]["id"]), for_update=True)
+        if _transaction_snapshot(row) != expected["transaction"]:
+            raise HTTPException(status_code=409, detail="This entry changed after the action was proposed. Ask the assistant again.")
+    if "base_currency" in expected and base_currency_for(db, user_id) != expected["base_currency"]:
+        raise HTTPException(status_code=409, detail="Your base currency changed after the action was proposed. Ask the assistant again.")
+    if "budget" in expected:
+        budget = _owned_budget(db, user_id, UUID(expected["budget"]["id"]), for_update=True)
+        if _budget_snapshot(budget) != expected["budget"]:
+            raise HTTPException(status_code=409, detail="This budget changed after the action was proposed. Ask the assistant again.")
+    if "goal" in expected:
+        goal = _owned_goal(db, user_id, UUID(expected["goal"]["id"]), for_update=True)
+        if _goal_snapshot(db, user_id, goal) != expected["goal"]:
+            raise HTTPException(status_code=409, detail="This goal changed after the action was proposed. Ask the assistant again.")
+    if "page" in expected:
+        page = _owned_page(db, user_id, UUID(expected["page"]["id"]), for_update=True)
+        if _page_snapshot(page) != expected["page"]:
+            raise HTTPException(status_code=409, detail="This page changed after the action was proposed. Ask the assistant again.")
 
 
 def _execute_add_payment(action: AgentAction, db: Session, user_id: str) -> dict:
@@ -1351,6 +2325,215 @@ def _execute_dismiss_reminder(action: AgentAction, db: Session, user_id: str) ->
     return {"reminder_id": str(reminder.id), "subscription_id": str(sub.id)}
 
 
+def _execute_mark_paid(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = MarkPaid.model_validate(action.payload_json)
+    existing = db.query(PaymentDecision).filter_by(user_id=user_id, target=data.target).first()
+    amount = round(data.amount, 2) if data.amount is not None else None
+    if data.decision == "undo":
+        if existing:
+            db.delete(existing)
+    elif existing:
+        existing.decision = data.decision
+        existing.amount = amount
+    else:
+        db.add(PaymentDecision(user_id=user_id, target=data.target, decision=data.decision, amount=amount))
+    db.flush()
+    return {"target": data.target, "decision": data.decision, "amount": amount}
+
+
+def _execute_update_balance(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = UpdateBalance.model_validate(action.payload_json)
+    profile = db.get(SafeToSpendProfile, user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Safe to spend isn't set up")
+    profile.balance = data.balance
+    profile.balance_as_of = utcnow()
+    return {"balance": str(data.balance), "currency": profile.currency}
+
+
+def _execute_set_email_reminders(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = SetEmailReminders.model_validate(action.payload_json)
+    pref = db.get(EmailPreference, user_id)
+    if pref is None:
+        if data.enabled:
+            raise HTTPException(status_code=409, detail="Turn email reminders on from the Account page first")
+        return {"enabled": False}
+    pref.enabled = data.enabled
+    return {"enabled": data.enabled}
+
+
+def _execute_log_transaction(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = LogTransaction.model_validate(action.payload_json)
+    if data.recurring_payment_id is not None:
+        _require_owned_payment(db, user_id, data.recurring_payment_id)
+    row = Transaction(
+        user_id=user_id,
+        kind=data.kind.value,
+        name=data.name,
+        amount=data.amount,
+        currency=data.currency,
+        category=data.category,
+        occurred_on=data.occurred_on or _local_today(db, user_id),
+        note=data.note,
+        source=TransactionSource.ai.value,
+        recurring_payment_id=data.recurring_payment_id,
+    )
+    apply_conversion(db, row, base_currency_for(db, user_id))
+    db.add(row)
+    db.flush()
+    return {"transaction_id": str(row.id), "name": row.name, "occurred_on": row.occurred_on.isoformat()}
+
+
+def _execute_update_transaction(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = UpdateTransaction.model_validate(action.payload_json)
+    row = _owned_transaction(db, user_id, data.transaction_id)
+    if data.recurring_payment_id is not None:
+        _require_owned_payment(db, user_id, data.recurring_payment_id)
+    changes = {
+        key: value
+        for key, value in data.model_dump(exclude={"transaction_id", "clear_fields"}).items()
+        if value is not None
+    }
+    changes.update({key: None for key in data.clear_fields})
+    if "kind" in changes:
+        changes["kind"] = changes["kind"].value
+    money_changed = any(
+        field in changes and changes[field] != getattr(row, field) for field in ("amount", "currency")
+    )
+    for field, value in changes.items():
+        setattr(row, field, value)
+    if money_changed:
+        apply_conversion(db, row, base_currency_for(db, user_id))
+    db.flush()
+    return {"transaction_id": str(row.id), "name": row.name}
+
+
+def _execute_remove_transaction(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = RemoveTransaction.model_validate(action.payload_json)
+    row = _owned_transaction(db, user_id, data.transaction_id)
+    name = row.name
+    db.delete(row)
+    return {"transaction_id": str(data.transaction_id), "name": name}
+
+
+def _execute_set_budget(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = SetBudget.model_validate(action.payload_json)
+    # One budget per category: update the existing one instead of adding a second.
+    row = db.query(Budget).filter(
+        Budget.user_id == user_id, Budget.category == data.category,
+    ).with_for_update().first()
+    currency = base_currency_for(db, user_id)
+    if row is None:
+        row = Budget(user_id=user_id, category=data.category)
+        db.add(row)
+    row.monthly_limit = data.monthly_limit
+    row.currency = currency
+    db.flush()
+    return {
+        "budget_id": str(row.id),
+        "category": _enum(row.category),
+        "monthly_limit": str(data.monthly_limit),
+        "currency": row.currency,
+    }
+
+
+def _execute_remove_budget(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = RemoveBudget.model_validate(action.payload_json)
+    row = _owned_budget(db, user_id, data.budget_id)
+    category = _enum(row.category)
+    db.delete(row)
+    return {"budget_id": str(data.budget_id), "category": category}
+
+
+def _execute_create_goal(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = CreateGoal.model_validate(action.payload_json)
+    row = Goal(user_id=user_id, **data.model_dump())
+    db.add(row)
+    db.flush()
+    return {"goal_id": str(row.id), "name": row.name}
+
+
+def _execute_update_goal(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = UpdateGoal.model_validate(action.payload_json)
+    row = _owned_goal(db, user_id, data.goal_id)
+    if data.archived is not None:
+        if data.archived and row.archived_at is None:
+            row.archived_at = utcnow()
+        elif not data.archived:
+            row.archived_at = None
+    changes = {
+        key: value
+        for key, value in data.model_dump(exclude={"goal_id", "clear_fields", "archived"}).items()
+        if value is not None
+    }
+    changes.update({key: None for key in data.clear_fields})
+    for field, value in changes.items():
+        setattr(row, field, value)
+    db.flush()
+    return {"goal_id": str(row.id), "name": row.name}
+
+
+def _execute_remove_goal(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = RemoveGoal.model_validate(action.payload_json)
+    row = _owned_goal(db, user_id, data.goal_id)
+    name = row.name
+    # Deleted explicitly too, because SQLite does not enforce the cascade by default.
+    db.query(GoalContribution).filter(
+        GoalContribution.goal_id == row.id, GoalContribution.user_id == user_id,
+    ).delete(synchronize_session=False)
+    db.delete(row)
+    return {"goal_id": str(data.goal_id), "name": name}
+
+
+def _execute_add_goal_contribution(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = AddGoalContribution.model_validate(action.payload_json)
+    goal = _owned_goal(db, user_id, data.goal_id)
+    saved = _saved(_contributions(db, user_id, [goal.id])) + data.amount
+    if saved < 0:
+        raise HTTPException(status_code=409, detail=NEGATIVE_BALANCE)
+    row = GoalContribution(
+        goal_id=goal.id,
+        user_id=user_id,
+        amount=data.amount,
+        occurred_on=data.occurred_on or _local_today(db, user_id),
+        note=data.note,
+        source=TransactionSource.ai.value,
+    )
+    db.add(row)
+    db.flush()
+    return {
+        "contribution_id": str(row.id),
+        "goal_id": str(goal.id),
+        "saved": goal_progress(goal, saved, _local_today(db, user_id))["saved"],
+    }
+
+
+def _execute_create_workspace_page(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = CreateWorkspacePage.model_validate(action.payload_json)
+    page = add_page(db, user_id, data.title, data.template_id, data.blocks)
+    return {"page_id": str(page.id), "title": page.title}
+
+
+def _execute_update_workspace_page(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = UpdateWorkspacePage.model_validate(action.payload_json)
+    page = _owned_page(db, user_id, data.page_id)
+    if data.blocks is not None:
+        _require_owned_references(db, user_id, data.blocks)
+        page.blocks = blocks_to_json(data.blocks)
+    if data.title is not None:
+        page.title = data.title
+    db.flush()
+    return {"page_id": str(page.id), "title": page.title}
+
+
+def _execute_remove_workspace_page(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = RemoveWorkspacePage.model_validate(action.payload_json)
+    page = _owned_page(db, user_id, data.page_id)
+    title = page.title
+    db.delete(page)
+    return {"page_id": str(data.page_id), "title": title}
+
+
 EXECUTORS = {
     "add_recurring_payment": _execute_add_payment,
     "update_recurring_payment": _execute_update_payment,
@@ -1362,6 +2545,21 @@ EXECUTORS = {
     "approve_inbox_detection": _execute_approve_detection,
     "dismiss_inbox_detection": _execute_dismiss_detection,
     "dismiss_payment_reminder": _execute_dismiss_reminder,
+    "mark_payment_paid": _execute_mark_paid,
+    "update_balance": _execute_update_balance,
+    "set_email_reminders": _execute_set_email_reminders,
+    "log_transaction": _execute_log_transaction,
+    "update_transaction": _execute_update_transaction,
+    "remove_transaction": _execute_remove_transaction,
+    "set_budget": _execute_set_budget,
+    "remove_budget": _execute_remove_budget,
+    "create_goal": _execute_create_goal,
+    "update_goal": _execute_update_goal,
+    "remove_goal": _execute_remove_goal,
+    "add_goal_contribution": _execute_add_goal_contribution,
+    "create_workspace_page": _execute_create_workspace_page,
+    "update_workspace_page": _execute_update_workspace_page,
+    "remove_workspace_page": _execute_remove_workspace_page,
 }
 
 
@@ -1389,6 +2587,13 @@ def get_owned_action(
     return action
 
 
+def _require_action_feature(action: AgentAction, db: Session, user_id: str) -> None:
+    """A card made while its feature was on can't be confirmed once the feature is off."""
+    gate = ACTION_FEATURES.get(action.action_type)
+    if gate and not feature_enabled(db, user_id, gate[0]):
+        raise HTTPException(status_code=403, detail=gate[1]["error"])
+
+
 def confirm_action(db: Session, user_id: str, action_id: UUID) -> dict:
     action = get_owned_action(db, user_id, action_id, for_update=True)
     if action.status == "completed":
@@ -1405,6 +2610,7 @@ def confirm_action(db: Session, user_id: str, action_id: UUID) -> dict:
     if not executor:
         raise HTTPException(status_code=400, detail="Unsupported assistant action")
     try:
+        _require_action_feature(action, db, user_id)
         _assert_fresh(action, db, user_id)
         result = executor(action, db, user_id)
         action.status = "completed"

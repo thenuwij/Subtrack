@@ -25,3 +25,13 @@ class RewindAnchorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RewindKeepsDayTests(unittest.TestCase):
+    def test_rewind_past_a_short_month_keeps_the_30th(self):
+        from app.services.recurrence import occurrences_between, rewind_anchor
+        due = datetime(2026, 10, 30)
+        for start in (datetime(2026, 8, 1), datetime(2024, 11, 1)):
+            anchor = rewind_anchor(due, "monthly", start)
+            dates = occurrences_between(anchor, "monthly", start, datetime(2026, 10, 31))
+            self.assertEqual(dates[-1], due)

@@ -15,6 +15,12 @@ const CATEGORY_LABELS: Record<string, string> = {
   memberships: 'Memberships',
   donations: 'Donations',
   business: 'Business services',
+  shopping: 'Shopping',
+  health: 'Health',
+  travel: 'Travel',
+  personal_care: 'Personal care',
+  gifts: 'Gifts',
+  income: 'Income',
   other: 'Other recurring',
 }
 
