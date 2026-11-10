@@ -977,7 +977,10 @@ class EmailPreference(Base):
     __tablename__ = "email_preferences"
     user_id = Column(String, primary_key=True)
     email = Column(String(320), nullable=False)
+    # Payment reminder emails.
     enabled = Column(Boolean, nullable=False, default=False)
+    # The payday message: what's spoken for and what's free until next payday.
+    payday_enabled = Column(Boolean, nullable=False, default=False, server_default=false())
 
 
 class ReminderDelivery(Base):
@@ -1037,6 +1040,10 @@ class Transaction(Base):
     )
     # The due date a manual payment's "mark as paid" settled; deleting the row undoes it.
     paid_due_on = Column(Date, nullable=True)
+    # The spending pot this came out of, so it uses up the pot instead of free money.
+    # No foreign key: older migrations build this table from the live model before
+    # set_asides exists. Deleting a pot clears these links in code.
+    set_aside_id = Column(UUID(as_uuid=True), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -1099,6 +1106,50 @@ class GoalContribution(Base):
     occurred_on = Column(Date, nullable=False)
     note = Column(String(500), nullable=True)
     source = Column(String(8), nullable=False, default=TransactionSource.manual.value)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class SetAside(Base):
+    """Money taken off safe to spend every pay.
+
+    ``save`` puts money towards something; ``pot`` is a spending limit such as
+    eating out, which logged spends use up instead of free money.
+    """
+
+    __tablename__ = "set_asides"
+    __table_args__ = (
+        CheckConstraint("kind IN ('save', 'pot')", name="ck_set_asides_kind"),
+        CheckConstraint("amount_per_pay > 0", name="ck_set_asides_amount_positive"),
+        CheckConstraint(
+            "target_amount IS NULL OR target_amount > 0", name="ck_set_asides_target_positive",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String, nullable=False, index=True)
+    kind = Column(String(4), nullable=False)
+    name = Column(String(80), nullable=False)
+    amount_per_pay = Column(Numeric(12, 2), nullable=False)
+    currency = Column(String(3), nullable=False)
+    # Optional for savings: what the user is saving towards.
+    target_amount = Column(Numeric(12, 2), nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class ProductEvent(Base):
+    """One anonymous usage event: what happened and when, nothing else.
+
+    ``actor`` is a keyed one-way hash of the user ID, so returning users can be
+    counted without storing who they are. No amounts, names or payment details.
+    """
+
+    __tablename__ = "product_events"
+    __table_args__ = (Index("ix_product_events_name_created", "name", "created_at"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    actor = Column(String(64), nullable=False, index=True)
+    name = Column(String(40), nullable=False)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 

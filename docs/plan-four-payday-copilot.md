@@ -38,6 +38,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** a fresh account reaches its first number in under 3 minutes.
 
+✅ Built 10 Nov 2026 at `/setup`: pay → bills (pick list or one typed line) → optional balance → Home. The pick list has no prices, so the user enters each amount and next charge date. Still to add: the goal step (Phase 5), the payday message step (Phase 4), the spoken line (once voice entry is committed) and timing (Phase 7).
+
 ## Phase 4: Payday message
 
 1. Opt-in at setup and in Account. Uses the existing Resend pipeline, durable delivery keys and cron.
@@ -47,6 +49,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** a test account gets exactly one correct message per payday.
 
+✅ Built 10 Nov 2026 (`0033_payday_email`). It's a separate switch from payment reminders, sent from 7am local time on payday by the existing hourly job, and links to `/balance`. Still needs Resend set up in production to actually send.
+
 ## Phase 5: Goals and big spends feed the number
 
 1. Each goal's per-pay target comes off free-to-spend as "set aside".
@@ -54,6 +58,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 3. Can I afford it accounts for both.
 
 **Done when** adding a goal or a big spend changes the Home number with the reason shown.
+
+✅ Built 10 Nov 2026 (`0034_set_asides`) as "set aside each pay": savings and spending pots, separate from the parked goals and budgets. Free = money − bills − buffer − savings − left in pots − spends the balance doesn't show. Not yet in setup or voice.
 
 ## Phase 6: Quick check and rare alerts
 
@@ -63,6 +69,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** each alert fires once in its test case and never otherwise.
 
+✅ Built 10 Nov 2026. `/afford` page plus a web app manifest with "Can I afford it?" and "Update today's balance" shortcuts. Alerts share the payday email switch: bills won't fit (from the morning after payday) and a trial ending within 3 days, at most 2 per cycle. Price-rise alerts were dropped because every recorded price change comes from the user's own edit or approval.
+
 ## Phase 7: Measure
 
 1. Anonymous event counts (no amounts, names or payment details): setup started, setup finished, first number seen, payday message opened, balance updated, afford check.
@@ -70,9 +78,11 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** the report shows real numbers from test accounts.
 
+✅ Built 10 Nov 2026 (`0035_product_events`). Events store a keyed hash of the user ID, a name and a time, and are deleted with the account; demo accounts are skipped. Payday email "opened" is counted as a click on its balance link, since plain-text email can't report opens. `venv/bin/python scripts/product_report.py --days 30` prints setup speed, second-cycle retention and payday email clicks.
+
 ## Phase 8: Pilot
 
-1. Update the README, landing page and privacy page to the new promise.
+1. Update the README, landing page and privacy page to the new promise. ✅ Done 10 Nov 2026; local setup moved to [local-setup.md](local-setup.md).
 2. Invite 20 students or shift workers. The owner uses it for their own pay cycles too.
 3. Run for 2 pay cycles. Interview 5 users.
 4. **Gate:** 10 or more still active after 2 cycles → plan email forwarding or statement upload. Fewer → revisit the wedge.

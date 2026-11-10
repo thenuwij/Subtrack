@@ -105,6 +105,17 @@ export interface SubscriptionInput {
   share_amount?: number
 }
 
+/** A recurring bill suggested from free text, for the user to confirm. */
+export interface BillDraft {
+  name: string
+  amount: number
+  currency: Currency
+  category: Category
+  interval_unit: 'week' | 'month' | 'year'
+  interval_count: number
+  next_due: string | null
+}
+
 export interface GmailStatus {
   connected: boolean
   configured?: boolean
@@ -387,6 +398,29 @@ export interface SafeToSpendProfileInput {
   payday_bills_after_pay: boolean
 }
 
+export type SetAsideKind = 'save' | 'pot'
+
+/** Money taken off each pay: savings, or a spending pot such as eating out. */
+export interface SetAside {
+  id: string
+  kind: SetAsideKind
+  name: string
+  amount_per_pay: number
+  currency: Currency
+  target_amount: number | null
+}
+
+export interface SetAsidePosition {
+  id: string
+  kind: SetAsideKind
+  name: string
+  amount: number
+  target_amount: number | null
+  /** Pots only: spent from the pot and what's left this pay cycle. */
+  spent?: number
+  left?: number
+}
+
 export interface SafeToSpend {
   status: 'needs_setup' | 'ready' | 'balance_outdated' | 'incomplete'
   /** "balance" uses today's balance; "estimate" uses usual pay for the whole pay cycle. */
@@ -407,6 +441,12 @@ export interface SafeToSpend {
   buffer?: number
   committed?: number
   commitments?: { id: string; name: string; due_at: string; amount: number; is_estimate: boolean }[]
+  /** Total taken off for savings and what's left in spending pots this pay cycle. */
+  set_aside?: number
+  /** Logged spends this cycle that the balance doesn't already show. */
+  spent?: number
+  set_asides?: SetAsidePosition[]
+  spends?: { id: string; name: string; amount: number; occurred_on: string; set_aside_id: string | null }[]
   profile?: Omit<SafeToSpendProfileInput, 'next_payday'>
   warnings?: string[]
 }

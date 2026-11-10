@@ -4,7 +4,7 @@ import secrets
 
 import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -17,7 +17,17 @@ router = APIRouter(prefix="/email-reminders", tags=["email reminders"])
 
 
 class EmailOptIn(BaseModel):
-    enabled: bool
+    model_config = ConfigDict(extra="forbid")
+
+    # Payment reminders and the payday email; leave one out to keep it as is.
+    enabled: bool | None = None
+    payday: bool | None = None
+
+    @model_validator(mode="after")
+    def changes_something(self):
+        if self.enabled is None and self.payday is None:
+            raise ValueError("Choose which emails to turn on or off.")
+        return self
 
 
 @router.get("")
@@ -25,6 +35,7 @@ def get_email_preferences(user_id: str = Depends(verify_token), db: Session = De
     pref = db.get(EmailPreference, user_id)
     return {
         "enabled": bool(pref and pref.enabled),
+        "payday": bool(pref and pref.payday_enabled),
         "email": pref.email if pref else None,
         "configured": bool(settings.resend_api_key and settings.reminder_email_from),
     }
@@ -36,7 +47,7 @@ def set_email_preferences(
 ):
     reject_demo_user(user_id, "Email reminders")
     pref = db.get(EmailPreference, user_id)
-    if body.enabled:
+    if body.enabled or body.payday:
         if not settings.resend_api_key or not settings.reminder_email_from:
             raise HTTPException(503, "Email delivery is not configured yet")
         # verify_token has already verified signature, audience, expiry and subject.
@@ -48,8 +59,10 @@ def set_email_preferences(
             pref = EmailPreference(user_id=user_id, email=email)
             db.add(pref)
         pref.email = email
-    if pref:
+    if pref and body.enabled is not None:
         pref.enabled = body.enabled
+    if pref and body.payday is not None:
+        pref.payday_enabled = body.payday
     db.commit()
     return get_email_preferences(user_id, db)
 
