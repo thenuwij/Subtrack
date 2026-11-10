@@ -18,6 +18,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** a new account sees only the four screens and existing data still loads.
 
+✅ Done 10 Nov 2026. Parked features are opt-in under Account → Extras.
+
 ## Phase 2: Estimate without a balance
 
 1. Add optional `pay_amount` to `SafeToSpendProfile` (migration).
@@ -25,6 +27,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 3. Tests: no balance, stale balance, bills due on payday, missing FX.
 
 **Done when** a user with no balance gets a labelled estimate.
+
+✅ Done 10 Nov 2026 (`0032_pay_amount`). Balance is now optional. An estimate also replaces a balance older than the last payday, and its per-day figure spreads over the whole pay cycle because spending so far is unknown.
 
 ## Phase 3: Three-minute setup
 

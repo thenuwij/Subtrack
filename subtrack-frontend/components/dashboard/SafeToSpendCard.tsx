@@ -36,7 +36,8 @@ function ProfileForm({ position, onSaved, onCancel }: {
   onCancel?: () => void
 }) {
   const { baseCurrency } = useCurrency()
-  const [balance, setBalance] = useState(position?.profile ? String(position.profile.balance) : '')
+  const [balance, setBalance] = useState(position?.profile?.balance != null ? String(position.profile.balance) : '')
+  const [payAmount, setPayAmount] = useState(position?.profile?.pay_amount != null ? String(position.profile.pay_amount) : '')
   const [nextPayday, setNextPayday] = useState(position?.next_payday ?? '')
   const [schedule, setSchedule] = useState<PaySchedule>(scheduleOf(position))
   const [buffer, setBuffer] = useState(position?.profile ? String(position.profile.buffer) : '50')
@@ -45,13 +46,18 @@ function ProfileForm({ position, onSaved, onCancel }: {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
+    if (balance.trim() === '' && payAmount.trim() === '') {
+      toast.error('Enter your usual pay or today’s balance.')
+      return
+    }
     setSaving(true)
     try {
       const token = await getAccessToken()
       if (!token) throw new Error('Your session has expired.')
       const { pay_interval_unit, pay_interval_count } = PAY_SCHEDULES[schedule]
       const input: SafeToSpendProfileInput = {
-        balance: Number(balance),
+        balance: balance.trim() === '' ? null : Number(balance),
+        pay_amount: payAmount.trim() === '' ? null : Number(payAmount),
         currency: position?.profile?.currency ?? baseCurrency,
         next_payday: nextPayday,
         pay_interval_unit,
@@ -70,9 +76,16 @@ function ProfileForm({ position, onSaved, onCancel }: {
   return (
     <form onSubmit={handleSubmit} className="mt-4 grid gap-4 sm:grid-cols-2">
       <div className="space-y-1.5">
-        <Label htmlFor="safe-balance">Balance in your everyday account</Label>
-        <Input id="safe-balance" type="number" step="0.01" inputMode="decimal" required value={balance} onChange={event => setBalance(event.target.value)} />
+        <Label htmlFor="safe-pay">Usual pay after tax</Label>
+        <Input id="safe-pay" type="number" step="0.01" min="0.01" inputMode="decimal" value={payAmount} onChange={event => setPayAmount(event.target.value)} />
       </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="safe-balance">Today&apos;s balance <span className="font-normal text-muted-foreground">(optional)</span></Label>
+        <Input id="safe-balance" type="number" step="0.01" inputMode="decimal" value={balance} onChange={event => setBalance(event.target.value)} />
+      </div>
+      <p className="-mt-2 text-xs text-muted-foreground sm:col-span-2">
+        With just your pay, we estimate. Add today&apos;s balance for an exact number.
+      </p>
       <div className="space-y-1.5">
         <Label htmlFor="safe-payday">Next payday</Label>
         <Input id="safe-payday" type="date" required value={nextPayday} onChange={event => setNextPayday(event.target.value)} />
@@ -136,6 +149,7 @@ function QuickBalance({ position, onSaved }: { position: SafeToSpend; onSaved: (
       if (!token) throw new Error('Your session has expired.')
       onSaved(await saveSafeToSpendProfile(token, {
         balance: Number(value),
+        pay_amount: profile.pay_amount,
         currency: profile.currency,
         next_payday: position.next_payday,
         pay_interval_unit: profile.pay_interval_unit,
@@ -244,12 +258,12 @@ export function SafeToSpendCard() {
         <span className="mb-5 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Wallet className="h-5 w-5" strokeWidth={1.7} /></span>
         <p className="eyebrow text-primary">Until next payday</p>
         <h2 className="mt-3 max-w-xs text-[28px] font-semibold leading-tight tracking-tight">Know what&apos;s yours to spend.</h2>
-        <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">Start with your balance. We&apos;ll set aside your bills and a little buffer.</p>
+        <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">Start with your pay or today&apos;s balance. We&apos;ll set aside your bills and a little buffer.</p>
         <Button className="mt-6" onClick={() => setEditing(true)}>Set up safe to spend <ArrowUpRight className="h-4 w-4" /></Button>
         <Dialog open={editing} onOpenChange={setEditing}>
           <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
-            <DialogHeader><DialogTitle>Your balance & payday</DialogTitle></DialogHeader>
-            <DialogDescription>Your balance is entered by you. Subtrack doesn&apos;t connect to your bank.</DialogDescription>
+            <DialogHeader><DialogTitle>Your pay & payday</DialogTitle></DialogHeader>
+            <DialogDescription>You enter these yourself. Subtrack doesn&apos;t connect to your bank.</DialogDescription>
             <ProfileForm position={position} onSaved={handleSaved} onCancel={() => setEditing(false)} />
           </DialogContent>
         </Dialog>
@@ -265,17 +279,22 @@ export function SafeToSpendCard() {
     ? formatStoredDate(position.balance_date, { day: 'numeric', month: 'short' })
     : ''
   const hasNumber = position.safe_to_spend !== null && position.per_day != null
+  const isEstimate = position.mode === 'estimate'
   // A typed-in balance can't see spending since, so the result is only "now"
-  // on the day it was entered. Older results are shown dated and dimmed.
-  const isCurrent = position.balance_date === localDateKey()
+  // on the day it was entered. Older results are shown dated and dimmed. An
+  // estimate covers the whole pay cycle, so it is never dimmed.
+  const isCurrent = isEstimate || position.balance_date === localDateKey()
 
   return (
     <section className="money-hero h-full">
       <div className="flex items-start justify-between gap-4">
-        <h2 className="text-sm font-semibold text-foreground">Safe to spend</h2>
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+          Safe to spend
+          {hasNumber && isEstimate ? <span className="rounded-full bg-foreground/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">Estimate</span> : null}
+        </h2>
         {!editing ? (
           <button type="button" onClick={() => setEditing(true)} className="shrink-0 text-sm font-medium text-primary hover:underline">
-            {isCurrent ? 'Update balance' : 'Edit details'}
+            {isCurrent && !isEstimate ? 'Update balance' : 'Edit details'}
           </button>
         ) : null}
       </div>
@@ -291,7 +310,7 @@ export function SafeToSpendCard() {
             </span>
           </p>
           <p className="mt-2 text-[15px] text-muted-foreground">
-            As of {balanceDate} · payday {shortPayday}
+            {isEstimate ? `From your usual pay · payday ${shortPayday}` : `As of ${balanceDate} · payday ${shortPayday}`}
           </p>
         </div>
       ) : (
@@ -301,9 +320,9 @@ export function SafeToSpendCard() {
       )}
 
       {hasNumber && isCurrent && !position.shortfall ? (
-        <p className="mt-4 inline-flex items-center rounded-full bg-foreground/5 px-3 py-1.5 text-xs font-medium text-foreground">{formatCurrency(position.per_day ?? 0, currency)} a day until payday</p>
+        <p className="mt-4 inline-flex items-center rounded-full bg-foreground/5 px-3 py-1.5 text-xs font-medium text-foreground">{isEstimate ? 'About ' : ''}{formatCurrency(position.per_day ?? 0, currency)} a day {isEstimate ? 'this pay cycle' : 'until payday'}</p>
       ) : null}
-      {!editing && !isCurrent ? (
+      {!editing && (!isCurrent || isEstimate) ? (
         <QuickBalance position={position} onSaved={handleSaved} />
       ) : null}
       {!hasNumber ? position.warnings?.map(warning => (
@@ -331,7 +350,9 @@ export function SafeToSpendCard() {
                 <DialogTitle>How safe to spend is worked out</DialogTitle>
               </DialogHeader>
             <div className="divide-y divide-border">
-              <Row label="Balance" value={formatCurrency(position.balance ?? 0, currency)} />
+              {isEstimate
+                ? <Row label="Usual pay" value={formatCurrency(position.pay_amount ?? 0, currency)} />
+                : <Row label="Balance" value={formatCurrency(position.balance ?? 0, currency)} />}
               {position.commitments?.map(item => (
                 <Row
                   key={`${item.id}-${item.due_at}`}

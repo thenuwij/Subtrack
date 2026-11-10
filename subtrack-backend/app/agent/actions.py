@@ -1332,7 +1332,7 @@ def _decision_snapshot(db: Session, user_id: str, target: str) -> dict:
 
 def _profile_snapshot(row: SafeToSpendProfile) -> dict:
     return {
-        "balance": str(row.balance),
+        "balance": str(row.balance) if row.balance is not None else None,
         "currency": row.currency,
         "balance_as_of": _iso(row.balance_as_of),
     }

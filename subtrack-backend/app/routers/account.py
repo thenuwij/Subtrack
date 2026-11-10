@@ -249,7 +249,7 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         "safe_to_spend_profile",
         SafeToSpendProfile,
         (
-            "balance", "currency", "balance_as_of", "pay_anchor_on",
+            "balance", "currency", "balance_as_of", "pay_amount", "pay_anchor_on",
             "pay_interval_unit", "pay_interval_count", "buffer",
             "created_at", "updated_at",
         ),

@@ -375,7 +375,10 @@ export interface PaymentExtrasSummary {
 export type PayIntervalUnit = 'week' | 'month'
 
 export interface SafeToSpendProfileInput {
-  balance: number
+  /** Today's balance; leave null to estimate from usual pay. */
+  balance: number | null
+  /** Usual pay after tax, used when there's no balance since the last payday. */
+  pay_amount: number | null
   currency: Currency
   next_payday: string
   pay_interval_unit: PayIntervalUnit
@@ -386,15 +389,21 @@ export interface SafeToSpendProfileInput {
 
 export interface SafeToSpend {
   status: 'needs_setup' | 'ready' | 'balance_outdated' | 'incomplete'
+  /** "balance" uses today's balance; "estimate" uses usual pay for the whole pay cycle. */
+  mode?: 'balance' | 'estimate'
   scope: string
   safe_to_spend: number | null
   per_day?: number | null
   shortfall?: number | null
   next_payday?: string
   days_until_payday?: number
-  balance_date?: string
+  balance_date?: string | null
+  pay_cycle_start?: string
+  /** Days the per-day figure is spread over: days left, or the whole cycle for an estimate. */
+  per_day_days?: number
   base_currency?: Currency
-  balance?: number
+  balance?: number | null
+  pay_amount?: number | null
   buffer?: number
   committed?: number
   commitments?: { id: string; name: string; due_at: string; amount: number; is_estimate: boolean }[]

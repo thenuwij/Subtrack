@@ -921,9 +921,11 @@ class SafeToSpendProfile(Base):
     )
 
     user_id = Column(String, primary_key=True)
-    balance = Column(Numeric(12, 2), nullable=False)
+    # Balance is optional: without it, safe to spend is estimated from pay_amount.
+    balance = Column(Numeric(12, 2), nullable=True)
     currency = Column(String(3), nullable=False, default="AUD")
-    balance_as_of = Column(DateTime, nullable=False)
+    balance_as_of = Column(DateTime, nullable=True)
+    pay_amount = Column(Numeric(12, 2), nullable=True)
     pay_anchor_on = Column(Date, nullable=False)
     pay_interval_unit = Column(String(12), nullable=False)
     pay_interval_count = Column(Integer, nullable=False)

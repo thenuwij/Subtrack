@@ -3,7 +3,7 @@ from decimal import Decimal
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -19,13 +19,20 @@ MAX_FUTURE_PAYDAY_DAYS = 366
 class SafeToSpendProfileUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    balance: Decimal = Field(max_digits=12, decimal_places=2)
+    balance: Decimal | None = Field(default=None, max_digits=12, decimal_places=2)
+    pay_amount: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     currency: Literal["AUD", "USD", "GBP", "SGD", "EUR", "JPY"] = "AUD"
     next_payday: date
     pay_interval_unit: Literal["week", "month"]
     pay_interval_count: int = Field(ge=1, le=12)
     buffer: Decimal = Field(default=Decimal("0"), ge=0, max_digits=12, decimal_places=2)
     payday_bills_after_pay: bool = False
+
+    @model_validator(mode="after")
+    def needs_balance_or_pay(self):
+        if self.balance is None and self.pay_amount is None:
+            raise ValueError("Enter today's balance or your usual pay.")
+        return self
 
 
 @router.get("")
@@ -54,12 +61,19 @@ def put_profile(
 
     profile = db.get(SafeToSpendProfile, user_id)
     if profile is None:
-        profile = SafeToSpendProfile(user_id=user_id, balance_as_of=now)
+        profile = SafeToSpendProfile(user_id=user_id)
         db.add(profile)
-    elif profile.balance != body.balance or profile.currency != body.currency:
+    if body.balance is None:
+        profile.balance_as_of = None
+    elif (
+        profile.balance_as_of is None
+        or profile.balance != body.balance
+        or profile.currency != body.currency
+    ):
         profile.balance_as_of = now
 
     profile.balance = body.balance
+    profile.pay_amount = body.pay_amount
     profile.currency = body.currency
     profile.pay_anchor_on = body.next_payday
     profile.pay_interval_unit = body.pay_interval_unit
