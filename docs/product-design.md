@@ -51,12 +51,12 @@ flowchart LR
 | **Ask** | Assistant: questions and approval-only changes |
 | **Account** | Pay schedule, payday message, goals, data export and delete |
 
-- **Goals** are a "set aside" amount that comes off free-to-spend each pay.
-- **Spent something big?** A quick add lowers free-to-spend until the next balance. It's an adjustment, not a ledger.
+- **Set aside each pay:** savings ("Trip, $100 a pay") and spending pots ("Eating out, $60 a pay") come off free-to-spend every payday.
+- **Spent something?** Optional. A spend logged from a pot uses up the pot; any other spend lowers free-to-spend until the next balance. It's an adjustment, not a ledger.
 
 ## Parked (code kept, hidden)
 
-- Custom workspace, category budgets, full transaction ledger, feature picker.
+- Custom workspace, monthly category budgets (replaced by spending pots), full transaction ledger, feature picker.
 - Bring back only if pilot users ask for them.
 
 ## Later, if users ask

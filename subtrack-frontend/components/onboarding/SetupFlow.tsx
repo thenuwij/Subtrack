@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSWRConfig } from 'swr'
 import { Check, Plus, Sparkles, X } from 'lucide-react'
@@ -12,6 +12,7 @@ import {
   parseBillText,
   saveSafeToSpendProfile,
   setEmailReminders,
+  trackEvent,
   updatePreferences,
   type EmailSettings,
 } from '@/lib/api'
@@ -70,6 +71,8 @@ export function SetupFlow() {
   const [saving, setSaving] = useState(false)
   // Bills already saved, so a retry after a failure doesn't add them twice.
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => trackEvent('setup_started'), [])
 
   const currency = baseCurrency as Currency
   const picked = new Set(bills.map(bill => bill.name.toLowerCase()))
@@ -152,6 +155,7 @@ export function SetupFlow() {
           toast.error('Could not turn on the payday email. You can turn it on in Account.')
         })
       }
+      trackEvent('setup_finished')
       await Promise.all([
         mutate(apiKeys.emailSettings),
         mutate(apiKeys.safeToSpend),
@@ -315,7 +319,7 @@ export function SetupFlow() {
               <span>
                 Email me on payday
                 <span className="block text-xs text-muted-foreground">
-                  The bills before your next pay and what&apos;s free to spend. Turn it off any time in Account.
+                  Bills before your next pay and what&apos;s free to spend, plus a heads-up if bills won&apos;t fit. Turn it off any time in Account.
                 </span>
               </span>
             </label>

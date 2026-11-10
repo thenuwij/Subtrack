@@ -37,6 +37,7 @@ import { ReminderCenter } from '@/components/reminders/ReminderCenter'
 import { useRegisterAgentPageContext } from '@/lib/agent/page-context'
 import { toast } from 'sonner'
 import { SafeToSpendCard } from '@/components/dashboard/SafeToSpendCard'
+import { SetAsidesCard } from '@/components/dashboard/SetAsidesCard'
 import { ComingUp } from '@/components/dashboard/ComingUp'
 import { NeedsAttention } from '@/components/dashboard/NeedsAttention'
 import { CategorySpend } from '@/components/dashboard/CategorySpend'
@@ -244,6 +245,7 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start xl:gap-10">
           <div className="min-w-0 space-y-8">
             <SafeToSpendCard />
+            <SetAsidesCard />
             <ComingUp
               forecast={forecast}
               error={forecastError}

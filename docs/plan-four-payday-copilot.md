@@ -59,6 +59,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** adding a goal or a big spend changes the Home number with the reason shown.
 
+✅ Built 10 Nov 2026 (`0034_set_asides`) as "set aside each pay": savings and spending pots, separate from the parked goals and budgets. Free = money − bills − buffer − savings − left in pots − spends the balance doesn't show. Not yet in setup or voice.
+
 ## Phase 6: Quick check and rare alerts
 
 1. Installable web app (PWA) with a "Can I afford it?" shortcut opening a one-field page.
@@ -67,6 +69,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** each alert fires once in its test case and never otherwise.
 
+✅ Built 10 Nov 2026. `/afford` page plus a web app manifest with "Can I afford it?" and "Update today's balance" shortcuts. Alerts share the payday email switch: bills won't fit (from the morning after payday) and a trial ending within 3 days, at most 2 per cycle. Price-rise alerts were dropped because every recorded price change comes from the user's own edit or approval.
+
 ## Phase 7: Measure
 
 1. Anonymous event counts (no amounts, names or payment details): setup started, setup finished, first number seen, payday message opened, balance updated, afford check.
@@ -74,9 +78,11 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** the report shows real numbers from test accounts.
 
+✅ Built 10 Nov 2026 (`0035_product_events`). Events store a keyed hash of the user ID, a name and a time, and are deleted with the account; demo accounts are skipped. Payday email "opened" is counted as a click on its balance link, since plain-text email can't report opens. `venv/bin/python scripts/product_report.py --days 30` prints setup speed, second-cycle retention and payday email clicks.
+
 ## Phase 8: Pilot
 
-1. Update the README, landing page and privacy page to the new promise.
+1. Update the README, landing page and privacy page to the new promise. ✅ Done 10 Nov 2026; local setup moved to [local-setup.md](local-setup.md).
 2. Invite 20 students or shift workers. The owner uses it for their own pay cycles too.
 3. Run for 2 pay cycles. Interview 5 users.
 4. **Gate:** 10 or more still active after 2 cycles → plan email forwarding or statement upload. Fewer → revisit the wedge.

@@ -12,8 +12,8 @@ type Switch = 'payday' | 'enabled'
 const SWITCHES: { id: Switch; title: string; description: string }[] = [
   {
     id: 'payday',
-    title: 'Payday email',
-    description: 'On payday morning: the bills before your next pay and what’s free to spend.',
+    title: 'Payday email and alerts',
+     description: 'On payday morning: bills before your next pay and what’s free to spend. Plus at most two alerts a pay cycle, if bills won’t fit or a trial is about to end.',
   },
   {
     id: 'enabled',

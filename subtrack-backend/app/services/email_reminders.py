@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from app.config import settings
 from app.middleware.auth import is_demo_user
 from app.models import EmailPreference, ReminderDelivery, UserPreference
+from app.services.alerts import due_alerts
 from app.services.payday_message import payday_message
 from app.services.reminders import list_user_reminders
 
@@ -102,5 +103,7 @@ def send_due(db, *, now=None, send=None):
             if found:
                 payday, message = found
                 key = f"payday/{pref.user_id}/{payday.isoformat()}"
+                _deliver(db, key=key, pref=pref, message=message, now=now, send=send, result=result)
+            for key, message in due_alerts(db, pref.user_id, now=now):
                 _deliver(db, key=key, pref=pref, message=message, now=now, send=send, result=result)
     return {**result, "configured": True}

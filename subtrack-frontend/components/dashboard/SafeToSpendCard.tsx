@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
+import Link from 'next/link'
 import { ArrowUpRight, ChevronRight, Pencil, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Preferences, SafeToSpend, SafeToSpendProfileInput } from '@/types'
-import { getPreferences, getSafeToSpend, saveSafeToSpendProfile, updatePreferences } from '@/lib/api'
+import { getPreferences, getSafeToSpend, saveSafeToSpendProfile, trackEvent, updatePreferences } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth/session'
 import { useCurrency } from '@/lib/context/currency'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
@@ -224,6 +225,18 @@ export function SafeToSpendCard() {
   }, [savedTimezone, refreshPosition, refreshPreferences])
 
   const position = query.data
+  const showsNumber = position?.safe_to_spend != null
+  // Counted once per person on the server; this only avoids repeat requests.
+  useEffect(() => {
+    if (!showsNumber) return
+    try {
+      if (localStorage.getItem('subtrack:first-number-seen')) return
+      localStorage.setItem('subtrack:first-number-seen', '1')
+    } catch {
+      // Storage can be blocked; the server still counts it once.
+    }
+    trackEvent('first_number_seen')
+  }, [showsNumber])
 
   function handleSaved(next: SafeToSpend) {
     setEditing(false)
@@ -328,7 +341,7 @@ export function SafeToSpendCard() {
       ) : null}
 
       {hasNumber && !editing ? (
-        <div className="mt-5 border-t border-border pt-4">
+        <div className="mt-5 flex flex-wrap items-center gap-x-6 border-t border-border pt-4">
           <button
             type="button"
             onClick={() => setShowBreakdown(true)}
@@ -337,6 +350,10 @@ export function SafeToSpendCard() {
             How this is worked out
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </button>
+          <Link href="/afford" className="flex min-h-11 items-center gap-1 text-sm font-medium text-primary hover:underline">
+            Can I afford something?
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
           <Dialog open={showBreakdown} onOpenChange={setShowBreakdown}>
             <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
               <DialogHeader>
@@ -354,6 +371,8 @@ export function SafeToSpendCard() {
                   value={`${item.is_estimate ? '≈ ' : ''}−${formatCurrency(item.amount, currency)}`}
                 />
               ))}
+              {position.set_aside ? <Row label="Set aside" value={`−${formatCurrency(position.set_aside, currency)}`} /> : null}
+              {position.spent ? <Row label="Spends you logged" value={`−${formatCurrency(position.spent, currency)}`} /> : null}
               <Row label="Buffer" value={`−${formatCurrency(position.buffer ?? 0, currency)}`} />
               {position.warnings?.map(warning => (
                 <p key={warning} className="pt-3 text-[13px] leading-5 text-muted-foreground">{warning}</p>

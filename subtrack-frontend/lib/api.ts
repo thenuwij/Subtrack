@@ -15,6 +15,8 @@ import type {
   ReminderInput,
   SafeToSpend,
   SafeToSpendProfileInput,
+  SetAside,
+  SetAsideKind,
   Subscription,
   SubscriptionForecast,
   BudgetInput,
@@ -42,7 +44,7 @@ import {
   legacyMonthlyEquivalent,
 } from '@/lib/utils/recurrence'
 import { createClient } from '@/lib/supabase/client'
-import { endDemo } from '@/lib/auth/session'
+import { endDemo, getAccessToken } from '@/lib/auth/session'
 import { API_URL } from '@/lib/config'
 
 const REQUEST_TIMEOUT_MS = 15_000
@@ -676,8 +678,30 @@ export async function updatePreferences(
   })
 }
 
+export type ProductEventName = 'setup_started' | 'setup_finished' | 'first_number_seen' | 'payday_link_clicked'
+
+/** Anonymous usage count; never blocks or fails what the user is doing. */
+export function trackEvent(name: ProductEventName): void {
+  void (async () => {
+    const token = await getAccessToken()
+    if (token) await request('/events', token, { method: 'POST', body: JSON.stringify({ name }) })
+  })().catch(() => undefined)
+}
+
 export async function getSafeToSpend(token: string): Promise<SafeToSpend> {
   return request('/safe-to-spend', token)
+}
+
+export interface AffordAnswer extends SafeToSpend {
+  amount: number
+  affordable: boolean | null
+  left_after: number | null
+  short_by: number | null
+  per_day_after?: number
+}
+
+export async function canIAfford(token: string, amount: number): Promise<AffordAnswer> {
+  return request(`/safe-to-spend/afford?amount=${encodeURIComponent(amount.toFixed(2))}`, token)
 }
 
 export async function saveSafeToSpendProfile(
@@ -688,6 +712,29 @@ export async function saveSafeToSpendProfile(
     method: 'PUT',
     body: JSON.stringify(data),
   })
+}
+
+export async function createSetAside(
+  token: string,
+  data: { kind: SetAsideKind; name: string; amount_per_pay: number; target_amount?: number | null },
+): Promise<SetAside> {
+  return request('/set-asides', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function deleteSetAside(token: string, id: string): Promise<void> {
+  await request(`/set-asides/${id}`, token, { method: 'DELETE' })
+}
+
+/** Log money spent today, from a pot or from free money; returns the new position. */
+export async function logSpend(
+  token: string,
+  data: { name: string; amount: number; set_aside_id?: string | null },
+): Promise<SafeToSpend> {
+  return request('/safe-to-spend/spends', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function undoSpend(token: string, id: string): Promise<SafeToSpend> {
+  return request(`/safe-to-spend/spends/${id}`, token, { method: 'DELETE' })
 }
 
 export async function updateSubscription(

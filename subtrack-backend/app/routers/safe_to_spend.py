@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.middleware.auth import verify_token
 from app.models import SafeToSpendProfile
+from app.services.product_events import record
 from app.services.safe_to_spend import can_i_afford, safe_to_spend
 
 router = APIRouter(prefix="/safe-to-spend", tags=["safe-to-spend"])
@@ -37,6 +38,7 @@ class SafeToSpendProfileUpdate(BaseModel):
 
 @router.get("")
 def get_safe_to_spend(user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+    record(db, user_id, "home_viewed")
     return safe_to_spend(db, user_id)
 
 
@@ -46,6 +48,7 @@ def get_can_i_afford(
     user_id: str = Depends(verify_token),
     db: Session = Depends(get_db),
 ):
+    record(db, user_id, "afford_check")
     return can_i_afford(db, user_id, amount)
 
 
@@ -63,13 +66,14 @@ def put_profile(
     if profile is None:
         profile = SafeToSpendProfile(user_id=user_id)
         db.add(profile)
-    if body.balance is None:
-        profile.balance_as_of = None
-    elif (
+    balance_changed = body.balance is not None and (
         profile.balance_as_of is None
         or profile.balance != body.balance
         or profile.currency != body.currency
-    ):
+    )
+    if body.balance is None:
+        profile.balance_as_of = None
+    elif balance_changed:
         profile.balance_as_of = now
 
     profile.balance = body.balance
@@ -81,4 +85,6 @@ def put_profile(
     profile.buffer = body.buffer
     profile.payday_bills_after_pay = body.payday_bills_after_pay
     db.commit()
+    if balance_changed:
+        record(db, user_id, "balance_updated", now=now)
     return safe_to_spend(db, user_id, now=now)
