@@ -61,6 +61,7 @@ class AgentFoundationTests(unittest.TestCase):
             "get_saving_candidates",
             "list_payment_reminders",
             "get_safe_to_spend",
+            "get_pay_cycles",
             "check_can_i_afford",
             "get_paid_history",
             "get_ways_to_save",

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Literal
 from uuid import UUID, uuid4
@@ -35,9 +35,13 @@ from app.models import (
     PaymentStatus,
     RecurrenceUnit,
     SafeToSpendProfile,
+    SetAside,
     SpendingType,
     Subscription,
     SubscriptionChange,
+    Transaction,
+    TransactionKind,
+    TransactionSource,
     UserPreference,
 )
 from app.routers.detected import ApproveOverrides, apply_approval
@@ -61,6 +65,7 @@ from app.services.recurrence import (
 )
 from app.services.reminders import reminder_occurrence
 from app.services.schedules import utc_naive
+from app.services.transactions import apply_conversion, base_currency_for
 from app.services.trials import sync_trial_reminder
 
 ACTION_EXPIRES_AFTER = timedelta(hours=24)
@@ -284,6 +289,91 @@ class SetEmailReminders(StrictAction):
     enabled: bool
 
 
+Money = Field(gt=0, le=Decimal("1000000"), max_digits=12, decimal_places=2)
+OptionalMoney = Field(default=None, gt=0, le=Decimal("1000000"), max_digits=12, decimal_places=2)
+
+
+def _not_income(category: Category | None) -> Category | None:
+    if category == Category.income:
+        raise ValueError("A spend can't use the income category")
+    return category
+
+
+class AddBudget(StrictAction):
+    kind: Literal["pot", "save"]
+    name: str = Field(min_length=1, max_length=80)
+    amount_per_pay: Decimal = Money
+
+
+class UpdateBudget(StrictAction):
+    budget_id: UUID
+    name: str | None = Field(default=None, min_length=1, max_length=80)
+    amount_per_pay: Decimal | None = OptionalMoney
+
+    @model_validator(mode="after")
+    def changes_something(self):
+        if self.name is None and self.amount_per_pay is None:
+            raise ValueError("Give a new name or amount")
+        return self
+
+
+class RemoveBudget(StrictAction):
+    budget_id: UUID
+
+
+class LogSpend(StrictAction):
+    name: str = Field(min_length=1, max_length=200)
+    amount: Decimal = Money
+    budget_id: UUID | None = None
+    category: Category = Category.other
+
+    check_category = field_validator("category")(_not_income)
+
+
+class EditSpend(StrictAction):
+    spend_id: UUID
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    amount: Decimal | None = OptionalMoney
+    category: Category | None = None
+    budget_id: UUID | None = None
+    remove_from_budget: bool = False
+
+    check_category = field_validator("category")(_not_income)
+
+    @model_validator(mode="after")
+    def changes_something(self):
+        if self.budget_id and self.remove_from_budget:
+            raise ValueError("Choose a budget or remove it from one, not both")
+        if all(value is None for value in (self.name, self.amount, self.category, self.budget_id)) and not self.remove_from_budget:
+            raise ValueError("Give at least one change")
+        return self
+
+
+class RemoveSpend(StrictAction):
+    spend_id: UUID
+
+
+class LogIncome(StrictAction):
+    name: str = Field(min_length=1, max_length=200)
+    amount: Decimal = Money
+
+
+PAY_SCHEDULES = {"weekly": ("week", 1), "fortnightly": ("week", 2), "monthly": ("month", 1)}
+
+
+class UpdatePayDetails(StrictAction):
+    pay_amount: Decimal | None = OptionalMoney
+    next_payday: date | None = None
+    schedule: Literal["weekly", "fortnightly", "monthly"] | None = None
+    buffer: Decimal | None = Field(default=None, ge=0, le=Decimal("1000000"), max_digits=12, decimal_places=2)
+
+    @model_validator(mode="after")
+    def changes_something(self):
+        if all(value is None for value in (self.pay_amount, self.next_payday, self.schedule, self.buffer)):
+            raise ValueError("Give at least one change")
+        return self
+
+
 ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_add_recurring_payment": AddPayment,
     "propose_update_recurring_payment": UpdatePayment,
@@ -298,6 +388,14 @@ ACTION_MODELS: dict[str, type[StrictAction]] = {
     "propose_mark_payment_paid": MarkPaid,
     "propose_update_balance": UpdateBalance,
     "propose_set_email_reminders": SetEmailReminders,
+    "propose_add_budget": AddBudget,
+    "propose_update_budget": UpdateBudget,
+    "propose_remove_budget": RemoveBudget,
+    "propose_log_spend": LogSpend,
+    "propose_edit_logged_entry": EditSpend,
+    "propose_remove_logged_entry": RemoveSpend,
+    "propose_log_extra_income": LogIncome,
+    "propose_update_pay_details": UpdatePayDetails,
 }
 
 
@@ -602,6 +700,138 @@ ACTION_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "propose_add_budget",
+        "description": (
+            "Prepare adding money held back every pay: kind pot is a spending budget such as "
+            "\"Groceries, 150 a pay\"; kind save is a saving such as \"Trip, 100 a pay\". "
+            "Bills are already counted, so never add a budget for a tracked bill."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "kind": {"type": "string", "enum": ["pot", "save"]},
+                "name": {"type": "string", "minLength": 1, "maxLength": 80},
+                "amount_per_pay": {"type": "number", "exclusiveMinimum": 0},
+            },
+            "required": ["kind", "name", "amount_per_pay"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_update_budget",
+        "description": "Prepare renaming a budget or saving, or changing how much is held back each pay. Use an id from get_safe_to_spend set_asides.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "budget_id": {"type": "string", "format": "uuid"},
+                "name": {"type": "string", "minLength": 1, "maxLength": 80},
+                "amount_per_pay": {"type": "number", "exclusiveMinimum": 0},
+            },
+            "required": ["budget_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_remove_budget",
+        "description": "Prepare removing a budget or saving. Spends logged from it are kept. Use an id from get_safe_to_spend set_asides.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"budget_id": {"type": "string", "format": "uuid"}},
+            "required": ["budget_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_log_spend",
+        "description": (
+            "Prepare logging money the user says they spent today. With budget_id it comes out of "
+            "that spending budget and needs no category; otherwise give a category. "
+            "Only use an amount the user stated."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 1, "maxLength": 200},
+                "amount": {"type": "number", "exclusiveMinimum": 0},
+                "budget_id": {"type": ["string", "null"], "format": "uuid"},
+                "category": {
+                    "type": "string",
+                    "enum": [item.value for item in Category if item != Category.income],
+                },
+            },
+            "required": ["name", "amount"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_edit_logged_entry",
+        "description": (
+            "Prepare fixing a logged spend or extra income this pay. Spends can change name, amount, "
+            "category, budget_id, or remove_from_budget; extra income only name and amount. "
+            "Use an id from get_safe_to_spend spends or incomes."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "spend_id": {"type": "string", "format": "uuid"},
+                "name": {"type": "string", "minLength": 1, "maxLength": 200},
+                "amount": {"type": "number", "exclusiveMinimum": 0},
+                "category": {
+                    "type": "string",
+                    "enum": [item.value for item in Category if item != Category.income],
+                },
+                "budget_id": {"type": "string", "format": "uuid"},
+                "remove_from_budget": {"type": "boolean"},
+            },
+            "required": ["spend_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_remove_logged_entry",
+        "description": "Prepare undoing a logged spend or extra income. Use an id from get_safe_to_spend spends or incomes.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"spend_id": {"type": "string", "format": "uuid"}},
+            "required": ["spend_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_log_extra_income",
+        "description": (
+            "Prepare adding money the user received today on top of usual pay, such as an extra "
+            "shift or a refund. It counts for this pay only. Only use an amount the user stated."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "minLength": 1, "maxLength": 200},
+                "amount": {"type": "number", "exclusiveMinimum": 0},
+            },
+            "required": ["name", "amount"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "propose_update_pay_details",
+        "description": (
+            "Prepare changing usual pay after tax, next payday (YYYY-MM-DD), how often the user "
+            "is paid, or the buffer kept untouched. Only change what the user stated; the "
+            "balance is changed with propose_update_balance."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pay_amount": {"type": "number", "exclusiveMinimum": 0},
+                "next_payday": {"type": "string", "format": "date"},
+                "schedule": {"type": "string", "enum": list(PAY_SCHEDULES)},
+                "buffer": {"type": "number", "minimum": 0},
+            },
+            "additionalProperties": False,
+        },
+    },
 ]
 
 
@@ -736,6 +966,67 @@ def _profile_snapshot(row: SafeToSpendProfile) -> dict:
 
 def _email_snapshot(row: EmailPreference | None) -> dict:
     return {"enabled": bool(row and row.enabled), "email": row.email if row else None}
+
+
+def _owned_budget(db: Session, user_id: str, budget_id: UUID, *, for_update: bool = False) -> SetAside:
+    query = db.query(SetAside).filter(SetAside.id == budget_id, SetAside.user_id == user_id)
+    row = (query.with_for_update() if for_update else query).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Budget not found")
+    return row
+
+
+def _budget_snapshot(row: SetAside) -> dict:
+    return {"id": str(row.id), "kind": row.kind, "name": row.name, "amount_per_pay": str(row.amount_per_pay)}
+
+
+def _owned_entry(db: Session, user_id: str, spend_id: UUID, *, for_update: bool = False) -> Transaction:
+    """A spend or extra income the user logged by hand (never a bill payment)."""
+    query = db.query(Transaction).filter(
+        Transaction.id == spend_id,
+        Transaction.user_id == user_id,
+        Transaction.recurring_payment_id.is_(None),
+    )
+    row = (query.with_for_update() if for_update else query).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Logged entry not found")
+    return row
+
+
+def _entry_snapshot(row: Transaction) -> dict:
+    return {
+        "id": str(row.id),
+        "kind": row.kind,
+        "name": row.name,
+        "amount": str(row.amount),
+        "category": _enum(row.category),
+        "set_aside_id": str(row.set_aside_id) if row.set_aside_id else None,
+    }
+
+
+def _pay_snapshot(row: SafeToSpendProfile) -> dict:
+    return {
+        "pay_amount": str(row.pay_amount) if row.pay_amount is not None else None,
+        "pay_anchor_on": row.pay_anchor_on.isoformat() if row.pay_anchor_on else None,
+        "pay_interval_unit": row.pay_interval_unit,
+        "pay_interval_count": row.pay_interval_count,
+        "buffer": str(row.buffer),
+    }
+
+
+def _spending_budget(db: Session, user_id: str, budget_id: UUID) -> SetAside:
+    row = _owned_budget(db, user_id, budget_id)
+    if row.kind != "pot":
+        raise HTTPException(status_code=422, detail="Spends can only come out of a spending budget, not a saving")
+    return row
+
+
+def _category_label(category: Category | str) -> str:
+    return str(_enum(category)).replace("_", " ")
+
+
+def _money(currency: str, amount: Decimal) -> str:
+    return f"{currency} {amount:.2f}"
 
 
 def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str):
@@ -1005,6 +1296,96 @@ def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str
         else:
             summary = "Turn off email reminders"
             description = "Stop reminder emails. In-app reminders stay."
+    elif tool_name == "propose_add_budget":
+        assert isinstance(data, AddBudget)
+        from app.routers.set_asides import MAX_SET_ASIDES
+        if db.query(SetAside).filter(SetAside.user_id == user_id).count() >= MAX_SET_ASIDES:
+            raise HTTPException(status_code=422, detail=f"You can have up to {MAX_SET_ASIDES} budgets and savings.")
+        kind = "budget" if data.kind == "pot" else "saving"
+        summary = f"Add a {kind}: {data.name}"
+        description = f"Hold back {_money(base_currency_for(db, user_id), data.amount_per_pay)} every pay for {data.name}."
+    elif tool_name == "propose_update_budget":
+        assert isinstance(data, UpdateBudget)
+        row = _owned_budget(db, user_id, data.budget_id)
+        expected = {"set_aside": _budget_snapshot(row)}
+        changes = []
+        if data.name is not None:
+            changes.append(f"rename it to {data.name}")
+        if data.amount_per_pay is not None:
+            changes.append(f"hold back {_money(row.currency, data.amount_per_pay)} each pay")
+        summary = f"Change {row.name}"
+        description = f"{' and '.join(changes).capitalize()}."
+    elif tool_name == "propose_remove_budget":
+        assert isinstance(data, RemoveBudget)
+        row = _owned_budget(db, user_id, data.budget_id)
+        expected = {"set_aside": _budget_snapshot(row)}
+        summary = f"Remove {row.name}"
+        description = "Stop holding money back for it each pay. Spends already logged from it are kept."
+    elif tool_name == "propose_log_spend":
+        assert isinstance(data, LogSpend)
+        if data.budget_id:
+            row = _spending_budget(db, user_id, data.budget_id)
+            expected = {"set_aside": _budget_snapshot(row)}
+            where = f"out of your {row.name} budget"
+        else:
+            where = f"under {_category_label(data.category)}"
+        summary = f"Log {_money(base_currency_for(db, user_id), data.amount)} for {data.name}"
+        description = f"Record it as spent today, {where}."
+    elif tool_name == "propose_edit_logged_entry":
+        assert isinstance(data, EditSpend)
+        entry = _owned_entry(db, user_id, data.spend_id)
+        is_income = entry.kind == TransactionKind.income.value
+        if is_income and (data.category or data.budget_id or data.remove_from_budget):
+            raise HTTPException(status_code=422, detail="Extra income only has a name and an amount")
+        changes = []
+        if data.name is not None:
+            changes.append(f"rename it to {data.name}")
+        if data.amount is not None:
+            changes.append(f"change the amount to {_money(entry.currency, data.amount)}")
+        if data.budget_id:
+            changes.append(f"take it out of your {_spending_budget(db, user_id, data.budget_id).name} budget")
+        if data.remove_from_budget:
+            changes.append("take it out of its budget")
+        if data.category is not None:
+            changes.append(f"file it under {_category_label(data.category)}")
+        expected = {"transaction": _entry_snapshot(entry)}
+        summary = f"Fix {entry.name}"
+        description = f"{', '.join(changes).capitalize()}."
+    elif tool_name == "propose_remove_logged_entry":
+        assert isinstance(data, RemoveSpend)
+        entry = _owned_entry(db, user_id, data.spend_id)
+        expected = {"transaction": _entry_snapshot(entry)}
+        what = "extra income" if entry.kind == TransactionKind.income.value else "spend"
+        summary = f"Undo {entry.name}"
+        description = f"Remove this {what} of {_money(entry.currency, entry.amount)} from {entry.occurred_on.isoformat()}."
+    elif tool_name == "propose_log_extra_income":
+        assert isinstance(data, LogIncome)
+        summary = f"Add {_money(base_currency_for(db, user_id), data.amount)} extra income"
+        description = f"Count {data.name} as received today, on top of usual pay, for this pay only."
+    elif tool_name == "propose_update_pay_details":
+        assert isinstance(data, UpdatePayDetails)
+        profile = db.get(SafeToSpendProfile, user_id)
+        if profile is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Safe to spend isn't set up yet. Add your pay and payday on the dashboard first.",
+            )
+        from app.services.safe_to_spend import _user_zone
+        today = datetime.now(_user_zone(db, user_id)).date()
+        if data.next_payday is not None and not today <= data.next_payday <= today + timedelta(days=366):
+            raise HTTPException(status_code=422, detail="Next payday must be from today to within the next year.")
+        expected = {"pay": _pay_snapshot(profile)}
+        changes = []
+        if data.pay_amount is not None:
+            changes.append(f"usual pay {_money(profile.currency, data.pay_amount)}")
+        if data.next_payday is not None:
+            changes.append(f"next payday {data.next_payday.isoformat()}")
+        if data.schedule is not None:
+            changes.append(f"paid {data.schedule}")
+        if data.buffer is not None:
+            changes.append(f"buffer {_money(profile.currency, data.buffer)}")
+        summary = "Update your pay details"
+        description = f"Set {', '.join(changes)}. Your balance stays the same."
     else:
         raise HTTPException(status_code=400, detail="Unknown assistant action")
     return payload, expected, summary, description
@@ -1175,6 +1556,18 @@ def _assert_fresh(action: AgentAction, db: Session, user_id: str) -> None:
         pref = db.query(EmailPreference).filter_by(user_id=user_id).with_for_update().first()
         if _email_snapshot(pref) != expected["email_pref"]:
             raise HTTPException(status_code=409, detail="Email reminder settings changed after the action was proposed.")
+    if "set_aside" in expected:
+        budget = _owned_budget(db, user_id, UUID(expected["set_aside"]["id"]), for_update=True)
+        if _budget_snapshot(budget) != expected["set_aside"]:
+            raise HTTPException(status_code=409, detail="This budget changed after the action was proposed.")
+    if "transaction" in expected:
+        entry = _owned_entry(db, user_id, UUID(expected["transaction"]["id"]), for_update=True)
+        if _entry_snapshot(entry) != expected["transaction"]:
+            raise HTTPException(status_code=409, detail="This logged entry changed after the action was proposed.")
+    if "pay" in expected:
+        profile = db.query(SafeToSpendProfile).filter_by(user_id=user_id).with_for_update().first()
+        if profile is None or _pay_snapshot(profile) != expected["pay"]:
+            raise HTTPException(status_code=409, detail="Your pay details changed after the action was proposed.")
 
 
 def _execute_add_payment(action: AgentAction, db: Session, user_id: str) -> dict:
@@ -1561,6 +1954,114 @@ def _execute_set_email_reminders(action: AgentAction, db: Session, user_id: str)
     return {"enabled": data.enabled}
 
 
+def _execute_add_budget(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = AddBudget.model_validate(action.payload_json)
+    from app.routers.set_asides import MAX_SET_ASIDES
+    if db.query(SetAside).filter(SetAside.user_id == user_id).count() >= MAX_SET_ASIDES:
+        raise HTTPException(status_code=422, detail=f"You can have up to {MAX_SET_ASIDES} budgets and savings.")
+    row = SetAside(
+        id=uuid4(), user_id=user_id, kind=data.kind, name=data.name,
+        amount_per_pay=data.amount_per_pay, currency=base_currency_for(db, user_id),
+    )
+    db.add(row)
+    return {"budget_id": str(row.id), "name": row.name}
+
+
+def _execute_update_budget(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = UpdateBudget.model_validate(action.payload_json)
+    row = _owned_budget(db, user_id, data.budget_id)
+    if data.name is not None:
+        row.name = data.name
+    if data.amount_per_pay is not None:
+        row.amount_per_pay = data.amount_per_pay
+    return {"budget_id": str(row.id), "name": row.name, "amount_per_pay": str(row.amount_per_pay)}
+
+
+def _execute_remove_budget(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = RemoveBudget.model_validate(action.payload_json)
+    row = _owned_budget(db, user_id, data.budget_id)
+    # Spends keep their history but stop using up a budget that no longer exists.
+    db.query(Transaction).filter(
+        Transaction.user_id == user_id, Transaction.set_aside_id == row.id,
+    ).update({Transaction.set_aside_id: None}, synchronize_session=False)
+    db.delete(row)
+    return {"budget_id": str(data.budget_id)}
+
+
+def _log_entry(db: Session, user_id: str, kind: TransactionKind, **fields) -> Transaction:
+    from app.services.safe_to_spend import _user_zone
+    base = base_currency_for(db, user_id)
+    row = Transaction(
+        id=uuid4(), user_id=user_id, kind=kind.value, currency=base,
+        occurred_on=datetime.now(_user_zone(db, user_id)).date(),
+        source=TransactionSource.manual.value, **fields,
+    )
+    apply_conversion(db, row, base)
+    db.add(row)
+    return row
+
+
+def _execute_log_spend(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = LogSpend.model_validate(action.payload_json)
+    if data.budget_id:
+        _spending_budget(db, user_id, data.budget_id)
+    row = _log_entry(
+        db, user_id, TransactionKind.expense, name=data.name, amount=data.amount,
+        # A budget is its own category.
+        category=Category.other if data.budget_id else data.category,
+        set_aside_id=data.budget_id,
+    )
+    return {"spend_id": str(row.id), "amount": str(data.amount)}
+
+
+def _execute_edit_logged_entry(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = EditSpend.model_validate(action.payload_json)
+    row = _owned_entry(db, user_id, data.spend_id)
+    if row.kind == TransactionKind.income.value and (data.category or data.budget_id or data.remove_from_budget):
+        raise HTTPException(status_code=422, detail="Extra income only has a name and an amount")
+    if data.name is not None:
+        row.name = data.name
+    if data.amount is not None:
+        row.amount = data.amount
+        apply_conversion(db, row, base_currency_for(db, user_id))
+    if data.budget_id:
+        row.set_aside_id = _spending_budget(db, user_id, data.budget_id).id
+        row.category = Category.other
+    if data.remove_from_budget:
+        row.set_aside_id = None
+    if data.category is not None:
+        row.category = data.category
+    return {"spend_id": str(row.id)}
+
+
+def _execute_remove_logged_entry(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = RemoveSpend.model_validate(action.payload_json)
+    db.delete(_owned_entry(db, user_id, data.spend_id))
+    return {"spend_id": str(data.spend_id)}
+
+
+def _execute_log_extra_income(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = LogIncome.model_validate(action.payload_json)
+    row = _log_entry(db, user_id, TransactionKind.income, name=data.name, amount=data.amount, category=Category.income)
+    return {"income_id": str(row.id), "amount": str(data.amount)}
+
+
+def _execute_update_pay_details(action: AgentAction, db: Session, user_id: str) -> dict:
+    data = UpdatePayDetails.model_validate(action.payload_json)
+    profile = db.get(SafeToSpendProfile, user_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Safe to spend isn't set up")
+    if data.pay_amount is not None:
+        profile.pay_amount = data.pay_amount
+    if data.next_payday is not None:
+        profile.pay_anchor_on = data.next_payday
+    if data.schedule is not None:
+        profile.pay_interval_unit, profile.pay_interval_count = PAY_SCHEDULES[data.schedule]
+    if data.buffer is not None:
+        profile.buffer = data.buffer
+    return _pay_snapshot(profile)
+
+
 EXECUTORS = {
     "add_recurring_payment": _execute_add_payment,
     "update_recurring_payment": _execute_update_payment,
@@ -1575,6 +2076,14 @@ EXECUTORS = {
     "mark_payment_paid": _execute_mark_paid,
     "update_balance": _execute_update_balance,
     "set_email_reminders": _execute_set_email_reminders,
+    "add_budget": _execute_add_budget,
+    "update_budget": _execute_update_budget,
+    "remove_budget": _execute_remove_budget,
+    "log_spend": _execute_log_spend,
+    "edit_logged_entry": _execute_edit_logged_entry,
+    "remove_logged_entry": _execute_remove_logged_entry,
+    "log_extra_income": _execute_log_extra_income,
+    "update_pay_details": _execute_update_pay_details,
 }
 
 
