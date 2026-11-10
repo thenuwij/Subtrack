@@ -358,7 +358,7 @@ export function SetAsidesCard() {
       <Dialog open={adding !== false} onOpenChange={open => { if (!open) setAdding(false) }}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>Add a budget</DialogTitle></DialogHeader>
-          <DialogDescription>For spending that isn&apos;t a bill, like groceries or eating out. Bills you&apos;ve added are already counted.</DialogDescription>
+          <DialogDescription>For spending that isn&apos;t a bill, like groceries or eating out.</DialogDescription>
           {adding !== false ? (
             <AddDialog key={adding?.name ?? 'new'} draft={adding} bills={bills} onClose={() => setAdding(false)} onSaved={() => query.mutate()} />
           ) : null}
