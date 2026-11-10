@@ -18,7 +18,7 @@ from app.models import Transaction, UserPreference  # noqa: E402
 from app.database import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.middleware.auth import verify_token  # noqa: E402
-from app.routers import transactions as transactions_router  # noqa: E402
+from app.services import parse_rate_limit  # noqa: E402
 from app.routers.transactions import ParseRequest, parse_transaction_text  # noqa: E402
 
 
@@ -85,8 +85,8 @@ class TransactionParseTests(unittest.TestCase):
         app.dependency_overrides[verify_token] = lambda: "owner"
         app.dependency_overrides[get_db] = lambda: self.db
         self.addCleanup(app.dependency_overrides.clear)
-        transactions_router._parse_calls.clear()
-        self.addCleanup(transactions_router._parse_calls.clear)
+        parse_rate_limit.parse_calls.clear()
+        self.addCleanup(parse_rate_limit.parse_calls.clear)
         return TestClient(app)
 
     def test_text_too_long_is_422(self):
@@ -98,9 +98,9 @@ class TransactionParseTests(unittest.TestCase):
         with claude_returns({"drafts": [draft()]}):
             statuses = [
                 client.post("/transactions/parse", json={"text": "40 groceries"}).status_code
-                for _ in range(transactions_router.PARSE_CALLS_PER_MINUTE + 1)
+                for _ in range(parse_rate_limit.PARSE_CALLS_PER_MINUTE + 1)
             ]
-        self.assertEqual(statuses[:-1], [200] * transactions_router.PARSE_CALLS_PER_MINUTE)
+        self.assertEqual(statuses[:-1], [200] * parse_rate_limit.PARSE_CALLS_PER_MINUTE)
         self.assertEqual(statuses[-1], 429)
 
 

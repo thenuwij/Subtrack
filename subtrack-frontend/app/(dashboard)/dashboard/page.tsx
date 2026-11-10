@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   ArrowRight,
   Mail,
@@ -16,6 +17,7 @@ import {
   getReminders,
   getSubscriptionForecast,
   getPaidHistory,
+  getSafeToSpend,
   getSubscriptions,
 } from '@/lib/api'
 import type {
@@ -24,6 +26,7 @@ import type {
   PaymentReminder,
   PaidHistory,
   Preferences,
+  SafeToSpend,
   Subscription,
   SubscriptionForecast,
 } from '@/types'
@@ -55,6 +58,7 @@ export default function DashboardPage() {
     apiKeys.subscriptions('current'), token => getSubscriptions(token),
   )
   const preferencesQuery = useApi<Preferences>(apiKeys.preferences, getPreferences)
+  const safeToSpendQuery = useApi<SafeToSpend>(apiKeys.safeToSpend, getSafeToSpend)
   const gmailQuery = useApi<GmailStatus>(apiKeys.gmailStatus, getGmailStatus)
   const remindersQuery = useApi<PaymentReminder[]>(
     apiKeys.reminders(90), token => getReminders(token, { horizonDays: 90 }),
@@ -88,6 +92,15 @@ export default function DashboardPage() {
   const forecastError = errorMessage(forecastQuery.error, 'Could not calculate upcoming charges.')
   const remindersRetrying = remindersQuery.isValidating
   const forecastRetrying = forecastQuery.isValidating
+
+  // A brand-new account (no pay details, no bills, setup not finished or skipped) starts in setup.
+  const router = useRouter()
+  const needsSetup = preferencesQuery.data?.onboarding_completed === false
+    && safeToSpendQuery.data?.status === 'needs_setup'
+    && subscriptionsQuery.data?.length === 0
+  useEffect(() => {
+    if (needsSetup) router.replace('/setup')
+  }, [needsSetup, router])
 
   const [openedAt] = useState(() => Date.now())
   const gmailScanStale = useMemo(() => {
@@ -146,7 +159,7 @@ export default function DashboardPage() {
   const needsForeignRates = subscriptions.some(
     subscription => subscription.currency !== baseCurrency,
   )
-  if (preferencesLoading || loading || (ratesLoading && needsForeignRates)) return <DashboardSkeleton />
+  if (needsSetup || preferencesLoading || loading || (ratesLoading && needsForeignRates)) return <DashboardSkeleton />
 
   const hasPayments = subscriptions.length > 0
 

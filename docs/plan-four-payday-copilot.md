@@ -38,6 +38,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** a fresh account reaches its first number in under 3 minutes.
 
+✅ Built 10 Nov 2026 at `/setup`: pay → bills (pick list or one typed line) → optional balance → Home. The pick list has no prices, so the user enters each amount and next charge date. Still to add: the goal step (Phase 5), the payday message step (Phase 4), the spoken line (once voice entry is committed) and timing (Phase 7).
+
 ## Phase 4: Payday message
 
 1. Opt-in at setup and in Account. Uses the existing Resend pipeline, durable delivery keys and cron.

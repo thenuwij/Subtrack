@@ -27,6 +27,7 @@ import type {
   TransactionInput,
   TransactionSummary,
   SubscriptionInput,
+  BillDraft,
   Feature,
   WorkspacePage,
   WorkspacePageData,
@@ -788,6 +789,10 @@ export async function getTransactionSummary(token: string, month: string): Promi
 
 export async function createTransaction(token: string, data: TransactionInput): Promise<CreatedTransaction> {
   return request('/transactions', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function parseBillText(token: string, text: string): Promise<{ bills: BillDraft[] }> {
+  return request('/subscriptions/parse', token, { method: 'POST', body: JSON.stringify({ text }) })
 }
 
 export async function parseTransactionText(token: string, text: string): Promise<{ drafts: TransactionInput[] }> {

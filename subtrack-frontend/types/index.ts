@@ -105,6 +105,17 @@ export interface SubscriptionInput {
   share_amount?: number
 }
 
+/** A recurring bill suggested from free text, for the user to confirm. */
+export interface BillDraft {
+  name: string
+  amount: number
+  currency: Currency
+  category: Category
+  interval_unit: 'week' | 'month' | 'year'
+  interval_count: number
+  next_due: string | null
+}
+
 export interface GmailStatus {
   connected: boolean
   configured?: boolean

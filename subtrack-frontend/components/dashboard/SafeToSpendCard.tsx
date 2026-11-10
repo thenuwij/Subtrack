@@ -9,20 +9,13 @@ import { getAccessToken } from '@/lib/auth/session'
 import { useCurrency } from '@/lib/context/currency'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { formatCurrency } from '@/lib/utils/currency'
+import { PAY_SCHEDULES, type PaySchedule } from '@/lib/payday'
 import { formatStoredDate } from '@/lib/utils/dates'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useEditPayment } from '@/components/subscriptions/PaymentEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-
-const PAY_SCHEDULES = {
-  weekly: { pay_interval_unit: 'week', pay_interval_count: 1, label: 'Weekly' },
-  fortnightly: { pay_interval_unit: 'week', pay_interval_count: 2, label: 'Fortnightly' },
-  monthly: { pay_interval_unit: 'month', pay_interval_count: 1, label: 'Monthly' },
-} as const
-
-type PaySchedule = keyof typeof PAY_SCHEDULES
 
 function scheduleOf(position: SafeToSpend | undefined): PaySchedule {
   const profile = position?.profile

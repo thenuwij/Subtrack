@@ -1,5 +1,3 @@
-import time
-from collections import defaultdict, deque
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, Optional
@@ -18,10 +16,11 @@ from app.models import (
     TransactionKind,
     TransactionSource,
 )
+from app.services.parse_rate_limit import enforce_parse_rate_limit
 from app.services.payment_charges import PaymentCharge, charged_payment_ids, month_payment_charges
 from app.services.safe_to_spend import _user_zone
-from app.services.transaction_parse import MAX_TEXT, ParseError, parse_transactions
 from app.services.transaction_duplicates import find_possible_duplicates
+from app.services.transaction_parse import MAX_TEXT, ParseError, parse_transactions
 from app.services.transactions import (
     MONTH_ROW_LIMIT,
     apply_conversion,
@@ -73,25 +72,6 @@ class TransactionUpdate(BaseModel):
         if cleared:
             raise ValueError(f"These fields cannot be cleared: {', '.join(cleared)}")
         return self
-
-
-PARSE_CALLS_PER_MINUTE = 10
-_parse_calls: dict[str, deque[float]] = defaultdict(deque)
-
-
-def _enforce_parse_rate_limit(user_id: str) -> None:
-    """Per-process sliding window; the agent limiter counts chat rows, which parsing never writes."""
-    now = time.monotonic()
-    calls = _parse_calls[user_id]
-    while calls and now - calls[0] >= 60:
-        calls.popleft()
-    if len(calls) >= PARSE_CALLS_PER_MINUTE:
-        raise HTTPException(
-            status_code=429,
-            detail="Too many requests. Please wait a minute and try again.",
-            headers={"Retry-After": "60"},
-        )
-    calls.append(now)
 
 
 class ParseRequest(BaseModel):
@@ -224,7 +204,7 @@ def parse_transaction_text(
     db: Session = Depends(get_db),
 ):
     """Suggest drafts from free text. Nothing is saved."""
-    _enforce_parse_rate_limit(user_id)
+    enforce_parse_rate_limit(user_id)
     today = datetime.now(_user_zone(db, user_id)).date()
     try:
         drafts = parse_transactions(data.text, today, base_currency_for(db, user_id))
