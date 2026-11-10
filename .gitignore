@@ -15,4 +15,4 @@ subtrack-frontend/.next/
 # Local editor/agent tooling
 .claude/
 CLAUDE.md
-subtrack-frontend/CLAUDE.md
+subtrack-frontend/CLAUDE.md.claude/pipeline/

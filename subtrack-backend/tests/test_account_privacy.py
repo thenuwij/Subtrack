@@ -43,18 +43,22 @@ from app.models import (
     PaymentDecision,
     PaymentExtra,
     PaymentReminder,
+    ProductEvent,
     ReminderDelivery,
     SafeToSpendProfile,
     SenderLink,
+    SetAside,
     StatementImport,
     Subscription,
     SubscriptionChange,
     Transaction,
     TransactionLink,
     UserPreference,
+    WorkspacePage,
 )
 from app.routers import account, gmail
 from app.services import gmail_access
+from app.services.product_events import actor_for
 
 
 class AccountPrivacyTests(unittest.TestCase):
@@ -282,6 +286,9 @@ class AccountPrivacyTests(unittest.TestCase):
                 goal,
                 goal_contribution,
                 budget,
+                WorkspacePage(user_id=user_id, title="Moving", blocks=[{"type": "notes", "text": ""}]),
+                SetAside(user_id=user_id, kind="pot", name="Eating out", amount_per_pay=60, currency="AUD"),
+                ProductEvent(actor=actor_for(user_id), name="home_viewed"),
                 safe_to_spend_profile,
                 subscription,
                 distinct_subscription,
@@ -371,6 +378,9 @@ class AccountPrivacyTests(unittest.TestCase):
             if name not in {"subscriptions", "duplicate_dismissals"}
         ))
 
+        self.assertEqual(
+            [event.actor for event in self.db.query(ProductEvent)], [actor_for("other")],
+        )
         for _, model in account.DELETE_ORDER:
             with self.subTest(model=model.__name__):
                 self.assertEqual(

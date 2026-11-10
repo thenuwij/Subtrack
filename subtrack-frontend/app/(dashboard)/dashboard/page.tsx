@@ -1,7 +1,8 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   ArrowRight,
   Mail,
@@ -16,6 +17,7 @@ import {
   getReminders,
   getSubscriptionForecast,
   getPaidHistory,
+  getSafeToSpend,
   getSubscriptions,
 } from '@/lib/api'
 import type {
@@ -24,6 +26,7 @@ import type {
   PaymentReminder,
   PaidHistory,
   Preferences,
+  SafeToSpend,
   Subscription,
   SubscriptionForecast,
 } from '@/types'
@@ -34,6 +37,7 @@ import { ReminderCenter } from '@/components/reminders/ReminderCenter'
 import { useRegisterAgentPageContext } from '@/lib/agent/page-context'
 import { toast } from 'sonner'
 import { SafeToSpendCard } from '@/components/dashboard/SafeToSpendCard'
+import { SetAsidesCard } from '@/components/dashboard/SetAsidesCard'
 import { ComingUp } from '@/components/dashboard/ComingUp'
 import { NeedsAttention } from '@/components/dashboard/NeedsAttention'
 import { CategorySpend } from '@/components/dashboard/CategorySpend'
@@ -42,22 +46,20 @@ import { GettingStarted } from '@/components/onboarding/GettingStarted'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { getAccessToken, useIsDemo } from '@/lib/auth/session'
 import { useFeatures } from '@/lib/hooks/useFeatures'
-import { FeaturePicker } from '@/components/onboarding/FeaturePicker'
 import { ThisMonthCard } from '@/components/spending/ThisMonthCard'
 import { GoalsCard } from '@/components/goals/GoalsCard'
 
 export default function DashboardPage() {
   const { baseCurrency, ratesLoading, isLoading: preferencesLoading } = useCurrency()
-  const { has, onboardingCompleted } = useFeatures()
-  const paymentsOn = has('payments')
+  const { has } = useFeatures()
   const spendingOn = has('spending')
   const goalsOn = has('goals')
-  const moreComing = has('workspace')
 
   const subscriptionsQuery = useApi<Subscription[]>(
     apiKeys.subscriptions('current'), token => getSubscriptions(token),
   )
   const preferencesQuery = useApi<Preferences>(apiKeys.preferences, getPreferences)
+  const safeToSpendQuery = useApi<SafeToSpend>(apiKeys.safeToSpend, getSafeToSpend)
   const gmailQuery = useApi<GmailStatus>(apiKeys.gmailStatus, getGmailStatus)
   const remindersQuery = useApi<PaymentReminder[]>(
     apiKeys.reminders(90), token => getReminders(token, { horizonDays: 90 }),
@@ -91,6 +93,15 @@ export default function DashboardPage() {
   const forecastError = errorMessage(forecastQuery.error, 'Could not calculate upcoming charges.')
   const remindersRetrying = remindersQuery.isValidating
   const forecastRetrying = forecastQuery.isValidating
+
+  // A brand-new account (no pay details, no bills, setup not finished or skipped) starts in setup.
+  const router = useRouter()
+  const needsSetup = preferencesQuery.data?.onboarding_completed === false
+    && safeToSpendQuery.data?.status === 'needs_setup'
+    && subscriptionsQuery.data?.length === 0
+  useEffect(() => {
+    if (needsSetup) router.replace('/setup')
+  }, [needsSetup, router])
 
   const [openedAt] = useState(() => Date.now())
   const gmailScanStale = useMemo(() => {
@@ -149,30 +160,7 @@ export default function DashboardPage() {
   const needsForeignRates = subscriptions.some(
     subscription => subscription.currency !== baseCurrency,
   )
-  if (preferencesLoading || loading || (ratesLoading && needsForeignRates)) return <DashboardSkeleton />
-
-  if (!onboardingCompleted) return <FeaturePicker />
-
-  if (!paymentsOn) {
-    return (
-      <div className="mx-auto max-w-xl space-y-4 px-4 py-16 sm:px-6">
-        {spendingOn ? <ThisMonthCard /> : null}
-        {goalsOn ? <GoalsCard /> : null}
-        {moreComing || (!spendingOn && !goalsOn) ? (
-          <div className="rounded-2xl bg-card p-8 text-center shadow-sm">
-            <h1 className="text-xl font-semibold text-foreground">The rest is coming soon</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {spendingOn || goalsOn
-                ? 'Workspace is on its way. '
-                : 'The features you picked are on their way. '}
-              You can turn on monthly payments any time in Settings.
-            </p>
-            <Button asChild className="mt-5"><Link href="/account#features">Open Settings</Link></Button>
-          </div>
-        ) : null}
-      </div>
-    )
-  }
+  if (needsSetup || preferencesLoading || loading || (ratesLoading && needsForeignRates)) return <DashboardSkeleton />
 
   const hasPayments = subscriptions.length > 0
 
@@ -198,7 +186,7 @@ export default function DashboardPage() {
   // this worth using instead.
   if (!hasPayments) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="text-center">
           <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <Sparkles className="h-7 w-7" />
@@ -244,7 +232,7 @@ export default function DashboardPage() {
             <h1 className="page-heading">A little more clarity.</h1>
             <p className="page-description">Make room for life. Keep an eye on what&apos;s coming.</p>
           </div>
-          <Button asChild variant="outline" className="bg-card"><Link href="/subscriptions">View payments <ArrowRight className="h-4 w-4" /></Link></Button>
+          <Button asChild variant="outline" className="bg-card"><Link href="/subscriptions">View bills <ArrowRight className="h-4 w-4" /></Link></Button>
         </header>
 
         {loadError && (
@@ -256,9 +244,8 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start xl:gap-10">
           <div className="min-w-0 space-y-8">
-            {spendingOn ? <ThisMonthCard /> : null}
-            {goalsOn ? <GoalsCard /> : null}
             <SafeToSpendCard />
+            <SetAsidesCard />
             <ComingUp
               forecast={forecast}
               error={forecastError}
@@ -266,6 +253,8 @@ export default function DashboardPage() {
               onRetry={() => void forecastQuery.mutate()}
               overdue={overdueBills}
             />
+            {spendingOn ? <ThisMonthCard /> : null}
+            {goalsOn ? <GoalsCard /> : null}
           </div>
 
           <aside

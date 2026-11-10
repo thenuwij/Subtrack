@@ -28,6 +28,7 @@ from app.models import (  # noqa: E402
     Transaction,
     UserPreference,
 )
+from app.services.features import ALL_FEATURES  # noqa: E402
 
 RATES = {"base": "AUD", "rates": {"USD": 0.5}, "stale": False, "fetched_at": "2026-11-03T00:00:00"}
 TODAY = date(2026, 11, 10)
@@ -47,7 +48,7 @@ class AgentGoalTests(unittest.TestCase):
         self.db.add_all([
             self.thread,
             self.message,
-            UserPreference(user_id="owner", base_currency="AUD", timezone="Australia/Sydney"),
+            UserPreference(user_id="owner", base_currency="AUD", timezone="Australia/Sydney", enabled_features=list(ALL_FEATURES)),
         ])
         self.db.commit()
         for target, value in (

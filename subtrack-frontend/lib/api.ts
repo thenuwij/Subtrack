@@ -7,6 +7,7 @@ import type {
   BillingCycle,
   DetectedSubscription,
   DuplicatePair,
+  ManualDue,
   PaymentStatus,
   Preferences,
   RecurrenceUnit,
@@ -14,6 +15,8 @@ import type {
   ReminderInput,
   SafeToSpend,
   SafeToSpendProfileInput,
+  SetAside,
+  SetAsideKind,
   Subscription,
   SubscriptionForecast,
   BudgetInput,
@@ -26,7 +29,14 @@ import type {
   TransactionInput,
   TransactionSummary,
   SubscriptionInput,
+  BillDraft,
   Feature,
+  WorkspacePage,
+  WorkspacePageData,
+  WorkspacePageInput,
+  WorkspacePageSummary,
+  WorkspacePageUpdate,
+  WorkspaceTemplate,
 } from '@/types'
 import {
   formatCadence,
@@ -34,7 +44,7 @@ import {
   legacyMonthlyEquivalent,
 } from '@/lib/utils/recurrence'
 import { createClient } from '@/lib/supabase/client'
-import { endDemo } from '@/lib/auth/session'
+import { endDemo, getAccessToken } from '@/lib/auth/session'
 import { API_URL } from '@/lib/config'
 
 const REQUEST_TIMEOUT_MS = 15_000
@@ -244,6 +254,7 @@ function normalizeSubscription(value: Record<string, unknown>): Subscription {
     amount_type: value.amount_type === 'variable' ? 'variable' : 'fixed',
     spending_type: value.spending_type === 'essential' || value.spending_type === 'optional'
       ? value.spending_type : 'unspecified',
+    payment_method: value.payment_method === 'manual' ? 'manual' : 'automatic',
     is_active: status !== 'cancelled' && status !== 'ended',
   }
 }
@@ -368,6 +379,21 @@ export async function getSubscriptionForecast(
 /** Every charge dated in the current calendar month, including ones already paid. */
 export async function getCalendarMonth(token: string): Promise<CalendarMonthCharges> {
   return request('/subscriptions/month', token)
+}
+
+/** Manual payments' due dates up to a week ahead that are not marked paid yet. */
+export async function getManualDue(token: string): Promise<ManualDue[]> {
+  const rows = await request('/subscriptions/manual-due', token)
+  return Array.isArray(rows) ? rows as ManualDue[] : []
+}
+
+/** Record one due date of a manual payment as paid; deleting the transaction undoes it. */
+export async function markPaymentPaid(
+  token: string,
+  id: string,
+  data: { due_date: string; paid_on: string; amount?: number; currency?: string },
+): Promise<Transaction> {
+  return request(`/subscriptions/${id}/mark-paid`, token, { method: 'POST', body: JSON.stringify(data) })
 }
 
 /** Past payments: confirmed by an email receipt, or expected from the schedule. */
@@ -652,8 +678,30 @@ export async function updatePreferences(
   })
 }
 
+export type ProductEventName = 'setup_started' | 'setup_finished' | 'first_number_seen' | 'payday_link_clicked'
+
+/** Anonymous usage count; never blocks or fails what the user is doing. */
+export function trackEvent(name: ProductEventName): void {
+  void (async () => {
+    const token = await getAccessToken()
+    if (token) await request('/events', token, { method: 'POST', body: JSON.stringify({ name }) })
+  })().catch(() => undefined)
+}
+
 export async function getSafeToSpend(token: string): Promise<SafeToSpend> {
   return request('/safe-to-spend', token)
+}
+
+export interface AffordAnswer extends SafeToSpend {
+  amount: number
+  affordable: boolean | null
+  left_after: number | null
+  short_by: number | null
+  per_day_after?: number
+}
+
+export async function canIAfford(token: string, amount: number): Promise<AffordAnswer> {
+  return request(`/safe-to-spend/afford?amount=${encodeURIComponent(amount.toFixed(2))}`, token)
 }
 
 export async function saveSafeToSpendProfile(
@@ -664,6 +712,29 @@ export async function saveSafeToSpendProfile(
     method: 'PUT',
     body: JSON.stringify(data),
   })
+}
+
+export async function createSetAside(
+  token: string,
+  data: { kind: SetAsideKind; name: string; amount_per_pay: number; target_amount?: number | null },
+): Promise<SetAside> {
+  return request('/set-asides', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function deleteSetAside(token: string, id: string): Promise<void> {
+  await request(`/set-asides/${id}`, token, { method: 'DELETE' })
+}
+
+/** Log money spent today, from a pot or from free money; returns the new position. */
+export async function logSpend(
+  token: string,
+  data: { name: string; amount: number; set_aside_id?: string | null },
+): Promise<SafeToSpend> {
+  return request('/safe-to-spend/spends', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function undoSpend(token: string, id: string): Promise<SafeToSpend> {
+  return request(`/safe-to-spend/spends/${id}`, token, { method: 'DELETE' })
 }
 
 export async function updateSubscription(
@@ -736,11 +807,25 @@ export async function decidePayment(
   return response
 }
 
-export async function getEmailReminders(token: string) {
-  return request('/email-reminders', token) as Promise<{enabled: boolean; email: string | null; configured: boolean}>
+export interface EmailSettings {
+  /** Payment reminder emails. */
+  enabled: boolean
+  /** The payday email. */
+  payday: boolean
+  email: string | null
+  configured: boolean
 }
-export async function setEmailReminders(token: string, enabled: boolean) {
-  return request('/email-reminders', token, {method: 'PUT', body: JSON.stringify({enabled})})
+
+export async function getEmailReminders(token: string): Promise<EmailSettings> {
+  return request('/email-reminders', token)
+}
+
+/** Change either switch; a field left out keeps its current value. */
+export async function setEmailReminders(
+  token: string,
+  changes: { enabled?: boolean; payday?: boolean },
+): Promise<EmailSettings> {
+  return request('/email-reminders', token, { method: 'PUT', body: JSON.stringify(changes) })
 }
 
 export interface SavingsOverview {
@@ -765,6 +850,14 @@ export async function getTransactionSummary(token: string, month: string): Promi
 
 export async function createTransaction(token: string, data: TransactionInput): Promise<CreatedTransaction> {
   return request('/transactions', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function parseBillText(token: string, text: string): Promise<{ bills: BillDraft[] }> {
+  return request('/subscriptions/parse', token, { method: 'POST', body: JSON.stringify({ text }) })
+}
+
+export async function parseTransactionText(token: string, text: string): Promise<{ drafts: TransactionInput[] }> {
+  return request('/transactions/parse', token, { method: 'POST', body: JSON.stringify({ text }) })
 }
 
 export async function updateTransaction(
@@ -820,4 +913,35 @@ export async function deleteGoal(token: string, id: string) {
 
 export async function addGoalContribution(token: string, goalId: string, data: ContributionInput) {
   return request(`/goals/${goalId}/contributions`, token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+// Workspace
+export async function listWorkspaceTemplates(token: string): Promise<WorkspaceTemplate[]> {
+  const rows = await request('/workspace/templates', token)
+  return Array.isArray(rows) ? rows as WorkspaceTemplate[] : []
+}
+
+export async function listWorkspacePages(token: string): Promise<WorkspacePageSummary[]> {
+  const rows = await request('/workspace/pages', token)
+  return Array.isArray(rows) ? rows as WorkspacePageSummary[] : []
+}
+
+export async function createWorkspacePage(token: string, data: WorkspacePageInput): Promise<WorkspacePage> {
+  return request('/workspace/pages', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function getWorkspacePage(token: string, id: string): Promise<WorkspacePage> {
+  return request(`/workspace/pages/${id}`, token)
+}
+
+export async function getWorkspacePageData(token: string, id: string): Promise<WorkspacePageData> {
+  return request(`/workspace/pages/${id}/data`, token)
+}
+
+export async function updateWorkspacePage(token: string, id: string, data: WorkspacePageUpdate): Promise<WorkspacePage> {
+  return request(`/workspace/pages/${id}`, token, { method: 'PATCH', body: JSON.stringify(data) })
+}
+
+export async function deleteWorkspacePage(token: string, id: string) {
+  return request(`/workspace/pages/${id}`, token, { method: 'DELETE' })
 }

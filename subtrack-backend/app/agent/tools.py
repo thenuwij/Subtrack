@@ -37,6 +37,15 @@ from app.agent.spending import (
     logged_transaction_summary,
     spending_enabled,
 )
+from app.agent.workspace import (
+    PAGE_TEXT_TOOLS,
+    WORKSPACE_OFF_ERROR,
+    WORKSPACE_TOOLS,
+    advice_refusal,
+    workspace_enabled,
+    workspace_pages,
+    workspace_templates,
+)
 from app.models import Category, TransactionKind
 from app.services.safe_to_spend import can_i_afford, safe_to_spend
 
@@ -377,6 +386,22 @@ READ_TOOL_DEFINITIONS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "list_workspace_templates",
+        "description": (
+            "List the ready-made workspace page templates with their ID, name, description and "
+            "block types. Read this before proposing a page and start from the closest one."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "list_workspace_pages",
+        "description": (
+            "List the user's workspace pages with their IDs, titles, template, current blocks and "
+            "when they were updated. Use before changing or removing a page."
+        ),
+        "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
     ALTERNATIVE_RESEARCH_TOOL,
 ]
 
@@ -397,6 +422,12 @@ def run_tool(
         return SPENDING_OFF
     if tool_name in GOALS_TOOLS and not goals_enabled(db, user_id):
         return GOALS_OFF
+    if tool_name in WORKSPACE_TOOLS and not workspace_enabled(db, user_id):
+        return WORKSPACE_OFF_ERROR
+    if tool_name in PAGE_TEXT_TOOLS:
+        refusal = advice_refusal(tool_input)
+        if refusal:
+            return refusal
     if tool_name in ACTION_MODELS:
         if not thread_id or not assistant_message_id:
             return {"error": "Action proposals require a conversation message"}
@@ -485,6 +516,10 @@ def run_tool(
         return budget_status_for_month(db, user_id, tool_input)
     if tool_name == "list_goals":
         return goals_with_progress(db, user_id, tool_input)
+    if tool_name == "list_workspace_templates":
+        return workspace_templates(db, user_id)
+    if tool_name == "list_workspace_pages":
+        return workspace_pages(db, user_id)
     if tool_name == "research_cheaper_alternatives":
         return research_alternatives(db, user_id, tool_input)
     return {"error": "Unknown assistant tool"}

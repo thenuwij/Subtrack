@@ -1,5 +1,6 @@
 'use client'
 
+import { PaymentsTabs } from '@/components/subscriptions/PaymentsTabs'
 import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ArrowUpRight, Check, ChevronDown, Clock3, Mail, RotateCcw, Trash2, X } from 'lucide-react'
@@ -465,7 +466,7 @@ export default function ReviewPage() {
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-10">
+      <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-10">
         <div className="space-y-6">
           <Skeleton className="h-9 w-56" />
           <Skeleton className="h-24 rounded-2xl" />
@@ -478,8 +479,9 @@ export default function ReviewPage() {
   const scanning = gmail?.scan_status === 'running'
 
   return (
-    <div className="mx-auto max-w-4xl px-5 py-8 sm:px-8 sm:py-10">
+    <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-10">
       <div className="space-y-6">
+        <PaymentsTabs />
         {loadError && (
           <div className="flex flex-col gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm text-muted-foreground">{loadError}</p>

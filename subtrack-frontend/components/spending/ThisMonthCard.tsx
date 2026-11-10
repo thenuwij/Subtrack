@@ -21,8 +21,8 @@ export function ThisMonthCard() {
     <section aria-label="This month" className="rounded-2xl bg-card p-5 shadow-sm">
       <div className="flex items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-foreground">This month</h2>
-        <Link href="/spending" className="inline-flex min-h-11 items-center gap-1 text-xs font-medium text-primary">
-          Spending <ArrowRight className="h-3.5 w-3.5" />
+        <Link href="/transactions" className="inline-flex min-h-11 items-center gap-1 text-xs font-medium text-primary">
+          Activity <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
       <dl className="mt-1 grid grid-cols-3 gap-3">

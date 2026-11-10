@@ -18,10 +18,10 @@ export default function PrivacyPage() {
         <Link href="/login" className="text-sm font-medium text-primary hover:underline">Sign in</Link>
       </nav>
       <article className="prose prose-neutral mx-auto max-w-3xl px-5 py-12 dark:prose-invert sm:px-8">
-        <p className="text-sm font-medium text-primary">Last updated 24 September 2026</p>
+        <p className="text-sm font-medium text-primary">Last updated 10 November 2026</p>
         <h1>Privacy policy</h1>
         <p>
-          Subtrack is a recurring-payment tracker. This policy explains what information Subtrack accesses, why it is used, which services process it, how long it is kept, and the controls available to you. It applies to the Subtrack website, API, Gmail connection, and AI assistant.
+          Subtrack shows what&apos;s free to spend until payday, after your bills and the money you set aside. This policy explains what information Subtrack accesses, why it is used, which services process it, how long it is kept, and the controls available to you. It applies to the Subtrack website, API, emails, Gmail connection, and AI assistant.
         </p>
 
         <h2>Information Subtrack handles</h2>
@@ -31,7 +31,7 @@ export default function PrivacyPage() {
         </p>
         <h3>Financial organisation data</h3>
         <p>
-          Subtrack stores information you enter or approve, including recurring-payment names, amounts, currencies, billing cadence, categories, due and lifecycle dates, shared-bill details, free trials, reminders, income preference, and essential or optional labels. Subtrack is not a bank ledger and does not connect to a bank account.
+          Subtrack stores information you enter or approve, including recurring-payment names, amounts, currencies, billing cadence, categories, due and lifecycle dates, shared-bill details, free trials, reminders, income preference, and essential or optional labels. For safe to spend it also stores your pay schedule, usual pay, buffer, any balance you type in and when you typed it, the savings and spending pots you set aside each pay, and any spends you choose to log. Subtrack is not a bank ledger and does not connect to a bank account.
         </p>
         <h3>Demo sessions</h3>
         <p>
@@ -59,9 +59,11 @@ export default function PrivacyPage() {
         <h2>How information is used</h2>
         <ul>
           <li>Operate sign-in and keep records scoped to the correct user.</li>
-          <li>Calculate recurring-cost equivalents and forecast expected charges.</li>
+          <li>Calculate recurring-cost equivalents, forecast expected charges, and work out what&apos;s free to spend until payday.</li>
           <li>Find possible recurring payments in Gmail for you to review.</li>
           <li>Show in-app reminders, free trials, data-quality warnings, and possible duplicates.</li>
+          <li>Send the emails you turn on: payment reminders, the payday email, and payday alerts.</li>
+          <li>Count anonymous usage, as described below, to see whether Subtrack is useful.</li>
           <li>Answer assistant questions and prepare changes that require your confirmation.</li>
           <li>Protect, diagnose, and improve the reliability and security of the service.</li>
         </ul>
@@ -71,8 +73,11 @@ export default function PrivacyPage() {
           Anthropic processes redacted candidate email excerpts, assistant messages, and the minimum relevant recurring-payment context needed for the requested feature. When you ask for cheaper alternatives, the payment&apos;s name, category, price and cadence, plus any requirements you give, are redacted in the same way and then used to search the web for current prices. AI results can be wrong. Gmail findings enter a review queue, and every AI-proposed data change remains inert until you confirm it. Subtrack does not make investment, credit, insurance, employment, or other legally significant decisions about users.
         </p>
 
-        <h2>Email reminders</h2>
-        <p>Email reminders are optional and off by default. If you enable them in Account, Subtrack shares your account email address and the relevant payment name and date with Resend to deliver the reminder. Subtrack keeps delivery metadata and a copy of the notification payload to prevent duplicate sends. You can turn email reminders off in Account. Deleting your Subtrack app data removes these settings and delivery records.</p>
+        <h2>Emails</h2>
+        <p>All emails are optional and off by default. There are two switches in Account: payment reminders, and the payday email and alerts (which you can also turn on during setup). To deliver them, Subtrack shares your account email address and the email&apos;s content with Resend. A reminder contains a payment name and date. The payday email contains your usual pay or balance, the names, dates and amounts of bills before your next payday, your set-asides, your buffer and what&apos;s free to spend. An alert contains a shortfall amount or a trial&apos;s name, end date and price. Subtrack keeps delivery metadata and a copy of each email to prevent duplicate sends. You can turn either switch off in Account at any time. Deleting your Subtrack app data removes these settings and delivery records.</p>
+
+        <h2>Anonymous usage counts</h2>
+        <p>To learn whether Subtrack is useful, it counts a few actions: starting and finishing setup, first seeing your number, opening Home (at most once a day), checking whether you can afford something, updating your balance, logging a spend, and opening the link in a payday email. Each count stores only the action&apos;s name, the time, and a one-way keyed code made from your account identifier, so returning users can be counted without storing who they are. Counts never include amounts, payment names, or email content. Demo sessions are not counted. Deleting your Subtrack app data deletes your counts.</p>
         <h2>Service providers and disclosure</h2>
         <p>
           Subtrack uses Google for sign-in and optional Gmail access, Supabase for authentication, Neon for the application database, Render for the API, Vercel for the website, Anthropic for AI processing, and Frankfurter for exchange-rate data. Providers process information for their stated technical role and under their own terms and privacy practices. Information may be processed in countries where these providers operate. Subtrack may also disclose information when legally required or necessary to protect users and the service. Subtrack does not sell personal information.
@@ -80,7 +85,8 @@ export default function PrivacyPage() {
 
         <h2>Retention</h2>
         <ul>
-          <li>Recurring-payment records, reminders, preferences, derived Gmail findings, and assistant history remain until you delete them or delete your Subtrack app data.</li>
+          <li>Recurring-payment records, pay details, set-asides, logged spends, reminders, preferences, derived Gmail findings, and assistant history remain until you delete them or delete your Subtrack app data.</li>
+          <li>Anonymous usage counts remain until you delete your Subtrack app data.</li>
           <li>Raw Gmail message content exists only during a scan and is not retained in Subtrack&apos;s database.</li>
           <li>The encrypted Gmail refresh token remains until you disconnect Gmail or delete your Subtrack app data.</li>
           <li>One-time Gmail connection state expires after ten minutes and is consumed on use.</li>
@@ -94,7 +100,7 @@ export default function PrivacyPage() {
           <li>You can use core tracking without connecting Gmail and can disconnect Gmail at any time.</li>
           <li>Disconnecting deletes the encrypted refresh token and attempts to revoke it with Google. Previously approved payment records remain until you delete them.</li>
           <li>You can approve, correct, dismiss, edit, pause, end, or delete app records from Subtrack.</li>
-          <li>You can download an authenticated JSON export from Account. It excludes refresh tokens, OAuth credentials, shared exchange-rate cache data, and the external Supabase identity.</li>
+          <li>You can download an authenticated JSON export from Account. It excludes refresh tokens, OAuth credentials, shared exchange-rate cache data, anonymous usage counts, and the external Supabase identity.</li>
           <li>You can permanently delete all user-owned Subtrack application records from Account using an exact confirmation phrase.</li>
         </ul>
         <p>
