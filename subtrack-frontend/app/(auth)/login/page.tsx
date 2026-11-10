@@ -174,7 +174,7 @@ export default function LoginPage() {
                 </h1>
                 {mode === 'signup' ? (
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Free to use. You can connect Gmail later.
+                    Free to use. You can forward your bills from Gmail later.
                   </p>
                 ) : null}
                 <AuthPreviewBanner />
