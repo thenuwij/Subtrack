@@ -62,7 +62,7 @@ Type an amount and get a yes or no, with what you'd have left until payday.
 
 - Add Subtrack to your phone's home screen for a one-tap shortcut.
 
-### Assistant
+### AI Assistant
 
 Ask questions about your own bills and spending in plain words.
 
