@@ -1,5 +1,6 @@
 'use client'
 import { EmailReminders } from '@/components/reminders/EmailReminders'
+import { ForwardingSetup } from '@/components/ForwardingSetup'
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
@@ -448,6 +449,13 @@ export default function AccountPage() {
         </Row>
       </Section>
       </div>
+
+      {!currentUser.isDemo && (
+        <div id="forwarding" className="scroll-mt-6 rounded-2xl bg-card shadow-sm p-6 space-y-4">
+          <h2 className="text-[17px] font-semibold text-foreground">Forward bills from Gmail</h2>
+          <ForwardingSetup />
+        </div>
+      )}
 
       {gmail && (
         <div id="inbox" className="scroll-mt-6 rounded-2xl bg-card shadow-sm p-6 space-y-4">

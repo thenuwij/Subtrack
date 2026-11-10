@@ -116,6 +116,16 @@ export interface BillDraft {
   next_due: string | null
 }
 
+export interface ForwardingAddress {
+  address: string
+  status: 'pending' | 'active' | 'paused'
+  gmail_address: string | null
+  confirmation_code: string | null
+  last_received_at: string | null
+  received_count: number
+  filter_query: string
+}
+
 export interface GmailStatus {
   connected: boolean
   configured?: boolean

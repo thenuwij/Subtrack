@@ -25,6 +25,7 @@ import type {
   SubscriptionInput,
   BillDraft,
   Transaction,
+  ForwardingAddress,
 } from '@/types'
 import {
   formatCadence,
@@ -461,6 +462,39 @@ export async function getCapabilities(token: string): Promise<ApiCapabilities> {
     ),
   }
   return capabilitiesCache
+}
+
+// Email forwarding
+export async function getForwardingAddress(token: string): Promise<ForwardingAddress> {
+  return request('/inbound/address', token)
+}
+
+export async function rotateForwardingAddress(token: string): Promise<ForwardingAddress> {
+  return request('/inbound/address/rotate', token, { method: 'POST' })
+}
+
+export async function setForwardingPaused(token: string, paused: boolean): Promise<ForwardingAddress> {
+  return request('/inbound/address', token, { method: 'PATCH', body: JSON.stringify({ paused }) })
+}
+
+export async function deleteForwardingAddress(token: string): Promise<void> {
+  await request('/inbound/address', token, { method: 'DELETE' })
+}
+
+/** Gmail's importable filter file, fetched with the bearer token and saved as a blob. */
+export async function downloadForwardingFilter(token: string): Promise<{ blob: Blob; filename: string }> {
+  let res: Response
+  try {
+    res = await fetch(`${API_URL}/inbound/filter.xml`, { headers: { Authorization: `Bearer ${token}` } })
+  } catch {
+    throw new Error(`Could not reach the Subtrack server at ${API_URL}.`)
+  }
+  if (res.status === 401) {
+    await handleExpiredSession()
+    throw new SessionExpiredError()
+  }
+  if (!res.ok) throw new Error(`Server returned ${res.status} while preparing the filter.`)
+  return { blob: await res.blob(), filename: 'pocketday-filter.xml' }
 }
 
 // Gmail
