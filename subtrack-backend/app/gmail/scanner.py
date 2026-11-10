@@ -115,15 +115,20 @@ def _decode_part(payload: dict) -> str:
 
     text = base64.urlsafe_b64decode(data.encode()).decode("utf-8", errors="ignore")
     if payload.get("mimeType") == "text/html":
-        # Drop style/script bodies before stripping tags. Removing only the tags
-        # leaves their contents behind, and a marketing-grade HTML email carries
-        # kilobytes of CSS — enough to bury the product name entirely.
-        text = re.sub(r"(?is)<(style|script|head)[^>]*>.*?</\1>", " ", text)
-        text = re.sub(r"(?s)<!--.*?-->", " ", text)
-        text = re.sub(r"(?i)<(br|/p|/div|/tr|/td|/h\d)[^>]*>", "\n", text)
-        text = re.sub(r"<[^>]+>", " ", text)
-        text = html.unescape(text)
+        text = html_to_text(text)
     return text
+
+
+def html_to_text(text: str) -> str:
+    """Readable text from an HTML email part."""
+    # Drop style/script bodies before stripping tags. Removing only the tags
+    # leaves their contents behind, and a marketing-grade HTML email carries
+    # kilobytes of CSS — enough to bury the product name entirely.
+    text = re.sub(r"(?is)<(style|script|head)[^>]*>.*?</\1>", " ", text)
+    text = re.sub(r"(?s)<!--.*?-->", " ", text)
+    text = re.sub(r"(?i)<(br|/p|/div|/tr|/td|/h\d)[^>]*>", "\n", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return html.unescape(text)
 
 
 def _collect_parts(payload: dict, by_type: dict[str, list[str]]) -> None:
@@ -143,7 +148,11 @@ def _extract_body_text(payload: dict) -> str:
     """Readable body text. Prefers text/plain, falls back to cleaned HTML."""
     by_type: dict[str, list[str]] = {}
     _collect_parts(payload, by_type)
+    return pick_body_text(by_type)
 
+
+def pick_body_text(by_type: dict[str, list[str]]) -> str:
+    """Choose the body text from decoded parts grouped by MIME type."""
     plain = "\n".join(by_type.get("text/plain", []))
     rich = "\n".join(by_type.get("text/html", []))
     # Some receipts (Apple's tax invoices) leave the items and prices out of
