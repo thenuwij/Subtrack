@@ -42,17 +42,18 @@ class FoundationTests(unittest.TestCase):
             currency="AUD", occurred_on=date(2026, 11, day),
         )
 
-    def test_new_users_and_existing_users_get_every_feature(self):
+    def test_users_who_never_chose_get_only_payments(self):
         self.db.add(UserPreference(user_id="existing"))
         self.db.commit()
 
+        self.assertEqual(get_preferences(user_id="new", db=self.db)["enabled_features"], ["payments"])
+        self.assertEqual(get_preferences(user_id="existing", db=self.db)["enabled_features"], ["payments"])
+
+    def test_payments_stays_on_when_only_extras_are_chosen(self):
+        update_preferences(PreferenceUpdate(enabled_features=["goals"]), user_id="owner", db=self.db)
+
         self.assertEqual(
-            get_preferences(user_id="new", db=self.db)["enabled_features"],
-            ["spending", "payments", "goals", "workspace"],
-        )
-        self.assertEqual(
-            get_preferences(user_id="existing", db=self.db)["enabled_features"],
-            ["spending", "payments", "goals", "workspace"],
+            get_preferences(user_id="owner", db=self.db)["enabled_features"], ["payments", "goals"],
         )
 
     def test_chosen_features_are_saved_in_a_stable_order(self):

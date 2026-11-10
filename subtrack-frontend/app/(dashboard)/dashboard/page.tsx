@@ -42,17 +42,14 @@ import { GettingStarted } from '@/components/onboarding/GettingStarted'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { getAccessToken, useIsDemo } from '@/lib/auth/session'
 import { useFeatures } from '@/lib/hooks/useFeatures'
-import { FeaturePicker } from '@/components/onboarding/FeaturePicker'
 import { ThisMonthCard } from '@/components/spending/ThisMonthCard'
 import { GoalsCard } from '@/components/goals/GoalsCard'
 
 export default function DashboardPage() {
   const { baseCurrency, ratesLoading, isLoading: preferencesLoading } = useCurrency()
-  const { has, onboardingCompleted } = useFeatures()
-  const paymentsOn = has('payments')
+  const { has } = useFeatures()
   const spendingOn = has('spending')
   const goalsOn = has('goals')
-  const workspaceOn = has('workspace')
 
   const subscriptionsQuery = useApi<Subscription[]>(
     apiKeys.subscriptions('current'), token => getSubscriptions(token),
@@ -151,34 +148,6 @@ export default function DashboardPage() {
   )
   if (preferencesLoading || loading || (ratesLoading && needsForeignRates)) return <DashboardSkeleton />
 
-  if (!onboardingCompleted) return <FeaturePicker />
-
-  if (!paymentsOn) {
-    return (
-      <div className="mx-auto max-w-xl space-y-4 px-4 py-16 sm:px-6">
-        {spendingOn ? <ThisMonthCard /> : null}
-        {goalsOn ? <GoalsCard /> : null}
-        {!spendingOn && !goalsOn ? (
-          <div className="rounded-2xl bg-card p-8 text-center shadow-sm">
-            <h1 className="text-xl font-semibold text-foreground">
-              {workspaceOn ? 'Your workspace' : 'Nothing turned on yet'}
-            </h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              {workspaceOn
-                ? 'Build pages for your situation. You can turn on monthly payments any time in Settings.'
-                : 'Turn on the features you want in Settings.'}
-            </p>
-            <Button asChild className="mt-5">
-              <Link href={workspaceOn ? '/workspace' : '/account#features'}>
-                {workspaceOn ? 'Open workspace' : 'Open Settings'}
-              </Link>
-            </Button>
-          </div>
-        ) : null}
-      </div>
-    )
-  }
-
   const hasPayments = subscriptions.length > 0
 
   if (loadError && !hasPayments) {
@@ -249,7 +218,7 @@ export default function DashboardPage() {
             <h1 className="page-heading">A little more clarity.</h1>
             <p className="page-description">Make room for life. Keep an eye on what&apos;s coming.</p>
           </div>
-          <Button asChild variant="outline" className="bg-card"><Link href="/subscriptions">View payments <ArrowRight className="h-4 w-4" /></Link></Button>
+          <Button asChild variant="outline" className="bg-card"><Link href="/subscriptions">View bills <ArrowRight className="h-4 w-4" /></Link></Button>
         </header>
 
         {loadError && (
@@ -261,8 +230,6 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start xl:gap-10">
           <div className="min-w-0 space-y-8">
-            {spendingOn ? <ThisMonthCard /> : null}
-            {goalsOn ? <GoalsCard /> : null}
             <SafeToSpendCard />
             <ComingUp
               forecast={forecast}
@@ -271,6 +238,8 @@ export default function DashboardPage() {
               onRetry={() => void forecastQuery.mutate()}
               overdue={overdueBills}
             />
+            {spendingOn ? <ThisMonthCard /> : null}
+            {goalsOn ? <GoalsCard /> : null}
           </div>
 
           <aside
