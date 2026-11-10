@@ -1,0 +1,10 @@
+name = "pocketday-inbound"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+
+[vars]
+# Replace with the deployed backend origin, no trailing slash.
+BACKEND_URL = "https://REPLACE-ME.example.com"
+
+# INBOUND_EMAIL_SECRET is a secret, set with:
+#   npx wrangler secret put INBOUND_EMAIL_SECRET
