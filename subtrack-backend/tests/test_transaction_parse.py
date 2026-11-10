@@ -13,13 +13,12 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-secret")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
-from app.database import Base  # noqa: E402
-from app.models import Transaction, UserPreference  # noqa: E402
-from app.database import get_db  # noqa: E402
+from app.database import Base, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.middleware.auth import verify_token  # noqa: E402
-from app.services import parse_rate_limit  # noqa: E402
+from app.models import Transaction, UserPreference  # noqa: E402
 from app.routers.transactions import ParseRequest, parse_transaction_text  # noqa: E402
+from app.services import parse_rate_limit  # noqa: E402
 
 
 def claude_returns(tool_input):
