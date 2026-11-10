@@ -1,6 +1,6 @@
 import os
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -14,9 +14,12 @@ os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-secret")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
+from app.config import settings  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.models import AiCallTrace  # noqa: E402
+from app.services import ai_tracing  # noqa: E402
 from app.services.ai_tracing import (  # noqa: E402
+    AiBudgetExceeded,
     call_cost,
     record_call,
     traced_call,
@@ -25,6 +28,10 @@ from app.services.ai_tracing import (  # noqa: E402
 
 MODEL = "claude-haiku-4-5"
 NOW = datetime(2026, 11, 6, 9, 0)
+
+
+def utcnow():
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def fake_response(**usage):
@@ -46,6 +53,8 @@ class AiTracingTests(unittest.TestCase):
         patcher = patch("app.services.ai_tracing.SessionLocal", self.Session)
         patcher.start()
         self.addCleanup(patcher.stop)
+        ai_tracing._spend_cache.clear()
+        self.addCleanup(ai_tracing._spend_cache.clear)
 
     def tearDown(self):
         self.engine.dispose()
@@ -149,6 +158,42 @@ class AiTracingTests(unittest.TestCase):
         gmail = summary["gmail_analysis"]
         self.assertEqual(gmail["cost_usd"], Decimal("0.040"))
         self.assertNotIn("requests", gmail)
+
+
+    def add_spend(self, cost, created_at=None):
+        with self.Session() as db:
+            db.add(AiCallTrace(
+                feature="assistant", model=MODEL, latency_ms=1, cost_usd=Decimal(cost),
+                created_at=created_at or utcnow(),
+            ))
+            db.commit()
+
+    def test_ai_calls_stop_once_todays_spend_reaches_the_limit(self):
+        self.add_spend("19.50")
+        self.add_spend("50.00", created_at=utcnow() - timedelta(days=2))
+        call = Mock(return_value=fake_response())
+        with patch.object(settings, "ai_daily_cost_limit_usd", 20.0):
+            traced_call("bill_parse", call, model=MODEL)
+            self.add_spend("0.50")
+            ai_tracing._spend_cache.clear()
+            with self.assertRaises(AiBudgetExceeded) as caught:
+                traced_call("bill_parse", call, model=MODEL)
+
+        self.assertEqual(caught.exception.status_code, 503)
+        self.assertEqual(call.call_count, 1)
+
+    def test_a_zero_limit_disables_the_breaker(self):
+        self.add_spend("500.00")
+        call = Mock(return_value=fake_response())
+        with patch.object(settings, "ai_daily_cost_limit_usd", 0.0):
+            traced_call("bill_parse", call, model=MODEL)
+        call.assert_called_once()
+
+    def test_an_unreadable_spend_leaves_ai_on(self):
+        broken = Mock()
+        broken.return_value.query.side_effect = OperationalError("select", {}, Exception())
+        with patch("app.services.ai_tracing.SessionLocal", broken):
+            ai_tracing.require_ai_budget()
 
 
 if __name__ == "__main__":

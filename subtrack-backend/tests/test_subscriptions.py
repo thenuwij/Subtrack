@@ -36,6 +36,7 @@ from app.routers.subscriptions import (  # noqa: E402
     subscription_payload,
     update_subscription,
 )
+from app.services import parse_rate_limit  # noqa: E402
 
 
 class SubscriptionContractTests(unittest.TestCase):
@@ -51,6 +52,8 @@ class SubscriptionContractTests(unittest.TestCase):
         from app.routers import subscriptions as subscriptions_router
         with subscriptions_router._duplicate_cache_lock:
             subscriptions_router._duplicate_cache.clear()
+        parse_rate_limit.parse_calls.clear()
+        self.addCleanup(parse_rate_limit.parse_calls.clear)
 
     def tearDown(self):
         self.db.close()
@@ -332,6 +335,22 @@ class SubscriptionContractTests(unittest.TestCase):
             {initial[0]["keep"]["id"], initial[0]["merge"]["id"]},
             {str(first.id), str(second.id)},
         )
+
+    def test_duplicate_model_calls_are_rate_limited_but_cached_reads_are_not(self):
+        self.create(name="Service one")
+        self.create(name="Service two")
+        with patch("app.gmail.analyzer.find_duplicates", return_value=[]) as model:
+            get_duplicates(user_id="owner", db=self.db)
+            for _ in range(parse_rate_limit.PARSE_CALLS_PER_MINUTE - 1):
+                parse_rate_limit.enforce_parse_rate_limit("owner")
+            self.assertEqual(get_duplicates(user_id="owner", db=self.db), [])
+
+            self.create(name="Service three")
+            with self.assertRaises(HTTPException) as caught:
+                get_duplicates(user_id="owner", db=self.db)
+
+        self.assertEqual(caught.exception.status_code, 429)
+        self.assertEqual(model.call_count, 1)
 
     def test_duplicate_model_failure_is_not_reported_as_no_duplicates(self):
         self.create(name="Service one")

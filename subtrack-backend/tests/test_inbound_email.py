@@ -242,6 +242,21 @@ class InboundEmailTests(unittest.TestCase):
         self.assertEqual(address.status, "active")
         self.assertIsNone(address.confirmation_code)
 
+    def test_oversized_body_is_refused_before_the_signature_check(self):
+        with patch.object(inbound, "MAX_BODY_BYTES", 100):
+            response = self.post(RECEIPT, secret="wrong-secret")
+
+        self.assertEqual(response.status_code, 413)
+        self.assertEqual(self.rows(InboundMessage), [])
+
+    def test_accepted_email_has_a_daily_cap_per_user(self):
+        with patch.object(inbound, "MAX_ACCEPTED_PER_DAY", 1):
+            first = self.post(RECEIPT)
+            second = self.post(email("Your Stan receipt", "Total: A$12.00", message_id="<two@stan.com>"))
+
+        self.assertEqual((first.json(), second.json()), ({"outcome": "accepted"}, {"outcome": "limited"}))
+        self.assertEqual(len(self.analyzed), 1)
+
     def test_inbound_messages_hold_no_email_text(self):
         self.post(RECEIPT)
 

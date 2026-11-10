@@ -6,17 +6,21 @@ Recording is best effort and never fails the request it measures.
 """
 import logging
 import math
+import threading
 import time
 from collections import defaultdict
 from collections.abc import Callable, Iterable
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.config import settings
 from app.database import SessionLocal
 from app.models import AiCallTrace
 
@@ -120,8 +124,65 @@ def record_call(
         db.close()
 
 
+# Today's spend is re-read at most this often per process.
+SPEND_CACHE_SECONDS = 60
+_spend_cache: dict[str, tuple[float, Decimal]] = {}
+_spend_cache_lock = threading.Lock()
+
+
+class AiBudgetExceeded(HTTPException):
+    """Today's total AI spend has reached AI_DAILY_COST_LIMIT_USD."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=503,
+            detail="AI features are paused for today. Everything else still works.",
+        )
+
+
+def _spent_today_usd() -> Decimal:
+    """Total recorded AI cost since UTC midnight, cached briefly."""
+    today = datetime.now(timezone.utc).replace(tzinfo=None).date()
+    now = time.monotonic()
+    with _spend_cache_lock:
+        cached = _spend_cache.get(today.isoformat())
+        if cached and now - cached[0] < SPEND_CACHE_SECONDS:
+            return cached[1]
+    db = SessionLocal()
+    try:
+        spent = db.query(func.coalesce(func.sum(AiCallTrace.cost_usd), 0)).filter(
+            AiCallTrace.created_at >= datetime.combine(today, datetime.min.time())
+        ).scalar()
+    finally:
+        db.close()
+    spent = Decimal(str(spent or 0))
+    with _spend_cache_lock:
+        _spend_cache.clear()
+        _spend_cache[today.isoformat()] = (now, spent)
+    return spent
+
+
+def require_ai_budget() -> None:
+    """Raise AiBudgetExceeded once today's spend reaches the configured limit.
+
+    A limit of 0 disables the check. If the spend can't be read, AI stays on:
+    the breaker guards cost, and must not take features down on its own.
+    """
+    limit = settings.ai_daily_cost_limit_usd
+    if limit <= 0:
+        return
+    try:
+        spent = _spent_today_usd()
+    except SQLAlchemyError as exc:
+        logger.warning("Could not read today's AI spend (%s)", type(exc).__name__)
+        return
+    if spent >= Decimal(str(limit)):
+        raise AiBudgetExceeded()
+
+
 def traced_call(feature: str, call: Callable[..., Any], **kwargs: Any) -> Any:
     """Run one Claude API call and record it, including calls that raise."""
+    require_ai_budget()
     started = time.perf_counter()
     try:
         response = call(**kwargs)

@@ -1001,7 +1001,9 @@ def get_duplicates(
     user's call.
     """
     try:
-        subs, pairs = duplicate_suggestions(db, user_id)
+        subs, pairs = duplicate_suggestions(
+            db, user_id, before_model_call=lambda: enforce_parse_rate_limit(user_id)
+        )
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

@@ -26,7 +26,7 @@ from app.config import CLAUDE_EFFORT, CLAUDE_MODEL, settings
 from app.database import get_db
 from app.middleware.auth import is_demo_user, verify_token
 from app.models import AgentAction, AgentMessage, AgentThread, Category
-from app.services.ai_tracing import elapsed_ms, record_call
+from app.services.ai_tracing import elapsed_ms, record_call, require_ai_budget
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 # The SDK default is ten minutes per request, which can strand a streaming
@@ -590,6 +590,17 @@ def _enforce_agent_rate_limit(db: Session, user_id: str) -> None:
     idempotent message replays do not consume capacity and retries do. The
     durable count works across Render workers and restarts.
     """
+    require_ai_budget()
+    daily_attempts = db.query(func.count(AgentMessage.id)).filter(
+        AgentMessage.user_id == user_id,
+        AgentMessage.role == "assistant",
+        AgentMessage.created_at >= _utcnow() - timedelta(days=1),
+    ).scalar() or 0
+    if daily_attempts >= settings.assistant_runs_per_day:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="You've reached today's assistant limit. Please try again tomorrow.",
+        )
     recent_attempts = db.query(func.count(AgentMessage.id)).filter(
         AgentMessage.user_id == user_id,
         AgentMessage.role == "assistant",

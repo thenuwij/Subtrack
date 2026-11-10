@@ -54,6 +54,8 @@ GOOGLE_DOMAINS = {"google.com"}
 TOKEN_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
 TOKEN_LENGTH = 20
 CODE_VISIBLE_FOR = timedelta(hours=24)
+# Each accepted email can start a model call; real bill mail is far below this.
+MAX_ACCEPTED_PER_DAY = 100
 # What the Gmail filter forwards: bills and receipts, never sign-in or security mail.
 BILL_SEARCH = (
     'subject:(receipt OR invoice OR bill OR payment OR subscription OR renewal OR statement '
@@ -77,10 +79,20 @@ def _utcnow() -> datetime:
 
 
 async def _raw_body(request: Request) -> bytes:
-    body = await request.body()
-    if len(body) > MAX_BODY_BYTES:
+    """Read the body, stopping as soon as it passes the limit.
+
+    The signature is checked after this, so an unsigned sender must not be
+    able to make the server buffer an unbounded body first.
+    """
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
         raise HTTPException(status_code=413, detail="Email too large")
-    return body
+    body = bytearray()
+    async for chunk in request.stream():
+        body.extend(chunk)
+        if len(body) > MAX_BODY_BYTES:
+            raise HTTPException(status_code=413, detail="Email too large")
+    return bytes(body)
 
 
 def _verify_signature(body: bytes, timestamp: str | None, signature: str | None) -> None:
@@ -110,6 +122,14 @@ def _forwarded_from(envelope_from: str) -> str:
     """``alice+caf_=...@gmail.com`` (Gmail's forwarding sender) -> ``alice@gmail.com``."""
     local, _, domain = envelope_from.strip().strip("<>").lower().rpartition("@")
     return f"{local.split('+caf_', 1)[0]}@{domain}"
+
+
+def _accepted_today(db: Session, user_id: str) -> int:
+    return db.query(func.count(InboundMessage.id)).filter(
+        InboundMessage.user_id == user_id,
+        InboundMessage.outcome == "accepted",
+        InboundMessage.received_at >= _utcnow() - timedelta(days=1),
+    ).scalar() or 0
 
 
 def _outcome(outcome: str, token: str | None, message_id: str | None = None) -> dict:
@@ -177,6 +197,8 @@ def receive_email(
         body_text = mime.body_text(message)
         if mime.is_sensitive(mime.header(message, "Subject"), body_text):
             outcome = "filtered"
+        elif _accepted_today(db, address.user_id) >= MAX_ACCEPTED_PER_DAY:
+            outcome = "limited"
         else:
             outcome = "accepted"
             candidate = mime.to_candidate(message, message_id, body_text)
