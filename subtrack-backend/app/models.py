@@ -1137,6 +1137,22 @@ class SetAside(Base):
     updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
 
 
+class ProductEvent(Base):
+    """One anonymous usage event: what happened and when, nothing else.
+
+    ``actor`` is a keyed one-way hash of the user ID, so returning users can be
+    counted without storing who they are. No amounts, names or payment details.
+    """
+
+    __tablename__ = "product_events"
+    __table_args__ = (Index("ix_product_events_name_created", "name", "created_at"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    actor = Column(String(64), nullable=False, index=True)
+    name = Column(String(40), nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
 class WorkspacePage(Base):
     """A saved page layout built from the fixed workspace blocks; it holds no copied data."""
 

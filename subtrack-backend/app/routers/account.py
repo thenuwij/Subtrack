@@ -55,6 +55,7 @@ from app.models import (
     WorkspacePage,
 )
 from app.services.gmail_access import revoke_encrypted_refresh_token
+from app.services.product_events import delete_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -464,6 +465,8 @@ def _delete_owned_rows(db: Session, user_id: str) -> dict[str, int]:
     for resource_name, model in DELETE_ORDER:
         result = db.execute(delete(model).where(model.user_id == user_id))
         counts[resource_name] = max(0, result.rowcount or 0)
+    # Usage events hold no user ID, only a keyed hash of it.
+    counts["product_events"] = delete_for_user(db, user_id)
     return counts
 
 
