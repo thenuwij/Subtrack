@@ -18,14 +18,6 @@ export const apiKeys = {
   safeToSpend: 'safe-to-spend',
   emailSettings: 'email-reminders',
   duplicates: 'duplicates',
-  transactions: (month: string) => `transactions:${month}`,
-  transactionSummary: (month: string) => `transaction-summary:${month}`,
-  budgets: (month: string) => `budgets:${month}`,
-  goals: 'goals',
-  workspaceTemplates: 'workspace:templates',
-  workspacePages: 'workspace:pages',
-  workspacePage: (id: string) => `workspace:page:${id}`,
-  workspacePageData: (id: string) => `workspace:data:${id}`,
   agentThreads: 'agent-threads',
 } as const
 

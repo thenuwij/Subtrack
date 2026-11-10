@@ -25,7 +25,6 @@ from app.models import (
     BankTransaction,
     Bill,
     BillingCycle,
-    Budget,
     Category,
     ChangeKind,
     DetectedSubscription,
@@ -36,8 +35,6 @@ from app.models import (
     GmailAccount,
     GmailOAuthState,
     GmailReceipt,
-    Goal,
-    GoalContribution,
     MoneyGoal,
     MoneyRule,
     PaymentDecision,
@@ -54,7 +51,6 @@ from app.models import (
     Transaction,
     TransactionLink,
     UserPreference,
-    WorkspacePage,
 )
 from app.routers import account, gmail
 from app.services import gmail_access
@@ -237,11 +233,6 @@ class AccountPrivacyTests(unittest.TestCase):
         )
         money_rule = MoneyRule(user_id=user_id, match_text="J SMITH", kind="bill")
         money_goal = MoneyGoal(user_id=user_id, name="Trip", target_amount=1200)
-        goal = Goal(id=uuid4(), user_id=user_id, name="Holiday", target_amount=900, currency="AUD")
-        goal_contribution = GoalContribution(
-            goal_id=goal.id, user_id=user_id, amount=50, occurred_on=date(2026, 8, 5),
-        )
-        budget = Budget(user_id=user_id, category=Category.food, monthly_limit=400, currency="AUD")
         safe_to_spend_profile = SafeToSpendProfile(
             user_id=user_id,
             balance=620,
@@ -283,10 +274,6 @@ class AccountPrivacyTests(unittest.TestCase):
                 transaction_link,
                 money_rule,
                 money_goal,
-                goal,
-                goal_contribution,
-                budget,
-                WorkspacePage(user_id=user_id, title="Moving", blocks=[{"type": "notes", "text": ""}]),
                 SetAside(user_id=user_id, kind="pot", name="Eating out", amount_per_pay=60, currency="AUD"),
                 ProductEvent(actor=actor_for(user_id), name="home_viewed"),
                 safe_to_spend_profile,

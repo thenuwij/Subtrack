@@ -47,17 +47,17 @@ flowchart LR
 | Screen | Contains |
 |---|---|
 | **Home** | Free to spend until payday, bills before payday, "can I afford it?", needs attention |
-| **Bills** | Recurring payments, paid history, trials, ways to save |
+| **Bills** | Recurring payments, paid history (paid, not paid yet, didn't happen), trials, ways to save |
 | **Ask** | Assistant: questions and approval-only changes |
 | **Account** | Pay schedule, payday message, goals, data export and delete |
 
 - **Set aside each pay:** savings ("Trip, $100 a pay") and spending pots ("Eating out, $60 a pay") come off free-to-spend every payday.
 - **Spent something?** Optional. A spend logged from a pot uses up the pot; any other spend lowers free-to-spend until the next balance. It's an adjustment, not a ledger.
 
-## Parked (code kept, hidden)
+## Removed (11 Nov 2026)
 
-- Custom workspace, monthly category budgets (replaced by spending pots), full transaction ledger, feature picker.
-- Bring back only if pilot users ask for them.
+- The Transactions page, monthly budgets, old-style goals, the custom workspace and the feature picker.
+- Spending pots replace budgets, savings set-asides replace goals, and "Spent something?" on Home replaces the Transactions page.
 
 ## Later, if users ask
 

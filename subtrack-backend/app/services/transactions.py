@@ -1,24 +1,21 @@
-"""Currency conversion and monthly totals for day-to-day expenses and income.
+"""Currency conversion for logged spends and payments marked paid.
 
-The REST API and the assistant share these helpers so a logged entry is
-converted and counted the same way whichever path created it.
+Every write path uses these helpers so an entry is converted and counted the
+same way whichever path created it.
 """
 
 from __future__ import annotations
 
-import calendar
-from datetime import date, datetime
+from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.models import Category, Transaction, TransactionKind, UserPreference
+from app.models import Category, Transaction, UserPreference
 from app.routers.rates import conversion_for_storage, get_cached_rate_snapshot
-from app.services.payment_charges import charged_payment_ids, month_payment_charges
 
 CENTS = Decimal("0.01")
 DEFAULT_BASE_CURRENCY = "AUD"
-MONTH_ROW_LIMIT = 500
 
 
 def base_currency_for(db: Session, user_id: str) -> str:
@@ -47,37 +44,6 @@ def apply_conversion(db: Session, row: Transaction, base: str) -> None:
     )
 
 
-def month_bounds(year: int, month: int) -> tuple[date, date]:
-    return date(year, month, 1), date(year, month, calendar.monthrange(year, month)[1])
-
-
-def month_transactions(
-    db: Session,
-    user_id: str,
-    year: int,
-    month: int,
-    *,
-    kind: TransactionKind | None = None,
-    category: Category | None = None,
-    limit: int = MONTH_ROW_LIMIT,
-) -> list[Transaction]:
-    """The user's entries dated in one month, newest first."""
-    first, last = month_bounds(year, month)
-    query = db.query(Transaction).filter(
-        Transaction.user_id == user_id,
-        Transaction.occurred_on.between(first, last),
-    )
-    if kind is not None:
-        query = query.filter(Transaction.kind == kind.value)
-    if category is not None:
-        query = query.filter(Transaction.category == category)
-    return (
-        query.order_by(Transaction.occurred_on.desc(), Transaction.created_at.desc(), Transaction.id)
-        .limit(limit)
-        .all()
-    )
-
-
 def amount_in_base(row: Transaction, base: str, snapshot: dict | None) -> Decimal | None:
     """Today's base-currency value of one entry, or None when no valid rate exists.
 
@@ -95,63 +61,21 @@ def amount_in_base(row: Transaction, base: str, snapshot: dict | None) -> Decima
     return (amount / Decimal(str(rate))).quantize(CENTS)
 
 
-def month_summary(db: Session, user_id: str, year: int, month: int) -> dict:
-    """Income, expenses, net and per-category spending in the user's base currency.
-
-    Expenses include the month's tracked payment charges. A logged expense
-    linked to a payment charged that month is the same money, so only the
-    charge is counted (the same rule as budgets). Entries without a valid conversion are counted in ``unconverted_count`` and
-    left out of every total; they are never treated as 1:1.
-    """
-    base = base_currency_for(db, user_id)
-    snapshot = get_cached_rate_snapshot(base, db)
-    first, last = month_bounds(year, month)
-    rows = db.query(Transaction).filter(
-        Transaction.user_id == user_id,
-        Transaction.occurred_on.between(first, last),
-    ).all()
-    charges = month_payment_charges(db, user_id, year, month)
-    charged_ids = charged_payment_ids(charges)
-
-    income = Decimal("0")
-    expenses = Decimal("0")
-    by_category: dict[str, Decimal] = {}
-    unconverted = 0
-    for row in rows:
-        is_expense = row.kind != TransactionKind.income.value
-        if is_expense and row.recurring_payment_id is not None and str(row.recurring_payment_id) in charged_ids:
-            continue
-        value = amount_in_base(row, base, snapshot)
-        if value is None:
-            unconverted += 1
-            continue
-        if not is_expense:
-            income += value
-            continue
-        expenses += value
-        category = row.category.value if isinstance(row.category, Category) else row.category
-        by_category[category] = by_category.get(category, Decimal("0")) + value
-    for charge in charges:
-        if charge.base_amount is None:
-            unconverted += 1
-            continue
-        expenses += charge.base_amount
-        by_category[charge.category] = by_category.get(charge.category, Decimal("0")) + charge.base_amount
-
-    snapshot_time = _snapshot_time(snapshot)
+def transaction_payload(row: Transaction) -> dict:
     return {
-        "month": f"{year:04d}-{month:02d}",
-        "base_currency": base,
-        "income": float(income),
-        "expenses": float(expenses),
-        "net": float(income - expenses),
-        "expenses_by_category": {
-            category: float(total)
-            for category, total in sorted(by_category.items(), key=lambda item: (-item[1], item[0]))
-        },
-        "transaction_count": len(rows),
-        "payment_charge_count": len(charges),
-        "unconverted_count": unconverted,
-        "rate_as_of": snapshot_time.isoformat() if snapshot_time else None,
-        "rate_stale": bool(snapshot and snapshot.get("stale")),
+        "id": str(row.id),
+        "kind": row.kind,
+        "name": row.name,
+        "amount": float(row.amount),
+        "currency": row.currency,
+        "base_amount": float(row.base_amount) if row.base_amount is not None else None,
+        "base_currency": row.base_currency,
+        "rate_as_of": row.rate_as_of.isoformat() if row.rate_as_of else None,
+        "category": row.category.value if isinstance(row.category, Category) else row.category,
+        "occurred_on": row.occurred_on.isoformat(),
+        "note": row.note,
+        "source": row.source,
+        "recurring_payment_id": str(row.recurring_payment_id) if row.recurring_payment_id else None,
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+        "updated_at": row.updated_at.isoformat() if row.updated_at else None,
     }

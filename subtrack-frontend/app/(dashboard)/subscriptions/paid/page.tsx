@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { CheckCircle2, Circle, CircleAlert } from 'lucide-react'
 import { toast } from 'sonner'
-import { decidePayment, getPaidHistory, sortCharge, updateBill } from '@/lib/api'
+import { decidePayment, getPaidHistory, sortCharge, undoMarkPaid, updateBill, type PaymentDecision } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth/session'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { formatCurrency } from '@/lib/utils/currency'
@@ -23,7 +23,9 @@ function monthLabel(date: string) {
 }
 
 function rowNote(row: PaidPayment) {
+  if (row.manual === 'marked_paid') return 'Marked paid from To pay'
   if (row.manual === 'paid') return row.paid_amount ? 'You entered what you paid' : 'You marked this paid'
+  if (row.status === 'owing') return 'Not paid yet, counted as owed'
   if (row.status === 'skipped') return 'You said this didn’t happen'
   if (row.kind === 'late_fee') return 'Late fee'
   if (row.kind === 'extra') return 'Extra charge'
@@ -134,7 +136,7 @@ export default function PaidPage() {
   const refresh = () => void query.mutate()
 
   // Show the answer straight away, then save it and reload the real figures.
-  async function decide(target: string, decision: 'paid' | 'skipped' | 'undo', amount?: number) {
+  async function decide(target: string, decision: PaymentDecision, amount?: number) {
     const manual = decision === 'undo' ? null : decision
     void query.mutate(current => current && {
       ...current,
@@ -143,7 +145,7 @@ export default function PaidPage() {
         manual,
         paid_amount: amount ?? null,
         amount: amount ?? row.amount,
-        status: decision === 'paid' ? 'confirmed' : decision === 'skipped' ? 'skipped' : row.status,
+        status: decision === 'paid' ? 'confirmed' : decision === 'skipped' ? 'skipped' : decision === 'unpaid' ? 'owing' : row.status,
       }),
       bills: current.bills.map(bill => bill.target !== target ? bill : {
         ...bill,
@@ -156,6 +158,17 @@ export default function PaidPage() {
       await withToken(token => decidePayment(token, target, decision, amount))
     } catch (error) {
       toast.error(errorMessage(error, 'Could not save your answer.'))
+    } finally {
+      refresh()
+    }
+  }
+
+  async function undoMark(paymentId: string, dueDate: string) {
+    try {
+      await withToken(token => undoMarkPaid(token, paymentId, dueDate))
+      toast.success('Marked as not paid again')
+    } catch (error) {
+      toast.error(errorMessage(error, 'Could not undo that.'))
     } finally {
       refresh()
     }
@@ -243,7 +256,7 @@ export default function PaidPage() {
               </p>
             </section>
           ) : months.map(([key, { payments: rows, bills }]) => {
-            const total = rows.filter(row => row.status !== 'unsorted' && row.status !== 'skipped').reduce((sum, row) => sum + (row.amount_in_base ?? 0), 0)
+            const total = rows.filter(row => row.status !== 'unsorted' && row.status !== 'skipped' && row.status !== 'owing').reduce((sum, row) => sum + (row.amount_in_base ?? 0), 0)
               + bills.filter(bill => bill.currency === base).reduce((sum, bill) => sum + bill.paid, 0)
             const confirmed = rows.filter(row => row.status === 'confirmed').length
               + bills.filter(bill => bill.status !== 'due' && bill.status !== 'unknown').length
@@ -265,7 +278,9 @@ export default function PaidPage() {
                           ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-label="Confirmed" />
                           : row.status === 'unsorted'
                             ? <CircleAlert className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-label="Needs sorting" />
-                            : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" aria-label={row.status === 'skipped' ? 'Skipped' : 'Expected'} />}
+                            : row.status === 'owing'
+                              ? <CircleAlert className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-label="Not paid yet" />
+                              : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" aria-label={row.status === 'skipped' ? 'Skipped' : 'Expected'} />}
                         <BrandLogo name={row.name} category={row.category} className="h-8 w-8" />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-[15px] font-medium text-foreground">{row.name}</span>
@@ -274,13 +289,14 @@ export default function PaidPage() {
                           </span>
                         </span>
                         <span className={`shrink-0 text-[15px] font-semibold tabular-nums ${
-                          row.status === 'skipped' ? 'line-through text-muted-foreground' : row.kind === 'late_fee' || row.kind === 'above_plan' ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'
+                          row.status === 'skipped' ? 'line-through text-muted-foreground' : row.status === 'owing' ? 'text-amber-700 dark:text-amber-300' : row.kind === 'late_fee' || row.kind === 'above_plan' ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'
                         }`}>
                           {row.status === 'expected' ? '≈ ' : row.kind === 'above_plan' ? '+' : ''}
                           {formatCurrency(row.amount, row.currency)}
                         </span>
                       </div>
-                      {row.target ? <DecisionButtons target={row.target} manual={row.manual} amount={row.amount} currency={row.currency} onDecide={decide} /> : null}
+                      {row.target ? <DecisionButtons target={row.target} manual={row.manual} amount={row.amount} currency={row.currency} onDecide={decide}
+                        onUndoMark={() => void undoMark(row.subscription_id, row.date)} /> : null}
                       {row.kind === 'above_plan' ? (
                         <div className="mt-1.5 flex flex-wrap items-center gap-2 pl-[3.25rem]">
                           <span className="text-[13px] text-muted-foreground">Was this extra a late fee?</span>
@@ -302,9 +318,10 @@ export default function PaidPage() {
   )
 }
 
-type Decide = (target: string, decision: 'paid' | 'skipped' | 'undo', amount?: number) => Promise<void>
+type Decide = (target: string, decision: PaymentDecision, amount?: number) => Promise<void>
 
-function DecisionButtons({ target, manual, amount, currency, bill = false, onDecide }: {
+function DecisionButtons({ target, manual, amount, currency, bill = false, onDecide, onUndoMark }: {
+  onUndoMark?: () => void
   target: string
   manual?: string | null
   amount?: number
@@ -353,7 +370,15 @@ function DecisionButtons({ target, manual, amount, currency, bill = false, onDec
 
   return (
     <div className="mt-2 flex flex-wrap gap-2 pl-[3.25rem]">
-      {manual ? (
+      {manual === 'marked_paid' ? (
+        <Button size="sm" variant="ghost" onClick={onUndoMark}>Undo mark paid</Button>
+      ) : manual === 'unpaid' ? (
+        <>
+          <Button size="sm" variant="outline" onClick={() => void onDecide(target, 'paid')}>Paid now</Button>
+          <Button size="sm" variant="outline" onClick={openEditor}>Paid a different amount</Button>
+          <Button size="sm" variant="ghost" onClick={() => void onDecide(target, 'undo')}>Undo your answer</Button>
+        </>
+      ) : manual ? (
         <>
           {manual === 'paid' ? (
             <Button size="sm" variant="outline" onClick={openEditor}>Change amount</Button>
@@ -364,6 +389,7 @@ function DecisionButtons({ target, manual, amount, currency, bill = false, onDec
         <>
           <Button size="sm" variant="outline" onClick={() => void onDecide(target, 'paid')}>Paid</Button>
           <Button size="sm" variant="outline" onClick={openEditor}>Paid a different amount</Button>
+          {!bill ? <Button size="sm" variant="outline" onClick={() => void onDecide(target, 'unpaid')}>Not paid yet</Button> : null}
           {!bill ? <Button size="sm" variant="ghost" onClick={() => void onDecide(target, 'skipped')}>Didn&apos;t happen</Button> : null}
         </>
       )}

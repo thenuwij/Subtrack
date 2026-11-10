@@ -16,7 +16,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
 from app.agent.tools import TOOL_DEFINITIONS  # noqa: E402
 from app.database import Base  # noqa: E402
-from app.models import AgentAction, Transaction  # noqa: E402
+from app.models import AgentAction  # noqa: E402
 from evals import run_live  # noqa: E402
 from evals.graders import (  # noqa: E402
     ToolCall,
@@ -117,21 +117,6 @@ class EvalHarnessTests(unittest.TestCase):
         self.assertFalse(transcript.data_changed)
         self.assertEqual(self.db.query(AgentAction).one().status, "pending")
 
-    def test_a_logged_expense_changes_nothing_until_confirmed(self):
-        entry = {
-            "kind": "expense", "name": "Lunch", "amount": 20, "currency": "AUD",
-            "category": "food", "occurred_on": None, "note": None, "recurring_payment_id": None,
-        }
-        model = scripted_model("propose_log_transaction", entry, lambda r: "Ready for you to confirm.")
-
-        transcript = run_case(self.db, "I spent $20 on lunch today.", model)
-
-        self.assertFalse(transcript.data_changed)
-        self.assertEqual(self.db.query(Transaction).count(), 0)
-        self.assertEqual(self.db.query(AgentAction).one().status, "pending")
-
-
-class GraderTests(unittest.TestCase):
     def transcript(self, answer, result=None, question="How much?"):
         calls = [ToolCall("get_safe_to_spend", {}, result)] if result is not None else []
         return Transcript(question=question, answer=answer, tool_calls=calls)

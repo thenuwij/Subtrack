@@ -1,7 +1,7 @@
 """The one written advice boundary every Subtrack AI feature follows.
 
 ADVICE_BOUNDARY is the rule text given to the model. check_user_text screens
-text the AI writes into something the user keeps, such as a workspace page, so
+text the AI writes into something the user keeps, such as a saved note, so
 product advice can't slip in there even if the model ignores the rules.
 """
 import re

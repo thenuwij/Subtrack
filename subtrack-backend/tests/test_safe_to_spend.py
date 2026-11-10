@@ -17,8 +17,10 @@ from app.database import Base  # noqa: E402
 from app.models import (  # noqa: E402
     BillingCycle,
     Category,
+    PaymentDecision,
     SafeToSpendProfile,
     Subscription,
+    Transaction,
     UserPreference,
 )
 from app.routers.safe_to_spend import SafeToSpendProfileUpdate, put_profile  # noqa: E402
@@ -346,6 +348,53 @@ class SafeToSpendTests(unittest.TestCase):
 
         profile = self.db.get(SafeToSpendProfile, "owner")
         self.assertEqual((profile.balance, profile.balance_as_of, profile.pay_amount), (None, None, Decimal("1400.00")))
+
+    # Owed: rent fell due on 1 Nov, before the 3 Nov balance, and wasn't paid.
+    def add_rent(self, **overrides):
+        self.add_payment("Rent", 400, datetime(2026, 12, 1), **overrides)
+        return self.db.query(Subscription).filter_by(name="Rent").one()
+
+    def decide(self, sub, decision, due="2026-11-01"):
+        self.db.add(PaymentDecision(user_id="owner", target=f"payment:{sub.id}:{due}", decision=decision))
+        self.db.commit()
+
+    def test_a_payment_marked_not_paid_yet_comes_off_as_overdue(self):
+        self.add_profile()
+        self.decide(self.add_rent(), "unpaid")
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        self.assertEqual(result["committed"], 400.0)
+        self.assertEqual(result["safe_to_spend"], 170.0)  # 620 - 400 - 50 buffer
+        self.assertEqual((result["commitments"][0]["name"], result["commitments"][0]["overdue"]), ("Rent", True))
+
+    def test_a_past_payment_without_that_answer_is_not_counted(self):
+        self.add_profile()
+        rent = self.add_rent()
+        self.decide(rent, "skipped")
+
+        self.assertEqual(safe_to_spend(self.db, "owner", now=NOW)["committed"], 0.0)
+
+    def test_an_overdue_pay_it_myself_payment_counts_until_marked_paid(self):
+        self.add_profile()
+        rent = self.add_rent(payment_method="manual", created_at=datetime(2026, 10, 15))
+
+        # 1 Oct was before the payment was added, so only 1 Nov is owed.
+        self.assertEqual(safe_to_spend(self.db, "owner", now=NOW)["committed"], 400.0)
+
+        self.db.add(Transaction(
+            user_id="owner", kind="expense", name="Rent", amount=400, currency="AUD",
+            occurred_on=date(2026, 11, 2), recurring_payment_id=rent.id, paid_due_on=date(2026, 11, 1),
+        ))
+        self.db.commit()
+        self.assertEqual(safe_to_spend(self.db, "owner", now=NOW)["committed"], 0.0)
+
+    def test_an_estimate_does_not_count_an_owed_payment_twice(self):
+        # The pay cycle started 27 Oct, so the 1 Nov rent is already in this cycle's bills.
+        self.add_profile(balance=None, balance_as_of=None, pay_amount=Decimal("1400.00"))
+        self.decide(self.add_rent(), "unpaid")
+
+        self.assertEqual(safe_to_spend(self.db, "owner", now=NOW)["committed"], 400.0)
 
     def run_at_now(self, tool_name, tool_input):
         with patch(

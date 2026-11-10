@@ -367,7 +367,7 @@ export function SafeToSpendCard() {
                 <Row
                   key={`${item.id}-${item.due_at}`}
                   onClick={() => { setShowBreakdown(false); editPayment(item.id) }}
-                  label={`${item.name} · ${formatStoredDate(item.due_at, { day: 'numeric', month: 'short' })}`}
+                  label={`${item.name} · ${item.overdue ? 'overdue since ' : ''}${formatStoredDate(item.due_at, { day: 'numeric', month: 'short' })}`}
                   value={`${item.is_estimate ? '≈ ' : ''}−${formatCurrency(item.amount, currency)}`}
                 />
               ))}

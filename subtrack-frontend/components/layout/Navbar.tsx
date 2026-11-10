@@ -2,23 +2,18 @@
 
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { House, CreditCard, LogOut, MessageCircle, Settings2, Target, Wallet, LayoutGrid } from 'lucide-react'
-import type { Feature } from '@/types'
+import { House, CreditCard, LogOut, MessageCircle, Settings2 } from 'lucide-react'
 import { getDetected } from '@/lib/api'
 import { apiKeys, useApi } from '@/lib/hooks/useApi'
 import { signOut } from '@/lib/auth/session'
 import { useCurrentUser } from '@/lib/hooks/useCurrentUser'
 import { UserAvatar } from '@/components/layout/UserAvatar'
 import { Logo, LogoMark } from '@/components/layout/Logo'
-import { useFeatures } from '@/lib/hooks/useFeatures'
 
-const links: { href: string; label: string; icon: typeof House; requires?: Feature }[] = [
+const links: { href: string; label: string; icon: typeof House }[] = [
   { href: '/dashboard', label: 'Home', icon: House },
   { href: '/subscriptions', label: 'Bills', icon: CreditCard },
   { href: '/assistant', label: 'Ask', icon: MessageCircle },
-  { href: '/transactions', label: 'Transactions', icon: Wallet, requires: 'spending' },
-  { href: '/goals', label: 'Goals', icon: Target, requires: 'goals' },
-  { href: '/workspace', label: 'Workspace', icon: LayoutGrid, requires: 'workspace' },
 ]
 
 export default function Navbar() {
@@ -27,8 +22,6 @@ export default function Navbar() {
   const detected = useApi(apiKeys.detected('pending'), token => getDetected(token, 'pending'))
   const pendingCount = detected.data?.length ?? 0
   const currentUser = useCurrentUser()
-  const { has } = useFeatures()
-  const visibleLinks = links.filter(link => !link.requires || has(link.requires))
 
   async function handleLogout() {
     await signOut()
@@ -36,7 +29,7 @@ export default function Navbar() {
   }
 
   function navItems(mobile = false) {
-    return visibleLinks.map(({ href, label, icon: Icon }) => {
+    return links.map(({ href, label, icon: Icon }) => {
       const active = pathname === href || pathname.startsWith(`${href}/`) || (href === '/subscriptions' && pathname === '/review')
       return (
         <Link key={href} href={href} data-tour={`nav-${href.slice(1)}`}

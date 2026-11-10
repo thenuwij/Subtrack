@@ -37,6 +37,7 @@ import { ReminderCenter } from '@/components/reminders/ReminderCenter'
 import { useRegisterAgentPageContext } from '@/lib/agent/page-context'
 import { toast } from 'sonner'
 import { SafeToSpendCard } from '@/components/dashboard/SafeToSpendCard'
+import { OverdueNotice } from '@/components/dashboard/OverdueNotice'
 import { SetAsidesCard } from '@/components/dashboard/SetAsidesCard'
 import { ComingUp } from '@/components/dashboard/ComingUp'
 import { NeedsAttention } from '@/components/dashboard/NeedsAttention'
@@ -45,15 +46,9 @@ import { RecentChanges } from '@/components/subscriptions/RecentChanges'
 import { GettingStarted } from '@/components/onboarding/GettingStarted'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { getAccessToken, useIsDemo } from '@/lib/auth/session'
-import { useFeatures } from '@/lib/hooks/useFeatures'
-import { ThisMonthCard } from '@/components/spending/ThisMonthCard'
-import { GoalsCard } from '@/components/goals/GoalsCard'
 
 export default function DashboardPage() {
   const { baseCurrency, ratesLoading, isLoading: preferencesLoading } = useCurrency()
-  const { has } = useFeatures()
-  const spendingOn = has('spending')
-  const goalsOn = has('goals')
 
   const subscriptionsQuery = useApi<Subscription[]>(
     apiKeys.subscriptions('current'), token => getSubscriptions(token),
@@ -244,6 +239,7 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start xl:gap-10">
           <div className="min-w-0 space-y-8">
+            <OverdueNotice />
             <SafeToSpendCard />
             <SetAsidesCard />
             <ComingUp
@@ -253,8 +249,6 @@ export default function DashboardPage() {
               onRetry={() => void forecastQuery.mutate()}
               overdue={overdueBills}
             />
-            {spendingOn ? <ThisMonthCard /> : null}
-            {goalsOn ? <GoalsCard /> : null}
           </div>
 
           <aside

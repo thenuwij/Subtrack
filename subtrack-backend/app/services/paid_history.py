@@ -31,6 +31,7 @@ from app.models import (
     SenderLink,
     Subscription,
     SubscriptionChange,
+    Transaction,
 )
 from app.services.payment_links import merchant_key, name_words
 from app.services.recurrence import (
@@ -220,6 +221,15 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
     stored = db.query(PaymentDecision).filter(PaymentDecision.user_id == user_id).all()
     decisions = {d.target: d.decision for d in stored}
     paid_amounts = {d.target: float(d.amount) for d in stored if d.decision == "paid" and d.amount is not None}
+    # Pay-it-myself payments marked paid from To pay are stored as linked entries.
+    marked_paid = {
+        (str(entry.recurring_payment_id), entry.paid_due_on): entry
+        for entry in db.query(Transaction).filter(
+            Transaction.user_id == user_id,
+            Transaction.recurring_payment_id.isnot(None),
+            Transaction.paid_due_on.isnot(None),
+        )
+    }
     price_changes: dict = {}
     for change in db.query(SubscriptionChange).filter(
         SubscriptionChange.user_id == user_id,
@@ -383,8 +393,14 @@ def paid_history(db: Session, user_id: str, *, months: int = 3, today: date | No
                 target = f"payment:{sub.id}:{due.isoformat()}"
                 manual = decisions.get(target)
                 paid_amount = paid_amounts.get(target)
+                entry = marked_paid.get((str(sub.id), due))
+                if entry is not None:
+                    # Undone by deleting the entry, so no History answer applies on top.
+                    manual = "marked_paid"
+                    paid_amount = float(entry.amount) if entry.currency == sub.currency else None
                 rows.append(row(sub, due, paid_amount if paid_amount is not None else price_on(sub, due), sub.currency,
-                    "confirmed" if manual == "paid" else "skipped" if manual == "skipped" else "expected",
+                    "confirmed" if manual in ("paid", "marked_paid") else "skipped" if manual == "skipped"
+                    else "owing" if manual == "unpaid" else "expected",
                     "schedule", target=target, manual=manual, paid_amount=paid_amount))
         for receipt in matched + unused:
             amount = float(receipt.amount)

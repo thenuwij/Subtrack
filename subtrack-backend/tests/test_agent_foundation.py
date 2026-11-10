@@ -67,12 +67,6 @@ class AgentFoundationTests(unittest.TestCase):
             "get_month_costs",
             "get_email_reminder_settings",
             "get_gmail_status",
-            "list_transactions",
-            "get_transaction_summary",
-            "get_budget_status",
-            "list_goals",
-            "list_workspace_templates",
-            "list_workspace_pages",
             "research_cheaper_alternatives",
         })
         for name in read_names:
