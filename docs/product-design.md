@@ -1,73 +1,75 @@
 # Subtrack product design
 
-Subtrack is a personal money workspace you can trust. It is ready to use from day one, simple enough for anyone, and customisable where it helps.
+*Revised 10 November 2026. Replaces the four-feature "money workspace" design.*
 
-**Never:** no open banking, no OAuth, no investment or financial advice. Subtrack tracks; it does not advise.
+**Subtrack is a payday copilot.** Every payday it tells you what's already spoken for and what's actually yours to spend. No bank login.
 
-## 1. Getting started
+**Who it's for:** young Australians paid weekly or fortnightly (students, shift and casual workers) who don't track their spending and won't start.
 
-```mermaid
-flowchart TD
-    A[Sign up] --> B[Choose features<br/>tick any or all]
-    B --> C[Expenses and income]
-    B --> D[Monthly payments<br/>and subscriptions]
-    B --> E[Goals and budgets]
-    B --> F[Custom workspace]
-```
+**Never:** open banking, OAuth for users, investment or financial product advice. Subtrack tracks; it does not advise.
 
-1. The user signs up.
-2. They tick the features they want. Any combination works.
-3. They only see what they ticked.
-4. They can change this any time in Settings.
+## Why this shape
 
-## 2. How data gets in
+- **Manual logging dies.** The product must work if the user never logs a single expense.
+- **Busy users don't come looking.** The value reaches them on payday as a message.
+- **One number beats many screens.** "Free to spend: $X a day until Thursday" is the product.
+- **Trust.** Every number comes from the backend, is dated, and states what's missing.
 
-```mermaid
-flowchart TD
-    A[Tell the AI] --> C[Expenses and income]
-    A --> D[Monthly payments]
-    B[Email forwarding] --> D
-    C --> X{Looks like a<br/>duplicate?}
-    D --> X
-    X -- No --> S[Saved]
-    X -- Yes --> U[User keeps or removes it]
-    S --> E[Goals and budgets]
-    S --> F[Custom workspace]
-```
-
-1. **Tell the AI:** "I spent $20 on lunch", "I got paid $1,200". It logs anything.
-2. **Email forwarding:** bills, subscriptions and overdue notices arrive by themselves after a one-time Gmail filter setup.
-3. **Duplicate check:** a new entry with the same name, a similar amount and a close date is flagged. The user decides; nothing is removed automatically.
-4. **Goals and budgets** are built from the saved expenses, income and payments.
-5. **Custom workspace:** the user describes a situation and the AI builds a page for it from our set of blocks, using their data.
-
-### The AI assistant
-
-- Works across all four features: it can log, change, explain and build pages.
-- Only acts after the user approves.
-- Only uses the blocks and templates we define.
-- Tracking only. It can do maths on the user's own data ("how much can I spend a day?") but never recommends investments or financial products.
-
-## 3. Build order
+## The core loop
 
 ```mermaid
 flowchart LR
-    A[Redesign plan] --> B[Add expenses/income<br/>and goals/budgets]
-    B --> C[Custom workspace<br/>and guardrails]
-    C --> D[UI and system audit]
-    D --> E[Email forwarding<br/>and domain]
-    E --> F[Deploy]
+    A[Payday] --> B[Payday message<br/>bills before next pay<br/>free per day]
+    B --> C{Reply with<br/>balance?}
+    C -- Yes --> D[Sharper number]
+    C -- No --> E[Estimate from pay<br/>minus bills]
+    D --> F[Mid-cycle:<br/>Can I afford it?]
+    E --> F
+    F --> G[Alert only if a bill<br/>won't fit before payday]
+    G --> A
 ```
 
-1. **Redesign plan:** plan the four-feature structure on top of what exists.
-2. **Expenses/income and goals/budgets:** bring back the earlier features in the new design.
-3. **Custom workspace and guardrails:** the new feature, built together with its safety rules.
-4. **UI and system audit:** make every screen simple and flawless, including the workspace.
-5. **Email forwarding and domain:** replace Gmail OAuth (see plan one).
-6. **Deploy.**
+1. **Payday:** a message says pay is in, which bills land before the next pay, what's set aside for goals, and what's free per day.
+2. **Optional balance:** typing one number makes it exact. Without it, the estimate uses pay amount minus bills and says so.
+3. **Mid-cycle:** "Can I afford $120 Friday?" from the home screen, the app or the assistant.
+4. **Rare alerts:** a bill that won't fit before payday, a trial ending, a price rise. Nothing else.
 
-## Not in for now
+## Setup (under 3 minutes)
 
-- CSV and bank statement imports
-- Receipt scanning
-- Paid features (the custom workspace may become paid later)
+1. Pay schedule and usual pay amount.
+2. Bills: tick from a list of common Australian services, or type or say one line ("Netflix 18.99 monthly, rent 400 weekly"). The user confirms each one.
+3. Optional: today's balance and a savings goal.
+4. Turn on the payday message.
+5. See the first number.
+
+## What the user sees
+
+| Screen | Contains |
+|---|---|
+| **Home** | Free to spend until payday, bills before payday, "can I afford it?", needs attention |
+| **Bills** | Recurring payments, paid history, trials, ways to save |
+| **Ask** | Assistant: questions and approval-only changes |
+| **Account** | Pay schedule, payday message, goals, data export and delete |
+
+- **Goals** are a "set aside" amount that comes off free-to-spend each pay.
+- **Spent something big?** A quick add lowers free-to-spend until the next balance. It's an adjustment, not a ledger.
+
+## Parked (code kept, hidden)
+
+- Custom workspace, category budgets, full transaction ledger, feature picker.
+- Bring back only if pilot users ask for them.
+
+## Later, if users ask
+
+- Email forwarding for bills ([plan one](plan-one-email-forwarding.md)).
+- One statement upload per pay cycle for "where did my pay go?"
+- Shared bills with housemates.
+- Paid features.
+
+## Success measures
+
+- **Activation:** setup done and first number seen in under 3 minutes.
+- **Retention:** payday message opened or a check-in at least once per pay cycle, over 2 cycles.
+- **Pilot gate:** 20 real users. If fewer than 10 are still active after 2 cycles, revisit the wedge before building anything new.
+
+Build plan: [plan four](plan-four-payday-copilot.md).
