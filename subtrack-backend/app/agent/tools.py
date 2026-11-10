@@ -31,7 +31,7 @@ CENTS = Decimal("0.01")
 
 
 def _utc_date(value: str, *, end_of_day: bool = False) -> datetime:
-    """Interpret assistant date-only tool input using Subtrack's UTC policy."""
+    """Interpret assistant date-only tool input using Pocketday's UTC policy."""
     parsed = datetime.strptime(value, "%Y-%m-%d").date()
     return datetime.combine(parsed, time.max if end_of_day else time.min)
 

@@ -1,4 +1,4 @@
-/** The Subtrack mark: three stacked bars on a repeating beat.
+/** The Pocketday mark: three stacked bars on a repeating beat.
  *
  * A lettermark "S" said nothing about the product. This reads as recurring
  * charges of different sizes — the thing the app is actually about — and stays
@@ -25,7 +25,7 @@ export function Logo({ compact = false }: { compact?: boolean }) {
       <LogoMark className="h-6 w-6 shrink-0" />
       <span className="flex flex-col leading-none">
         <span className="text-sm font-semibold tracking-tight text-foreground">
-          Subtrack
+          Pocketday
         </span>
         {!compact && (
           <span className="mt-1 text-[11px] leading-none text-muted-foreground">

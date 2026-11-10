@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm">
-        <Link href="/" aria-label="Subtrack home" className="inline-flex">
+        <Link href="/" aria-label="Pocketday home" className="inline-flex">
           <LogoMark className="h-10 w-10" />
         </Link>
 
@@ -50,7 +50,7 @@ export default function ForgotPasswordPage() {
                 account — the form would otherwise confirm who is a user. */}
             <p className="mt-3 text-sm text-muted-foreground">
               If <span className="font-medium text-foreground">{email}</span> has a
-              Subtrack account, a link to set a new password is on its way. It expires
+              Pocketday account, a link to set a new password is on its way. It expires
               after an hour.
             </p>
             <p className="mt-6 text-sm text-muted-foreground">

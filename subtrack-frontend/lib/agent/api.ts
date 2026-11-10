@@ -32,7 +32,7 @@ async function detailFrom(response: Response) {
       .slice(0, 3)
     if (messages.length) return messages.join(' ')
   }
-  return `The Subtrack server returned ${response.status}.`
+  return `The Pocketday server returned ${response.status}.`
 }
 
 async function jsonRequest<T>(
@@ -51,9 +51,9 @@ async function jsonRequest<T>(
     })
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error('The Subtrack server took too long to respond.')
+      throw new Error('The Pocketday server took too long to respond.')
     }
-    throw new Error('Could not reach the Subtrack server.')
+    throw new Error('Could not reach the Pocketday server.')
   } finally {
     window.clearTimeout(timeout)
   }

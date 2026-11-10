@@ -1,4 +1,4 @@
-"""Print what Subtrack can actually pull out of your inbox. Writes nothing.
+"""Print what Pocketday can actually pull out of your inbox. Writes nothing.
 
 This is the checkpoint: if your receipts parse cleanly here, the rest of the
 feature is mechanical. If they don't, better to know now.

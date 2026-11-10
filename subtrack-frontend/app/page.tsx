@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { PublicFooter } from '@/components/layout/PublicFooter'
 
 export const metadata: Metadata = {
-  title: 'Subtrack',
+  title: 'Pocketday',
   description: 'Know what’s yours to spend until payday. Your bills and savings set aside first, no bank login.',
 }
 
@@ -45,7 +45,7 @@ export default function Home() {
             Know what&apos;s yours to spend until payday.
           </h1>
           <p className="mt-6 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
-            Enter your pay and bills once. Subtrack sets aside what&apos;s already spoken for and tells you what&apos;s free, every payday. No tracking every coffee.
+            Enter your pay and bills once. Pocketday sets aside what&apos;s already spoken for and tells you what&apos;s free, every payday. No tracking every coffee.
           </p>
           <div className="mt-8 flex flex-col gap-3 sm:flex-row">
             {/* Not "Start with Google" any more — email sign-up exists, and
@@ -54,11 +54,11 @@ export default function Home() {
             <Button asChild size="lg" variant="outline"><Link href="/privacy">How your data is handled</Link></Button>
           </div>
           <p className="mt-4 text-xs leading-5 text-muted-foreground">
-            Setup takes about three minutes. Subtrack never asks for your bank login.
+            Setup takes about three minutes. Pocketday never asks for your bank login.
           </p>
         </div>
 
-        <div className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-foreground/5 sm:p-8" aria-label="Example of Subtrack's Home screen">
+        <div className="rounded-3xl bg-card p-6 shadow-sm ring-1 ring-foreground/5 sm:p-8" aria-label="Example of Pocketday's Home screen">
           <div className="flex items-center justify-between">
             <p className="text-sm text-muted-foreground">Safe to spend</p>
             <span className="rounded-full bg-foreground/5 px-2 py-0.5 text-xs text-muted-foreground">Example</span>
@@ -102,9 +102,9 @@ export default function Home() {
       <section className="mx-auto max-w-3xl px-5 py-16 text-center sm:px-8">
         <h2 className="text-3xl font-semibold tracking-tight">Your numbers, not your bank login.</h2>
         <p className="mx-auto mt-4 max-w-2xl text-sm leading-6 text-muted-foreground">
-          You enter your pay and bills yourself, and nothing changes without your approval. Subtrack doesn&apos;t give investment or financial product advice. You can export or delete your data from Account at any time.
+          You enter your pay and bills yourself, and nothing changes without your approval. Pocketday doesn&apos;t give investment or financial product advice. You can export or delete your data from Account at any time.
         </p>
-        <Button asChild className="mt-7"><Link href="/login">Continue to Subtrack</Link></Button>
+        <Button asChild className="mt-7"><Link href="/login">Continue to Pocketday</Link></Button>
       </section>
 
       <PublicFooter />

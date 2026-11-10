@@ -73,7 +73,7 @@ export function BackendGate({ children }: { children: ReactNode }) {
         <LogoMark className="mx-auto h-12 w-12" />
         {phase === 'failed' ? (
           <>
-            <h1 className="mt-6 text-[17px] font-semibold text-foreground">Subtrack is taking too long to start</h1>
+            <h1 className="mt-6 text-[17px] font-semibold text-foreground">Pocketday is taking too long to start</h1>
             <p className="mt-2 text-[15px] text-muted-foreground">
               The server didn&apos;t answer in time. Check your connection and try again.
             </p>
@@ -81,14 +81,14 @@ export function BackendGate({ children }: { children: ReactNode }) {
           </>
         ) : (
           <>
-            <h1 className="mt-6 text-[17px] font-semibold text-foreground">Starting Subtrack…</h1>
+            <h1 className="mt-6 text-[17px] font-semibold text-foreground">Starting Pocketday…</h1>
             <p className="mt-2 text-[15px] text-muted-foreground">
               Getting things ready. This can take up to a minute on your first visit.
             </p>
             <div
               className="mt-6 h-1.5 w-full overflow-hidden rounded-full bg-muted"
               role="progressbar"
-              aria-label="Starting Subtrack"
+              aria-label="Starting Pocketday"
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round(progress)}

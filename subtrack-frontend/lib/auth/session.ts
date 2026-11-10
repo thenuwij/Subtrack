@@ -30,7 +30,7 @@ export async function startDemo(): Promise<void> {
   try {
     response = await fetch(`${API_URL}/demo/session`, { method: 'POST' })
   } catch {
-    throw new Error('Could not reach Subtrack. Please try again.')
+    throw new Error('Could not reach Pocketday. Please try again.')
   }
   const body = await response.json().catch(() => null)
   if (!response.ok) {

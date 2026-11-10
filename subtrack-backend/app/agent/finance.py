@@ -1,6 +1,6 @@
-"""Read-only, user-scoped finance analysis for the Subtrack assistant.
+"""Read-only, user-scoped finance analysis for the Pocketday assistant.
 
-These helpers deliberately describe *tracked recurring commitments*.  Subtrack
+These helpers deliberately describe *tracked recurring commitments*.  Pocketday
 does not ingest a bank ledger, so calling these values "all spending" would be
 misleading.  Currency conversion metadata travels with every aggregate so the
 model can distinguish exact totals, current-rate estimates, and incomplete
@@ -641,7 +641,7 @@ def reminders_overview(db: Session, user_id: str, tool_input: dict) -> dict:
         "scope": "In-app reminders attached to the user's tracked recurring payments.",
         "reminders": rows,
         "reminder_count": len(rows),
-        "delivery": "Shown inside Subtrack; email and push delivery are not enabled.",
+        "delivery": "Shown inside Pocketday; email and push delivery are not enabled.",
         "read_only": True,
     }
 

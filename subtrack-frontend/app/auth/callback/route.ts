@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server'
 /** Only same-site paths may be used as a post-callback destination.
  *
  * `next` arrives from a link in an email, so treating it as a bare redirect
- * target would let anyone craft a Subtrack sign-in link that lands on their
+ * target would let anyone craft a Pocketday sign-in link that lands on their
  * own site while the user believes they are still here. A leading `//` or
  * `/\` is how a protocol-relative URL smuggles a host past a naive
  * "starts with /" check, so both are rejected. */

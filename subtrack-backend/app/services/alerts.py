@@ -27,7 +27,7 @@ TRIAL_ALERT_DAYS = 3
 
 def _footer() -> str:
     return (
-        f"Open Subtrack: {settings.frontend_url}/dashboard\n"
+        f"Open Pocketday: {settings.frontend_url}/dashboard\n"
         f"Turn off payday emails and alerts: {settings.frontend_url}/account#email-reminders"
     )
 

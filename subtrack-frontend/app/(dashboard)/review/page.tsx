@@ -560,8 +560,8 @@ export default function ReviewPage() {
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {gmail.available
-                    ? 'Connect Gmail and Subtrack will find recurring payments from receipt emails instead of you entering them by hand.'
-                    : 'Forward your bills from Gmail and Subtrack will find recurring payments from them instead of you entering them by hand.'}
+                    ? 'Connect Gmail and Pocketday will find recurring payments from receipt emails instead of you entering them by hand.'
+                    : 'Forward your bills from Gmail and Pocketday will find recurring payments from them instead of you entering them by hand.'}
                 </p>
                 {gmail.available && (
                   <Link
@@ -1107,7 +1107,7 @@ export default function ReviewPage() {
                             ) : null}
                           </div>
                           <p className="mt-2 text-[11px] text-muted-foreground">
-                            Subtrack will remember this, so future receipts link on their own.
+                            Pocketday will remember this, so future receipts link on their own.
                           </p>
                         </div>
                       ) : null}

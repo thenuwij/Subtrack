@@ -1,6 +1,6 @@
 """Safe, best-effort revocation of stored Google refresh tokens.
 
-Deleting Subtrack's encrypted copy is the privacy-critical operation: once it
+Deleting Pocketday's encrypted copy is the privacy-critical operation: once it
 is gone, this service can no longer access the mailbox.  Revoking the token at
 Google is an additional defence.  Google is an external dependency, so a
 temporary outage must never prevent local data deletion.
@@ -32,7 +32,7 @@ def revoke_encrypted_refresh_token(
     """Revoke a stored Google token without logging or returning the secret.
 
     The caller must still delete its local token when this returns ``failed``.
-    That status lets the UI recommend removing Subtrack from the user's Google
+    That status lets the UI recommend removing Pocketday from the user's Google
     permissions, while preserving the user's right to delete local data even
     if Google is unavailable.
     """

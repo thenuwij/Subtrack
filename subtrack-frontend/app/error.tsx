@@ -13,7 +13,7 @@ export default function ErrorPage({
   reset: () => void
 }) {
   useEffect(() => {
-    console.error('Subtrack route error', error)
+    console.error('Pocketday route error', error)
   }, [error])
 
   return (

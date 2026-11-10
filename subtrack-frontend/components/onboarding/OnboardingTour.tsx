@@ -133,9 +133,9 @@ export function OnboardingTour() {
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <LogoMark className="mb-2 h-10 w-10" />
-          <DialogTitle>Welcome to Subtrack</DialogTitle>
+          <DialogTitle>Welcome to Pocketday</DialogTitle>
           <DialogDescription>
-            Subtrack finds your recurring payments in your Gmail receipts, shows what they really cost each month, and flags anything that changes. Want a quick look around?
+            Pocketday finds your recurring payments in your Gmail receipts, shows what they really cost each month, and flags anything that changes. Want a quick look around?
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

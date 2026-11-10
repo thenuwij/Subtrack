@@ -64,7 +64,7 @@ def docs_urls(environment: str) -> dict[str, str | None]:
     return {}
 
 
-app = FastAPI(title="Subtrack API", lifespan=lifespan, **docs_urls(settings.environment))
+app = FastAPI(title="Pocketday API", lifespan=lifespan, **docs_urls(settings.environment))
 
 # CORS
 app.add_middleware(
@@ -259,7 +259,7 @@ def on_startup():
         db.close()
 
     _purge_expired_demos_at_startup()
-    logger.info("Subtrack API started")
+    logger.info("Pocketday API started")
 
 
 def _purge_expired_demos_at_startup() -> None:
@@ -288,7 +288,7 @@ def on_shutdown():
 
 @app.get("/")
 def health_check():
-    return {"status": "ok", "app": "Subtrack API", "release": release_metadata()}
+    return {"status": "ok", "app": "Pocketday API", "release": release_metadata()}
 
 
 @lru_cache(maxsize=1)
@@ -349,7 +349,7 @@ def readiness_check():
 
     return {
         "status": "ready",
-        "app": "Subtrack API",
+        "app": "Pocketday API",
         "release": release_metadata(),
         "schema_revision": applied,
     }

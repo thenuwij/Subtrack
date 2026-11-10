@@ -10,7 +10,7 @@ export default function GlobalError({
   reset: () => void
 }) {
   useEffect(() => {
-    console.error('Subtrack root error', error)
+    console.error('Pocketday root error', error)
   }, [error])
 
   return (
@@ -18,10 +18,10 @@ export default function GlobalError({
       <body style={{ margin: 0, background: '#f7f7f8', color: '#18181b', fontFamily: 'system-ui, sans-serif' }}>
         <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24 }}>
           <div style={{ width: '100%', maxWidth: 420, textAlign: 'center' }}>
-            <p style={{ color: '#6d5bd0', fontWeight: 700 }}>Subtrack</p>
+            <p style={{ color: '#6d5bd0', fontWeight: 700 }}>Pocketday</p>
             <h1 style={{ fontSize: 28, marginBottom: 8 }}>We couldn&apos;t load the app</h1>
             <p style={{ color: '#62626b', lineHeight: 1.5 }}>
-              Your payment data is safe. Try loading Subtrack again.
+              Your payment data is safe. Try loading Pocketday again.
             </p>
             <button
               type="button"

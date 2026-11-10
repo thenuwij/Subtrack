@@ -49,7 +49,7 @@ const GMAIL_ERROR_MESSAGES: Record<string, string> = {
     'You declined the Google permission request, so nothing was connected. '
     + 'Connect again and allow read access to continue.',
   invalid_scope:
-    'Google would not grant the permission Subtrack asked for. Connect again, '
+    'Google would not grant the permission Pocketday asked for. Connect again, '
     + 'and make sure the tickbox for viewing your email is ticked.',
   invalid_oauth_response:
     'Google’s reply could not be verified, so it was rejected. This is '
@@ -190,7 +190,7 @@ export default function AccountPage() {
         void gmailQuery.mutate({ connected: false }, { revalidate: false })
         setConfirmDisconnect(false)
         if (result.gmail_revocation === 'failed') {
-          toast.warning('Gmail was disconnected from Subtrack, but Google could not be reached to revoke access. Remove Subtrack from your Google Account permissions to revoke it manually.')
+          toast.warning('Gmail was disconnected from Pocketday, but Google could not be reached to revoke access. Remove Pocketday from your Google Account permissions to revoke it manually.')
         } else {
           toast.success('Gmail disconnected')
         }
@@ -295,7 +295,7 @@ export default function AccountPage() {
       link.click()
       link.remove()
       window.setTimeout(() => URL.revokeObjectURL(href), 1_000)
-      toast.success('Your Subtrack data export is ready')
+      toast.success('Your Pocketday data export is ready')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not download your data.')
     } finally {
@@ -333,7 +333,7 @@ export default function AccountPage() {
       setDeleteDialogOpen(false)
       setDeleteConfirmation('')
       setDeleteBusy(false)
-      toast.warning('Your Subtrack data was deleted, but this browser could not sign out. Please use Sign out before leaving this device.')
+      toast.warning('Your Pocketday data was deleted, but this browser could not sign out. Please use Sign out before leaving this device.')
     }
   }
 
@@ -505,7 +505,7 @@ export default function AccountPage() {
                 <span>
                   <span className="block text-sm font-medium">Check my inbox every day</span>
                   <span className="mt-0.5 block text-xs text-muted-foreground">
-                    Each morning Subtrack reads new receipts only. Anything it finds waits in Inbox for your OK.
+                    Each morning Pocketday reads new receipts only. Anything it finds waits in Inbox for your OK.
                   </span>
                 </span>
                 <input
@@ -537,7 +537,7 @@ export default function AccountPage() {
                 <div>
                   <p className="text-sm font-medium">Disconnect</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Subtrack keeps your recurring payments but stops reading your email
+                    Pocketday keeps your recurring payments but stops reading your email
                   </p>
                 </div>
                 {confirmDisconnect ? (
@@ -578,7 +578,7 @@ export default function AccountPage() {
                 <div>
                   <p className="text-sm font-medium">Connect Gmail</p>
                   <p className="text-xs text-muted-foreground mt-0.5">
-                    Read-only. Subtrack checks your last 3 months straight away, then new receipts
+                    Read-only. Pocketday checks your last 3 months straight away, then new receipts
                     once a day. Nothing is added without your approval, and you can turn daily checks off.
                   </p>
                   {/* Google renders read access to Gmail as its own tickbox and
@@ -628,7 +628,7 @@ export default function AccountPage() {
       <Section title="Your data">
         <Row
           title="Download your data"
-          description="A JSON file of everything Subtrack stores about you."
+          description="A JSON file of everything Pocketday stores about you."
         >
           <Button variant="outline" onClick={handleExport} disabled={exportBusy}>
             {exportBusy ? 'Preparing…' : 'Download export'}
@@ -639,10 +639,10 @@ export default function AccountPage() {
 
       <Section title="Danger zone" tone="danger">
         <Row
-          title="Delete Subtrack app data"
+          title="Delete Pocketday app data"
           description={currentUser.isDemo
             ? 'Not available in the demo. Demo data is cleared automatically after 24 hours.'
-            : 'Permanently deletes your Subtrack records and disconnects Gmail. Your sign-in account itself remains.'}
+            : 'Permanently deletes your Pocketday records and disconnects Gmail. Your sign-in account itself remains.'}
         >
           <Button
             variant="destructive"
@@ -664,7 +664,7 @@ export default function AccountPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete all Subtrack app data?</DialogTitle>
+            <DialogTitle>Delete all Pocketday app data?</DialogTitle>
             <DialogDescription>
               This permanently removes your payments, reminders, Gmail findings and connection, preferences, and assistant history. It cannot be undone. Your external Supabase sign-in identity is not deleted.
             </DialogDescription>

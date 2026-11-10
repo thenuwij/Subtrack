@@ -71,7 +71,7 @@ def _send_reminders(db, pref, *, now, send, result):
             continue
         kind = "trial ends" if reminder["kind"] == "trial_end" else "payment due"
         message = {
-            "subject": "A payment reminder from Subtrack",
+            "subject": "A payment reminder from Pocketday",
             "text": (
                 f"{email_safe_name(reminder['subscription_name'])}: {kind} on {target.date()}.\n\n"
                 f"Review your payment: {settings.frontend_url}/subscriptions\n"

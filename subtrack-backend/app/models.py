@@ -480,7 +480,7 @@ class ExchangeRateSnapshot(Base):
     base_currency = Column(String(3), primary_key=True)
     rates = Column(JSON, nullable=False)
     provider = Column(String(32), nullable=False, default="frankfurter")
-    # Frankfurter publishes the market date separately from the time Subtrack
+    # Frankfurter publishes the market date separately from the time Pocketday
     # fetched it (weekends commonly return Friday's market date).
     provider_date = Column(String(10), nullable=True)
     fetched_at = Column(DateTime, nullable=False)
@@ -529,7 +529,7 @@ class PaymentReminder(Base):
 
 
 class AgentThread(Base):
-    """A durable conversation owned by exactly one Subtrack user."""
+    """A durable conversation owned by exactly one Pocketday user."""
 
     __tablename__ = "agent_threads"
     __table_args__ = (

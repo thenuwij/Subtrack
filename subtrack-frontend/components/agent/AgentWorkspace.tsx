@@ -634,7 +634,7 @@ export function AgentWorkspace({
         </Button>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">
-            {activeThread?.title ?? 'Subtrack assistant'}
+            {activeThread?.title ?? 'Pocketday assistant'}
           </p>
           <p className="truncate text-[11px] text-muted-foreground">
             {statusText || `${pageContext.source_page ? 'Context from' : 'Looking at'} ${pageLabel}`}
@@ -898,7 +898,7 @@ export function AgentWorkspace({
             disabled={loading || composerLocked}
             maxLength={8_000}
             placeholder={composerLocked ? 'Restore this conversation to continue' : 'Ask about your payments…'}
-            aria-label="Message Subtrack assistant"
+            aria-label="Message Pocketday assistant"
             className="max-h-32 min-h-9 min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-5 outline-none placeholder:text-muted-foreground disabled:opacity-60"
           />
           {loading ? (
@@ -917,7 +917,7 @@ export function AgentWorkspace({
           )}
         </div>
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
-          Subtrack can analyse your records but does not provide investment advice.
+          Pocketday can analyse your records but does not provide investment advice.
         </p>
       </footer>
 

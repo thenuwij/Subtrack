@@ -119,7 +119,7 @@ export function AgentChat() {
       <section
         ref={panelRef}
         onKeyDown={panelKey}
-        aria-label="Subtrack financial assistant"
+        aria-label="Pocketday financial assistant"
         style={panelStyle}
         className={`${open ? 'flex' : 'hidden'} fixed inset-0 z-50 flex-col overflow-hidden bg-card sm:inset-auto sm:bottom-6 sm:right-6 sm:h-[min(720px,calc(100vh-3rem))] sm:w-[var(--agent-panel-width)] sm:rounded-2xl sm:border sm:border-border sm:shadow-xl`}
       >

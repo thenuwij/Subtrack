@@ -139,7 +139,7 @@ export default function LoginPage() {
   return (
     <div className="grid min-h-screen bg-background lg:grid-cols-2">
       <main className="flex min-h-screen flex-col px-6 py-10 sm:px-12 lg:px-20">
-        <Link href="/" aria-label="Subtrack home" className="inline-flex w-fit">
+        <Link href="/" aria-label="Pocketday home" className="inline-flex w-fit">
           <LogoMark className="h-9 w-9" />
         </Link>
 
@@ -170,7 +170,7 @@ export default function LoginPage() {
             ) : (
               <>
                 <h1 className="text-3xl font-bold tracking-tight text-foreground">
-                  {mode === 'signin' ? 'Sign in to Subtrack' : 'Create your account'}
+                  {mode === 'signin' ? 'Sign in to Pocketday' : 'Create your account'}
                 </h1>
                 {mode === 'signup' ? (
                   <p className="mt-2 text-sm text-muted-foreground">
@@ -194,9 +194,9 @@ export default function LoginPage() {
                   </p>
                 ) : dataDeleted ? (
                   <p role="status" className="mt-6 rounded-lg border border-border bg-muted/50 px-3 py-2.5 text-sm text-foreground">
-                    Your Subtrack app data was deleted and you have been signed out.
+                    Your Pocketday app data was deleted and you have been signed out.
                     {gmailRevocationFailed
-                      ? ' Google could not be reached to revoke the former Gmail permission, so remove Subtrack from your Google Account permissions as well.'
+                      ? ' Google could not be reached to revoke the former Gmail permission, so remove Pocketday from your Google Account permissions as well.'
                       : ''}
                   </p>
                 ) : null}
@@ -294,7 +294,7 @@ export default function LoginPage() {
 
 
                 <p className="mt-6 text-center text-sm text-muted-foreground">
-                  {mode === 'signin' ? 'New to Subtrack? ' : 'Already have an account? '}
+                  {mode === 'signin' ? 'New to Pocketday? ' : 'Already have an account? '}
                   <button
                     type="button"
                     className="font-medium text-primary hover:underline"

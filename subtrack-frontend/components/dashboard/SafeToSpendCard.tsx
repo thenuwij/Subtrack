@@ -492,7 +492,7 @@ export function SafeToSpendCard() {
     <Dialog open={editing} onOpenChange={setEditing}>
       <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader><DialogTitle>Your pay & payday</DialogTitle></DialogHeader>
-        <DialogDescription>You enter these yourself. Subtrack doesn&apos;t connect to your bank.</DialogDescription>
+        <DialogDescription>You enter these yourself. Pocketday doesn&apos;t connect to your bank.</DialogDescription>
         <ProfileForm position={position} onSaved={handleSaved} onCancel={() => setEditing(false)} />
       </DialogContent>
     </Dialog>

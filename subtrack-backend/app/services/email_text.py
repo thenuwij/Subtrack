@@ -11,7 +11,7 @@ def email_safe_name(name: str) -> str:
     """Return a payment name that mail clients won't turn into a link.
 
     Names are typed by the account holder, and the email is sent from
-    Subtrack's domain, so links and domains are removed or broken apart.
+    Pocketday's domain, so links and domains are removed or broken apart.
     """
     text = _URL.sub("", name)
     text = _DOMAIN.sub(lambda match: match.group(0).replace(".", " "), text)

@@ -21,7 +21,7 @@ CLIENT_EVENTS = frozenset({"setup_started", "setup_finished", "first_number_seen
 SERVER_EVENTS = frozenset({"home_viewed", "afford_check", "balance_updated", "spend_logged", "income_logged"})
 ONCE_PER_USER = frozenset({"setup_started", "setup_finished", "first_number_seen"})
 ONCE_PER_DAY = frozenset({"home_viewed"})
-# Any of these means the person came back and used Subtrack.
+# Any of these means the person came back and used Pocketday.
 ACTIVE_EVENTS = frozenset({
     "home_viewed", "afford_check", "balance_updated", "spend_logged", "income_logged", "payday_link_clicked",
 })
@@ -88,7 +88,7 @@ def product_summary(db: Session, since: datetime, *, now: datetime | None = None
     ]
 
     # Second-cycle retention: people who finished setup at least 28 days ago and
-    # used Subtrack again between days 14 and 28 after finishing.
+    # used Pocketday again between days 14 and 28 after finishing.
     finished_at = {actor: at for (actor, name), at in firsts.items() if name == "setup_finished"}
     cohort = {actor: at for actor, at in finished_at.items() if since <= at <= now - 2 * CYCLE}
     active = db.query(ProductEvent).filter(ProductEvent.name.in_(ACTIVE_EVENTS)).all()

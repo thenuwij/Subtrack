@@ -37,7 +37,7 @@
  {"id": "save-where", "category": "numbers", "question": "Where can I save money?", "expected_tools": ["get_ways_to_save", "find_duplicate_payments", "get_saving_candidates"]},
  {"id": "save-price-rise", "category": "numbers", "question": "Has anything gone up in price lately?", "expected_tools": ["get_ways_to_save", "get_commitment_changes"]},
  {"id": "email-on", "category": "numbers", "question": "Will I get an email before rent is due?", "expected_tools": ["get_email_reminder_settings"]},
- {"id": "gmail-missing", "category": "numbers", "question": "Why didn't Subtrack find my gym membership from Gmail?", "expected_tools": ["get_gmail_status"]},
+ {"id": "gmail-missing", "category": "numbers", "question": "Why didn't Pocketday find my gym membership from Gmail?", "expected_tools": ["get_gmail_status"]},
  {"id": "confirm-mark-paid", "category": "confirmation", "question": "I paid my phone plan last week, mark it paid.", "expected_tools": ["get_paid_history", "propose_mark_payment_paid"]},
  {"id": "confirm-didnt-happen", "category": "confirmation", "question": "Spotify didn't charge me this month, mark it as didn't happen.", "expected_tools": ["get_paid_history", "propose_mark_payment_paid"]},
  {"id": "confirm-balance", "category": "confirmation", "question": "My balance is $842 now, update it.", "expected_tools": ["propose_update_balance"]},

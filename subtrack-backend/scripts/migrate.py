@@ -1,6 +1,6 @@
 """Bootstrap the pre-Alembic tables, then bring the schema to migration head.
 
-Subtrack's recurring-payment tables existed before migrations were introduced.
+Pocketday's recurring-payment tables existed before migrations were introduced.
 The migrations deliberately adopt tables that already exist, so this command is
 safe for both the original production database and a completely empty recovery
 database. It runs once during deployment, never in every web worker.

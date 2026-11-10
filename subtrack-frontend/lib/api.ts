@@ -137,7 +137,7 @@ async function request(
     })
   } catch {
     if (timedOut) {
-      throw new Error('The Subtrack server took too long to respond. Try again in a moment.')
+      throw new Error('The Pocketday server took too long to respond. Try again in a moment.')
     }
     // fetch only rejects for network-level failures: no server, DNS, or CORS.
     throw new Error(
@@ -145,7 +145,7 @@ async function request(
         && !/^(localhost|127\.0\.0\.1)/.test(window.location.hostname)
         ? `This site is pointed at ${API_URL}, which only exists on the developer's `
           + 'machine. The backend needs deploying and NEXT_PUBLIC_API_URL updating.'
-        : `Could not reach the Subtrack server at ${API_URL}.`
+        : `Could not reach the Pocketday server at ${API_URL}.`
     )
   } finally {
     window.clearTimeout(timeout)
@@ -487,7 +487,7 @@ export async function downloadForwardingFilter(token: string): Promise<{ blob: B
   try {
     res = await fetch(`${API_URL}/inbound/filter.xml`, { headers: { Authorization: `Bearer ${token}` } })
   } catch {
-    throw new Error(`Could not reach the Subtrack server at ${API_URL}.`)
+    throw new Error(`Could not reach the Pocketday server at ${API_URL}.`)
   }
   if (res.status === 401) {
     await handleExpiredSession()
@@ -560,7 +560,7 @@ export async function downloadAccountExport(token: string): Promise<{
     const blob = await res.blob()
     const disposition = res.headers.get('content-disposition') ?? ''
     const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1]
-      ?? `subtrack-data-${new Date().toISOString().slice(0, 10)}.json`
+      ?? `pocketday-data-${new Date().toISOString().slice(0, 10)}.json`
     return { blob, filename }
   } catch (error) {
     if (error instanceof SessionExpiredError) throw error
@@ -570,7 +570,7 @@ export async function downloadAccountExport(token: string): Promise<{
     if (error instanceof Error && !error.message.includes('Failed to fetch')) {
       throw error
     }
-    throw new Error(`Could not reach the Subtrack server at ${API_URL}.`)
+    throw new Error(`Could not reach the Pocketday server at ${API_URL}.`)
   } finally {
     window.clearTimeout(timeout)
   }

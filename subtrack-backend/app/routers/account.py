@@ -1,4 +1,4 @@
-"""Authenticated export and deletion of a user's Subtrack application data."""
+"""Authenticated export and deletion of a user's Pocketday application data."""
 
 from __future__ import annotations
 
@@ -435,9 +435,9 @@ def _stream_user_export(user_id: str) -> Generator[bytes, None, None]:
 
 @router.get("/export")
 def export_app_data(user_id: str = Depends(verify_token)) -> StreamingResponse:
-    """Download all exportable Subtrack app data owned by the caller."""
+    """Download all exportable Pocketday app data owned by the caller."""
 
-    filename = f"subtrack-data-{datetime.now(timezone.utc).date().isoformat()}.json"
+    filename = f"pocketday-data-{datetime.now(timezone.utc).date().isoformat()}.json"
     return StreamingResponse(
         _stream_user_export(user_id),
         media_type="application/json",
@@ -534,9 +534,9 @@ def delete_app_data(
         "gmail_revocation": revocation.value,
         "supabase_auth_identity_deleted": identity_deleted,
         "message": (
-            "Your Subtrack application data and sign-in account were deleted."
+            "Your Pocketday application data and sign-in account were deleted."
             if identity_deleted
-            else "Your Subtrack application data was deleted. Your Supabase sign-in "
+            else "Your Pocketday application data was deleted. Your Supabase sign-in "
             "identity remains because it could not be deleted from this API."
         ),
     }

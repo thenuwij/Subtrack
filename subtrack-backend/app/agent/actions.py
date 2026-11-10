@@ -1,4 +1,4 @@
-"""Persistent, user-confirmed mutations for the Subtrack assistant.
+"""Persistent, user-confirmed mutations for the Pocketday assistant.
 
 The language model may create an inert proposal, never a mutation.  Confirming
 is a separate authenticated request that locks the proposal, checks ownership,
@@ -501,7 +501,7 @@ ACTION_TOOL_DEFINITIONS = [
     {
         "name": "propose_remove_recurring_payment",
         "description": (
-            "Prepare removal of a payment from Subtrack. This does not cancel the service "
+            "Prepare removal of a payment from Pocketday. This does not cancel the service "
             "with the merchant; make that limitation explicit."
         ),
         "input_schema": {
@@ -1068,7 +1068,7 @@ def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str
         assert isinstance(item, RemovePayment)
         sub = _owned_subscription(db, user_id, item.subscription_id)
         expected = {"subscription": _subscription_snapshot(sub)}
-        summary = f"Remove {sub.name} from Subtrack"
+        summary = f"Remove {sub.name} from Pocketday"
         description = "Deletes this tracked record and its reminders. It does not cancel the service with the merchant."
     elif tool_name == "propose_merge_recurring_payments":
         item = data
@@ -1287,7 +1287,7 @@ def _proposal_copy(tool_name: str, data: StrictAction, db: Session, user_id: str
             if pref is None:
                 raise HTTPException(
                     status_code=422,
-                    detail="Turn email reminders on from the Account page the first time so Subtrack can confirm your email.",
+                    detail="Turn email reminders on from the Account page the first time so Pocketday can confirm your email.",
                 )
         expected = {"email_pref": _email_snapshot(pref)}
         if item.enabled:
