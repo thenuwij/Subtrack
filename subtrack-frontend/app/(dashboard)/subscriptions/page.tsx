@@ -46,6 +46,8 @@ import {
   todayUtcDateKey,
 } from '@/lib/utils/dates'
 import { getAccessToken } from '@/lib/auth/session'
+import { CategorySpend } from '@/components/dashboard/CategorySpend'
+import { RecentChanges } from '@/components/subscriptions/RecentChanges'
 
 function inPeriod(dateStr: string | null, period: 'all' | 'day' | 'week' | 'month'): boolean {
   if (period === 'all') return true
@@ -589,6 +591,11 @@ export default function SubscriptionsPage() {
 
       </div>
 
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="overflow-hidden rounded-2xl bg-card shadow-sm"><CategorySpend subscriptions={subscriptions} /></div>
+        <RecentChanges />
       </div>
 
       {/* Add Modal */}

@@ -106,7 +106,7 @@ export function ComingUp({ forecast, error, retrying, onRetry, overdue = [] }: P
   return (
     <section className="h-full rounded-3xl bg-card p-6 shadow-sm sm:p-8" aria-labelledby="coming-up-heading">
       <div className="flex items-baseline justify-between gap-4">
-        <h2 id="coming-up-heading" className="flex items-center gap-2.5 text-[17px] font-semibold tracking-tight text-foreground"><CalendarDays className="h-[18px] w-[18px] text-primary" strokeWidth={1.7} />Coming up</h2><span className="text-xs text-muted-foreground">Next 14 days</span>
+        <h2 id="coming-up-heading" className="flex items-center gap-2.5 text-[17px] font-semibold tracking-tight text-foreground"><CalendarDays className="h-[18px] w-[18px] text-primary" strokeWidth={1.7} />Bills coming up</h2><span className="text-xs text-muted-foreground">Next 14 days</span>
       </div>
 
       <div className="mt-5 space-y-4">
