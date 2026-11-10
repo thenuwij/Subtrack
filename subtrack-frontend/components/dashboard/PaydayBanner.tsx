@@ -48,7 +48,7 @@ export function PaydayBanner() {
   return (
     <section className="flex items-start justify-between gap-3 rounded-2xl bg-primary/5 p-4 ring-1 ring-primary/15">
       <div className="text-sm">
-        <p className="font-semibold">New pay cycle. Your pots are full again.</p>
+        <p className="font-semibold">New pay cycle. Your budgets have reset.</p>
         {summary ? <p className="mt-1 text-muted-foreground">Last pay: {summary}</p> : null}
         <Link href="/cycles" className="mt-2 inline-block font-medium text-primary hover:underline">See how it went</Link>
       </div>

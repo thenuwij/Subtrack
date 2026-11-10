@@ -2,10 +2,10 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
-import { ArrowUpRight, ChevronRight, Pencil, Wallet } from 'lucide-react'
+import { ArrowUpRight, ChartBar, ChevronDown, ChevronRight, Clock, Pencil, Plus, Wallet, X } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Preferences, SafeToSpend, SafeToSpendProfileInput } from '@/types'
-import { getPreferences, getSafeToSpend, saveSafeToSpendProfile, trackEvent, updatePreferences } from '@/lib/api'
+import type { BillRow, PayPlan, Preferences, SafeToSpend, SafeToSpendProfileInput } from '@/types'
+import { getPreferences, getSafeToSpend, logIncome, saveSafeToSpendProfile, trackEvent, undoSpend, updatePreferences } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth/session'
 import { useCurrency } from '@/lib/context/currency'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
@@ -17,6 +17,7 @@ import { useEditPayment } from '@/components/subscriptions/PaymentEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PayBreakdown } from '@/components/dashboard/PayBreakdown'
 
 function scheduleOf(position: SafeToSpend | undefined): PaySchedule {
   const profile = position?.profile
@@ -123,13 +124,12 @@ function ProfileForm({ position, onSaved, onCancel }: {
   )
 }
 
-function localDateKey() {
-  // en-CA formats as YYYY-MM-DD in the browser's own timezone.
-  return new Date().toLocaleDateString('en-CA')
-}
-
 /** One field: today's balance. Everything else (payday, buffer) stays as saved. */
-function QuickBalance({ position, onSaved }: { position: SafeToSpend; onSaved: (next: SafeToSpend) => void }) {
+function QuickBalance({ position, onSaved, onCancel }: {
+  position: SafeToSpend
+  onSaved: (next: SafeToSpend) => void
+  onCancel: () => void
+}) {
   const [value, setValue] = useState('')
   const [saving, setSaving] = useState(false)
   const profile = position.profile
@@ -159,55 +159,24 @@ function QuickBalance({ position, onSaved }: { position: SafeToSpend; onSaved: (
   }
 
   return (
-    <form onSubmit={check} className="mt-4 flex items-end gap-2">
-      <div className="grid flex-1 gap-1.5">
-        <Label htmlFor="safe-quick-balance">Today&apos;s balance</Label>
+    <form onSubmit={check} className="flex flex-wrap items-end gap-2">
+      <div className="grid min-w-48 flex-1 gap-1.5">
+        <Label htmlFor="safe-quick-balance">What&apos;s in your everyday account right now?</Label>
         <Input
           id="safe-quick-balance"
           type="number"
           step="0.01"
           inputMode="decimal"
           required
-          placeholder="What’s in your everyday account now?"
+          autoFocus
+          placeholder="Today’s balance"
           value={value}
           onChange={event => setValue(event.target.value)}
         />
       </div>
       <Button type="submit" disabled={saving}>{saving ? 'Checking…' : 'Check'}</Button>
+      <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
     </form>
-  )
-}
-
-/** The working behind the number, in one line: start − bills − set aside − spent − buffer = free. */
-function EquationStrip({ position, currency }: { position: SafeToSpend; currency: string }) {
-  const parts: { label: string; amount: number; minus: boolean }[] = [
-    position.mode === 'estimate'
-      ? { label: 'Usual pay', amount: position.pay_amount ?? 0, minus: false }
-      : { label: 'Balance', amount: position.balance ?? 0, minus: false },
-    { label: 'Bills', amount: position.committed ?? 0, minus: true },
-  ]
-  if (position.set_aside) parts.push({ label: 'Set aside', amount: position.set_aside, minus: true })
-  if (position.spent) parts.push({ label: 'Spent', amount: position.spent, minus: true })
-  if (position.buffer) parts.push({ label: 'Buffer', amount: position.buffer, minus: true })
-
-  return (
-    <ol className="mt-5 flex flex-wrap items-center gap-x-1.5 gap-y-2 text-xs" aria-label="How the number is worked out">
-      {parts.map((part, index) => (
-        <li key={part.label} className="flex items-center gap-1.5">
-          {index > 0 ? <span aria-hidden="true" className="text-muted-foreground">−</span> : null}
-          <span className="rounded-lg bg-foreground/5 px-2.5 py-1.5">
-            <span className="text-muted-foreground">{part.label} </span>
-            <span className="font-medium tabular-nums text-foreground">{formatCurrency(part.amount, currency)}</span>
-          </span>
-        </li>
-      ))}
-      <li className="flex items-center gap-1.5">
-        <span aria-hidden="true" className="text-muted-foreground">=</span>
-        <span className="rounded-lg bg-primary/10 px-2.5 py-1.5 font-semibold tabular-nums text-primary">
-          {position.shortfall ? `Short ${formatCurrency(position.shortfall, currency)}` : `Free ${formatCurrency(position.safe_to_spend ?? 0, currency)}`}
-        </span>
-      </li>
-    </ol>
   )
 }
 
@@ -236,11 +205,218 @@ function Row({ label, value, onClick }: { label: string; value: string; onClick?
   )
 }
 
+function billLabel(bill: BillRow) {
+  const day = formatStoredDate(bill.due_at, { day: 'numeric', month: 'short' })
+  return `${bill.name} · ${bill.overdue ? `overdue since ${day}` : day}`
+}
+
+/** "today, 2:14 pm" or "Mon 10 Nov, 2:14 pm", in the browser's own timezone. */
+function checkedLabel(iso: string) {
+  const at = new Date(iso)
+  const time = at.toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' })
+  if (at.toDateString() === new Date().toDateString()) return `today, ${time}`
+  return `${at.toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short' })}, ${time}`
+}
+
+/** Where this pay goes: bills from tracked payments, budgets, and what's left. Never goes stale. */
+function IncomeForm({ onSaved, onCancel }: { onSaved: (next: SafeToSpend) => void; onCancel: () => void }) {
+  const [name, setName] = useState('')
+  const [amount, setAmount] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function submit(event: FormEvent) {
+    event.preventDefault()
+    setSaving(true)
+    try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('Your session has expired.')
+      onSaved(await logIncome(token, { name: name.trim(), amount: Number(amount) }))
+      toast.success('Extra income added')
+    } catch (error) {
+      toast.error(errorMessage(error, 'Could not add that.'))
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-[1fr_9rem]">
+        <div className="space-y-1.5">
+          <Label htmlFor="income-name">What</Label>
+          <Input id="income-name" required maxLength={200} autoFocus placeholder="Extra shift" value={name} onChange={event => setName(event.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="income-amount">Amount</Label>
+          <Input id="income-amount" required type="number" step="0.01" min="0.01" inputMode="decimal" value={amount} onChange={event => setAmount(event.target.value)} />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button type="submit" disabled={saving}>{saving ? 'Adding…' : 'Add income'}</Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </form>
+  )
+}
+
+function PayPlanSummary({ plan, budgetNames, currency, onEditPay, onEditBill, onAddIncome, onUndoIncome }: {
+  plan: PayPlan
+  budgetNames: string[]
+  currency: string
+  onEditPay: () => void
+  onEditBill: (id: string) => void
+  onAddIncome: () => void
+  onUndoIncome: (id: string) => void
+}) {
+  const [showBills, setShowBills] = useState(false)
+  const pay = plan.pay_amount
+  const extra = plan.extra_income ?? 0
+  const short = plan.left != null && plan.left < 0
+  const segments = pay
+    ? [
+        { key: 'bills', amount: plan.bills, className: 'bg-foreground/55' },
+        { key: 'set-aside', amount: plan.set_aside, className: 'bg-primary/35' },
+        { key: 'spent', amount: plan.spent ?? 0, className: 'bg-foreground/25' },
+        { key: 'left', amount: Math.max(plan.left ?? 0, 0), className: 'bg-primary' },
+      ].filter(segment => segment.amount > 0)
+    : []
+  const total = Math.max((pay ?? 0) + extra, plan.bills + plan.set_aside + (plan.spent ?? 0))
+
+  return (
+    <div className="mt-4">
+      {pay ? (
+        <>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-sm text-muted-foreground">Your pay</p>
+              <p className="mt-0.5 text-3xl font-semibold tracking-tight tabular-nums text-foreground">
+                {formatCurrency(pay, currency)}
+                {extra > 0 ? (
+                  <span className="ml-2 text-lg font-medium tracking-normal text-primary">+ {formatCurrency(extra, currency)} extra</span>
+                ) : null}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onAddIncome}
+              className="border-primary/40 text-primary hover:bg-primary/10 hover:text-primary dark:border-primary/40"
+            >
+              <Plus className="h-4 w-4" />Add extra income
+            </Button>
+          </div>
+          {plan.incomes?.length ? (
+            <ul className="mt-2 flex flex-wrap gap-2" aria-label="Extra income this pay">
+              {plan.incomes.map(income => (
+                <li key={income.id} className="inline-flex items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-3 pr-1 text-xs text-foreground">
+                  {income.name} · <span className="tabular-nums">{formatCurrency(income.amount, currency)}</span>
+                  <button
+                    type="button"
+                    onClick={() => onUndoIncome(income.id)}
+                    aria-label={`Remove ${income.name}`}
+                    className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-primary/15 hover:text-foreground"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="mt-4 flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full bg-foreground/5" aria-hidden="true">
+            {segments.map(segment => (
+              <span key={segment.key} className={segment.className} style={{ width: `${(segment.amount / total) * 100}%` }} />
+            ))}
+          </div>
+        </>
+      ) : null}
+
+      <dl className="mt-4 flex flex-wrap gap-x-10 gap-y-4 text-sm [&>div]:whitespace-nowrap">
+        <div>
+          <dt className="flex items-center gap-1.5 text-muted-foreground">
+            {pay ? <span className="h-2 w-2 rounded-full bg-foreground/55" aria-hidden="true" /> : null}
+            Bills this pay
+          </dt>
+          <dd>
+            <button
+              type="button"
+              onClick={() => setShowBills(open => !open)}
+              aria-expanded={showBills}
+              className="flex items-center gap-1 text-xl font-semibold tabular-nums text-foreground hover:text-primary"
+            >
+              {formatCurrency(plan.bills, currency)}
+              <span className="text-xs font-normal text-muted-foreground">({plan.bill_list.length})</span>
+              <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${showBills ? 'rotate-180' : ''}`} aria-hidden="true" />
+            </button>
+          </dd>
+        </div>
+        {plan.set_aside > 0 ? (
+          <div>
+            <dt className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-primary/35" aria-hidden="true" />
+              Budgets
+            </dt>
+            <dd className="text-xl font-semibold tabular-nums text-foreground">{formatCurrency(plan.set_aside, currency)}</dd>
+            {budgetNames.length ? (
+              <dd className="max-w-48 truncate text-xs text-muted-foreground">{budgetNames.join(', ')}</dd>
+            ) : null}
+          </div>
+        ) : null}
+        {plan.spent > 0 ? (
+          <div>
+            <dt className="flex items-center gap-1.5 text-muted-foreground">
+              <span className="h-2 w-2 rounded-full bg-foreground/25" aria-hidden="true" />
+              Spent
+            </dt>
+            <dd className="text-xl font-semibold tabular-nums text-foreground">{formatCurrency(plan.spent, currency)}</dd>
+            <dd className="text-xs text-muted-foreground">Outside or over budgets</dd>
+          </div>
+        ) : null}
+        {plan.left != null ? (
+          <div>
+            <dt className="flex items-center gap-1.5 text-muted-foreground">
+              <span className={`h-2 w-2 rounded-full ${short ? 'bg-amber-500' : 'bg-primary'}`} aria-hidden="true" />
+              {short ? 'Short this pay' : 'Balance'}
+            </dt>
+            <dd className={`text-xl font-semibold tabular-nums ${short ? 'text-amber-600 dark:text-amber-400' : 'text-primary'}`}>
+              {formatCurrency(Math.abs(plan.left), currency)}
+            </dd>
+          </div>
+        ) : (
+          <div>
+            <button type="button" onClick={onEditPay} className="text-sm font-medium text-primary hover:underline">
+              Add your usual pay to see what&apos;s left
+            </button>
+          </div>
+        )}
+      </dl>
+
+      {showBills ? (
+        <div className="mt-3 divide-y divide-border rounded-xl bg-foreground/[0.03] px-3 py-1">
+          {plan.bill_list.length === 0 ? (
+            <p className="py-2 text-sm text-muted-foreground">No tracked bills land in this pay.</p>
+          ) : plan.bill_list.map(bill => (
+            <Row
+              key={`${bill.id}-${bill.due_at}`}
+              label={billLabel(bill)}
+              value={`${bill.is_estimate ? '≈ ' : ''}${formatCurrency(bill.amount, currency)}`}
+              onClick={() => onEditBill(bill.id)}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 export function SafeToSpendCard() {
   const query = useApi<SafeToSpend>(apiKeys.safeToSpend, getSafeToSpend)
   const preferences = useApi<Preferences>(apiKeys.preferences, getPreferences)
   const [editing, setEditing] = useState(false)
+  const [checking, setChecking] = useState(false)
+  // The free-to-spend number is a one-off answer: shown right after a check, then put away.
+  const [justChecked, setJustChecked] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
+  const [showPayChart, setShowPayChart] = useState(false)
+  const [addingIncome, setAddingIncome] = useState(false)
   const editPayment = useEditPayment()
   const { mutate: refreshPosition } = query
   const { mutate: refreshPreferences } = preferences
@@ -258,7 +434,7 @@ export function SafeToSpendCard() {
   }, [savedTimezone, refreshPosition, refreshPreferences])
 
   const position = query.data
-  const showsNumber = position?.safe_to_spend != null
+  const showsNumber = position?.pay_plan != null || position?.safe_to_spend != null
   // Counted once per person on the server; this only avoids repeat requests.
   useEffect(() => {
     if (!showsNumber) return
@@ -276,11 +452,32 @@ export function SafeToSpendCard() {
     void query.mutate(next, { revalidate: false })
   }
 
+  function handleIncomeAdded(next: SafeToSpend) {
+    setAddingIncome(false)
+    void query.mutate(next, { revalidate: false })
+  }
+
+  async function undoIncome(id: string) {
+    try {
+      const token = await getAccessToken()
+      if (!token) throw new Error('Your session has expired.')
+      void query.mutate(await undoSpend(token, id), { revalidate: false })
+    } catch (error) {
+      toast.error(errorMessage(error, 'Could not remove that.'))
+    }
+  }
+
+  function handleChecked(next: SafeToSpend) {
+    setChecking(false)
+    setJustChecked(true)
+    void query.mutate(next, { revalidate: false })
+  }
+
   if (query.error && !position) {
     return (
       <section className="flex flex-col gap-3 rounded-2xl bg-card p-5 shadow-sm sm:p-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-[17px] font-semibold text-foreground">Safe to spend</h2>
+          <h2 className="text-[17px] font-semibold text-foreground">This pay</h2>
           <p className="mt-1 text-sm text-muted-foreground">We couldn&apos;t work this out right now.</p>
         </div>
         <Button size="sm" variant="outline" disabled={query.isValidating} onClick={() => void query.mutate()}>
@@ -289,7 +486,17 @@ export function SafeToSpendCard() {
       </section>
     )
   }
-  if (!position) return <section className="h-40 animate-pulse rounded-2xl bg-card shadow-sm" aria-label="Loading safe to spend" />
+  if (!position) return <section className="h-40 animate-pulse rounded-2xl bg-card shadow-sm" aria-label="Loading this pay" />
+
+  const profileDialog = (
+    <Dialog open={editing} onOpenChange={setEditing}>
+      <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
+        <DialogHeader><DialogTitle>Your pay & payday</DialogTitle></DialogHeader>
+        <DialogDescription>You enter these yourself. Subtrack doesn&apos;t connect to your bank.</DialogDescription>
+        <ProfileForm position={position} onSaved={handleSaved} onCancel={() => setEditing(false)} />
+      </DialogContent>
+    </Dialog>
+  )
 
   if (position.status === 'needs_setup') {
     return (
@@ -299,13 +506,7 @@ export function SafeToSpendCard() {
         <h2 className="mt-3 max-w-xs text-[28px] font-semibold leading-tight tracking-tight">Know what&apos;s yours to spend.</h2>
         <p className="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">Start with your pay or today&apos;s balance. We&apos;ll set aside your bills and a little buffer.</p>
         <Button className="mt-6" onClick={() => setEditing(true)}>Set up safe to spend <ArrowUpRight className="h-4 w-4" /></Button>
-        <Dialog open={editing} onOpenChange={setEditing}>
-          <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-lg">
-            <DialogHeader><DialogTitle>Your pay & payday</DialogTitle></DialogHeader>
-            <DialogDescription>You enter these yourself. Subtrack doesn&apos;t connect to your bank.</DialogDescription>
-            <ProfileForm position={position} onSaved={handleSaved} onCancel={() => setEditing(false)} />
-          </DialogContent>
-        </Dialog>
+        {profileDialog}
       </section>
     )
   }
@@ -314,119 +515,141 @@ export function SafeToSpendCard() {
   const shortPayday = position.next_payday
     ? formatStoredDate(position.next_payday, { weekday: 'short', day: 'numeric', month: 'short' })
     : ''
-  const balanceDate = position.balance_date
-    ? formatStoredDate(position.balance_date, { day: 'numeric', month: 'short' })
-    : ''
-  const hasNumber = position.safe_to_spend !== null && position.per_day != null
-  const isEstimate = position.mode === 'estimate'
-  // A typed-in balance can't see spending since, so the result is only "now"
-  // on the day it was entered. Older results are shown dated and dimmed. An
-  // estimate covers the whole pay cycle, so it is never dimmed.
-  const isCurrent = isEstimate || position.balance_date === localDateKey()
   const cycleStart = position.pay_cycle_start
     ? formatStoredDate(position.pay_cycle_start, { day: 'numeric', month: 'short' })
     : ''
+  // Only a balance gives an exact "right now" answer; the pay estimate is what the plan above shows.
+  const hasBalanceResult = position.mode === 'balance' && position.safe_to_spend != null
+  const lastChecked = position.balance_checked_at ? checkedLabel(position.balance_checked_at) : null
+  const freeAmount = position.shortfall || position.safe_to_spend || 0
 
   return (
-    <section className="money-hero h-full" data-tour="free-to-spend">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          {cycleStart && shortPayday ? (
-            <p className="eyebrow text-primary">This pay · {cycleStart} – {shortPayday}</p>
-          ) : null}
-          <h2 className="mt-1 flex items-center gap-2 text-sm font-semibold text-foreground">
-            Free to spend until payday
-            {hasNumber && isEstimate ? <span className="rounded-full bg-foreground/5 px-2 py-0.5 text-xs font-medium text-muted-foreground">Estimate</span> : null}
-          </h2>
-        </div>
-        {!editing ? (
-          <button type="button" onClick={() => setEditing(true)} className="shrink-0 text-sm font-medium text-primary hover:underline">
-            {isCurrent && !isEstimate ? 'Update balance' : 'Edit details'}
-          </button>
-        ) : null}
-      </div>
-
-      {hasNumber ? (
-        <div className={isCurrent ? '' : 'opacity-60'}>
-          <p className={`mt-3 font-semibold tracking-tight tabular-nums ${
-            isCurrent ? 'text-[clamp(2rem,5vw,3.75rem)]' : 'text-3xl'
-          } ${position.shortfall ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
-            {formatCurrency(position.shortfall || position.safe_to_spend || 0, currency)}
-            <span className="ml-2 whitespace-nowrap text-lg font-medium tracking-normal text-muted-foreground">
-              {position.shortfall ? 'short' : 'to spend'}
+    <section className="money-hero" data-tour="free-to-spend">
+      <div className="flex items-baseline justify-between gap-4">
+        <h2 className="text-[17px] font-semibold text-foreground">
+          This pay
+          {cycleStart && position.next_payday ? (
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              {cycleStart} – {formatStoredDate(position.next_payday, { day: 'numeric', month: 'short' })}
             </span>
-          </p>
-          <p className="mt-2 text-[15px] text-muted-foreground">
-            {isEstimate ? `From your usual pay · payday ${shortPayday}` : `As of ${balanceDate} · payday ${shortPayday}`}
-          </p>
+          ) : null}
+        </h2>
+        <div className="flex shrink-0 items-center gap-4">
+          {position.pay_plan ? (
+            <button type="button" onClick={() => setShowPayChart(true)} className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+              <ChartBar className="h-4 w-4" aria-hidden="true" />Breakdown
+            </button>
+          ) : null}
+          <button type="button" onClick={() => setEditing(true)} className="text-sm font-medium text-primary hover:underline">
+            Edit pay
+          </button>
         </div>
+      </div>
+      {position.pay_plan ? (
+        <PayBreakdown
+          open={showPayChart}
+          onOpenChange={setShowPayChart}
+          plan={position.pay_plan}
+          budgets={position.set_asides ?? []}
+          currency={currency}
+        />
+      ) : null}
+
+      {position.pay_plan ? (
+        <PayPlanSummary
+          plan={position.pay_plan}
+          budgetNames={(position.set_asides ?? []).map(item => item.name)}
+          currency={currency}
+          onEditPay={() => setEditing(true)}
+          onEditBill={editPayment}
+          onAddIncome={() => setAddingIncome(true)}
+          onUndoIncome={id => void undoIncome(id)}
+        />
       ) : (
-        <p className="mt-2 text-lg font-medium text-foreground">
-          {position.status === 'balance_outdated' ? 'Enter today’s balance to see this' : 'We can’t give you a number yet'}
-        </p>
+        <p className="mt-4 text-sm text-muted-foreground">Some amounts couldn&apos;t be converted, so this pay can&apos;t be worked out right now.</p>
       )}
 
-      {hasNumber && isCurrent && !position.shortfall ? (
-        <p className="mt-4 inline-flex items-center rounded-full bg-foreground/5 px-3 py-1.5 text-xs font-medium text-foreground">{isEstimate ? 'About ' : ''}{formatCurrency(position.per_day ?? 0, currency)} a day {isEstimate ? 'this pay cycle' : 'until payday'}</p>
-      ) : null}
-      {hasNumber && !editing ? <EquationStrip position={position} currency={currency} /> : null}
-      {!editing && (!isCurrent || isEstimate) ? (
-        <QuickBalance position={position} onSaved={handleSaved} />
-      ) : null}
-      {!hasNumber ? position.warnings?.map(warning => (
-        <p key={warning} className="mt-2 text-xs leading-5 text-amber-700 dark:text-amber-300">{warning}</p>
-      )) : null}
-
-
-      {editing ? (
-        <ProfileForm position={position} onSaved={handleSaved} onCancel={() => setEditing(false)} />
-      ) : null}
-
-      {hasNumber && !editing ? (
-        <div className="mt-5 flex flex-wrap items-center gap-x-6 border-t border-border pt-4">
-          <button
-            type="button"
-            onClick={() => setShowBreakdown(true)}
-            className="flex min-h-11 items-center gap-1 text-sm font-medium text-primary hover:underline"
-          >
-            How this is worked out
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <Link href="/afford" className="flex min-h-11 items-center gap-1 text-sm font-medium text-primary hover:underline">
-            Can I afford something?
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-          <Dialog open={showBreakdown} onOpenChange={setShowBreakdown}>
-            <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
-              <DialogHeader>
-                <DialogTitle>How safe to spend is worked out</DialogTitle>
-              </DialogHeader>
-            <div className="divide-y divide-border">
-              {isEstimate
-                ? <Row label="Usual pay" value={formatCurrency(position.pay_amount ?? 0, currency)} />
-                : <Row label="Balance" value={formatCurrency(position.balance ?? 0, currency)} />}
-              {position.commitments?.map(item => (
-                <Row
-                  key={`${item.id}-${item.due_at}`}
-                  onClick={() => { setShowBreakdown(false); editPayment(item.id) }}
-                  label={`${item.name} · ${item.overdue ? 'overdue since ' : ''}${formatStoredDate(item.due_at, { day: 'numeric', month: 'short' })}`}
-                  value={`${item.is_estimate ? '≈ ' : ''}−${formatCurrency(item.amount, currency)}`}
-                />
-              ))}
-              {position.set_aside ? <Row label="Set aside" value={`−${formatCurrency(position.set_aside, currency)}`} /> : null}
-              {position.spent ? <Row label="Spends you logged" value={`−${formatCurrency(position.spent, currency)}`} /> : null}
-              <Row label="Buffer" value={`−${formatCurrency(position.buffer ?? 0, currency)}`} />
-              {position.warnings?.map(warning => (
-                <p key={warning} className="pt-3 text-[13px] leading-5 text-muted-foreground">{warning}</p>
-              ))}
-              <p className="pt-3 text-xs leading-5 text-muted-foreground">
-                Click a payment to change its date or amount. {position.scope}
+      <div className="mt-5 border-t border-border pt-4">
+        {checking ? (
+          <QuickBalance position={position} onSaved={handleChecked} onCancel={() => setChecking(false)} />
+        ) : justChecked && hasBalanceResult ? (
+          <div>
+            <p className="text-sm font-semibold text-foreground">Free to spend right now</p>
+            <p className={`mt-1 text-4xl font-semibold tracking-tight tabular-nums ${position.shortfall ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'}`}>
+              {formatCurrency(freeAmount, currency)}
+              <span className="ml-2 text-base font-medium tracking-normal text-muted-foreground">{position.shortfall ? 'short' : 'free'}</span>
+            </p>
+            {!position.shortfall ? (
+              <p className="mt-1 text-sm text-muted-foreground">
+                About {formatCurrency(position.per_day ?? 0, currency)} a day until {shortPayday}
               </p>
+            ) : null}
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              Worked out just now from your balance of {formatCurrency(position.balance ?? 0, currency)}. It won&apos;t change as you spend, so check again next time.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1">
+              <button type="button" onClick={() => setShowBreakdown(true)} className="flex min-h-11 items-center gap-1 text-sm font-medium text-primary hover:underline">
+                How this is worked out <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <Button size="sm" variant="outline" onClick={() => setJustChecked(false)}>Done</Button>
             </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-      ) : null}
+          </div>
+        ) : (
+          <div>
+            {lastChecked && hasBalanceResult ? (
+              <p className="mb-3 flex items-start gap-1.5 text-xs leading-5 text-muted-foreground">
+                <Clock className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
+                <span>Last checked {lastChecked}: {formatCurrency(freeAmount, currency)} {position.shortfall ? 'short' : 'was free'} then. Anything spent since isn&apos;t counted.</span>
+              </p>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => setChecking(true)} disabled={!position.profile}>Check my balance</Button>
+              <Button asChild variant="outline" className="border-primary/40 text-primary hover:bg-primary/10 hover:text-primary dark:border-primary/40">
+                <Link href="/afford">Can I afford it?</Link>
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {profileDialog}
+
+      <Dialog open={addingIncome} onOpenChange={setAddingIncome}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>Add extra income</DialogTitle></DialogHeader>
+          <DialogDescription>Money you got this pay on top of your usual pay, like an extra shift or a refund. It counts for this pay only.</DialogDescription>
+          {addingIncome ? <IncomeForm onSaved={handleIncomeAdded} onCancel={() => setAddingIncome(false)} /> : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showBreakdown} onOpenChange={setShowBreakdown}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>How free to spend is worked out</DialogTitle>
+          </DialogHeader>
+          <div className="divide-y divide-border">
+            <Row label="Balance" value={formatCurrency(position.balance ?? 0, currency)} />
+            {position.commitments?.map(item => (
+              <Row
+                key={`${item.id}-${item.due_at}`}
+                onClick={() => { setShowBreakdown(false); editPayment(item.id) }}
+                label={billLabel(item)}
+                value={`${item.is_estimate ? '≈ ' : ''}−${formatCurrency(item.amount, currency)}`}
+              />
+            ))}
+            {position.set_aside ? <Row label="Budgets" value={`−${formatCurrency(position.set_aside, currency)}`} /> : null}
+            {position.extra_income ? <Row label="Extra income you added" value={`+${formatCurrency(position.extra_income, currency)}`} /> : null}
+            {position.spent ? <Row label="Spends you logged" value={`−${formatCurrency(position.spent, currency)}`} /> : null}
+            <Row label="Buffer" value={`−${formatCurrency(position.buffer ?? 0, currency)}`} />
+            {position.warnings?.map(warning => (
+              <p key={warning} className="pt-3 text-[13px] leading-5 text-muted-foreground">{warning}</p>
+            ))}
+            <p className="pt-3 text-xs leading-5 text-muted-foreground">
+              Click a payment to change its date or amount. {position.scope}
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

@@ -203,7 +203,7 @@ export function SetupFlow() {
         <ol className="mt-8 grid gap-3 sm:grid-cols-3">
           {[
             ['1', 'Your pay comes in', 'Tell us when you’re paid and roughly how much.'],
-            ['2', 'Bills and pots come off', 'Rent, phone, subscriptions, plus money you hold back for eating out or saving.'],
+            ['2', 'Bills and budgets come off', 'Rent, phone, subscriptions, plus money you hold back for eating out or saving.'],
             ['3', 'What’s left is yours', 'One number on Home, and how much that is per day.'],
           ].map(([number, title, body]) => (
             <li key={number} className="rounded-2xl bg-card p-5 shadow-sm">
@@ -341,14 +341,14 @@ export function SetupFlow() {
         <div className="mt-4 space-y-6">
           <div>
             <h1 className="text-3xl font-semibold tracking-tight">Hold some money back each pay?</h1>
-            <p className="mt-2 text-muted-foreground">Pots keep money aside for things you spend on, or for saving. Optional, and you can change them on Home.</p>
+            <p className="mt-2 text-muted-foreground">For everyday spending like groceries or eating out, or for saving. Your bills from the last step are already counted, so don&apos;t add them here. Optional, and you can change them on Home.</p>
           </div>
           <ul className="divide-y divide-border rounded-2xl bg-card shadow-sm">
             {POT_SUGGESTIONS.map(pot => (
               <li key={pot.name} className="flex items-center justify-between gap-4 p-4">
                 <div>
                   <p className="text-sm font-medium">{pot.name}</p>
-                  <p className="text-xs text-muted-foreground">{pot.kind === 'pot' ? 'Spending pot' : 'Saving'} · each pay</p>
+                  <p className="text-xs text-muted-foreground">{pot.kind === 'pot' ? 'Spending budget' : 'Saving'} · each pay</p>
                 </div>
                 <div className="flex items-center gap-2">
                   <Label htmlFor={`pot-${pot.name}`} className="sr-only">{pot.name} each pay</Label>
@@ -367,7 +367,7 @@ export function SetupFlow() {
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted-foreground">Leave a box empty to skip that pot.</p>
+          <p className="text-xs text-muted-foreground">Leave a box empty to skip that budget.</p>
           <div className="flex flex-wrap items-center gap-3">
             <Button size="lg" onClick={() => setStep('balance')}>Next</Button>
             <Button variant="ghost" onClick={() => setStep('bills')}>Back</Button>

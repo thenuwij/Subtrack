@@ -222,10 +222,25 @@ READ_TOOL_DEFINITIONS = [
             "Get how much the user can safely spend until their next payday, from their saved "
             "balance, payday, buffer and tracked payments due before then. Returns the amount, "
             "per-day amount, any shortfall, the commitments counted and warnings. "
+            "It also returns pay_plan (where this pay goes: pay, extra income, bills by category, "
+            "budgets, spent and the balance left), set_asides (budgets and savings with ids and "
+            "what's left), and this pay's logged spends and incomes with their ids. "
             "A status other than ready means no safe amount can be given. "
             "For a specific purchase amount, use check_can_i_afford instead."
         ),
         "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
+    },
+    {
+        "name": "get_pay_cycles",
+        "description": (
+            "Get how recent pay cycles went, newest first: each budget planned against spent, "
+            "savings, and other logged spends."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 12}},
+            "additionalProperties": False,
+        },
     },
     {
         "name": "check_can_i_afford",
@@ -366,6 +381,12 @@ def run_tool(
         return reminders_overview(db, user_id, tool_input)
     if tool_name == "get_safe_to_spend":
         return safe_to_spend(db, user_id)
+    if tool_name == "get_pay_cycles":
+        from app.services.pay_cycles import pay_cycles
+        count = tool_input.get("count", 3)
+        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 12:
+            return {"error": "count must be a whole number from 1 to 12"}
+        return pay_cycles(db, user_id, count=count)
     if tool_name == "check_can_i_afford":
         try:
             amount = _purchase_amount(tool_input.get("amount"))

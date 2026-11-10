@@ -31,7 +31,7 @@ export default function PrivacyPage() {
         </p>
         <h3>Financial organisation data</h3>
         <p>
-          Subtrack stores information you enter or approve, including recurring-payment names, amounts, currencies, billing cadence, categories, due and lifecycle dates, shared-bill details, free trials, reminders, income preference, and essential or optional labels. For safe to spend it also stores your pay schedule, usual pay, buffer, any balance you type in and when you typed it, the savings and spending pots you set aside each pay, and any spends you choose to log. Subtrack is not a bank ledger and does not connect to a bank account.
+          Subtrack stores information you enter or approve, including recurring-payment names, amounts, currencies, billing cadence, categories, due and lifecycle dates, shared-bill details, free trials, reminders, income preference, and essential or optional labels. For safe to spend it also stores your pay schedule, usual pay, buffer, any balance you type in and when you typed it, the savings and spending budgets you set aside each pay, and any spends you choose to log. Subtrack is not a bank ledger and does not connect to a bank account.
         </p>
         <h3>Demo sessions</h3>
         <p>

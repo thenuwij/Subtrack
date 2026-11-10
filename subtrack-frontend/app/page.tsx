@@ -19,7 +19,7 @@ const FEATURES = [
   {
     icon: PiggyBank,
     title: 'Set money aside first',
-    body: 'Savings and spending pots like “Eating out, $60 a pay” come off before you see what’s free.',
+    body: 'Savings and spending budgets like “Eating out, $60 a pay” come off before you see what’s free.',
   },
   {
     icon: Wallet,
@@ -69,7 +69,7 @@ export default function Home() {
             {[
               ['Usual pay', '$1,400'],
               ['Rent, phone and streaming', '−$445'],
-              ['Eating out pot', '−$60'],
+              ['Eating out budget', '−$60'],
               ['Buffer', '−$50'],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between py-2.5">
