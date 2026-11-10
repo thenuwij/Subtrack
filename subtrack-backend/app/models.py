@@ -114,6 +114,10 @@ class Subscription(Base):
             "spending_type IN ('unspecified', 'essential', 'optional')",
             name="ck_subscriptions_spending_type",
         ),
+        CheckConstraint(
+            "payment_method IN ('automatic', 'manual')",
+            name="ck_subscriptions_payment_method",
+        ),
         Index("ix_subscriptions_user_status_due", "user_id", "status", "next_due"),
         Index("ix_subscriptions_user_active_name", "user_id", "is_active", "name"),
     )
@@ -179,6 +183,9 @@ class Subscription(Base):
     cancellation_effective_at = Column(DateTime, nullable=True)
     amount_type = Column(String(16), nullable=False, default="fixed")
     spending_type = Column(String(16), nullable=False, default="unspecified")
+    # "manual" payments (rent paid by transfer) count as money out only once
+    # the user marks a due date paid, which records a linked Transaction.
+    payment_method = Column(String(10), nullable=False, default="automatic", server_default="automatic")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
 
@@ -1004,6 +1011,7 @@ class Transaction(Base):
         CheckConstraint("source IN ('manual', 'ai', 'email')", name="ck_transactions_source"),
         CheckConstraint("amount > 0", name="ck_transactions_amount_positive"),
         Index("ix_transactions_user_occurred", "user_id", "occurred_on"),
+        UniqueConstraint("recurring_payment_id", "paid_due_on", name="uq_transactions_payment_due"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -1025,6 +1033,8 @@ class Transaction(Base):
         ForeignKey("subscriptions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # The due date a manual payment's "mark as paid" settled; deleting the row undoes it.
+    paid_due_on = Column(Date, nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

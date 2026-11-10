@@ -16,6 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.models import Category, Subscription
 
+PAYMENT_MANUAL = "manual"
+
 
 @dataclass(frozen=True)
 class PaymentCharge:
@@ -48,11 +50,21 @@ def _decimal(value: float | None) -> Decimal | None:
 def month_payment_charges(db: Session, user_id: str, year: int, month: int) -> list[PaymentCharge]:
     """Every scheduled charge and logged extra for the user's payments in one month.
 
+    Scheduled charges of manually paid payments are left out.
+
     ``base_amount`` is None when no valid shared rate exists; it is never 1:1.
     """
     from app.routers.subscriptions import get_calendar_month
 
     calendar_month = get_calendar_month(year=year, month=month, user_id=user_id, db=db)
+    # A manual payment's scheduled charge is not money out until the user marks
+    # it paid, which records a linked Transaction instead.
+    manual_ids = {
+        str(payment_id) for (payment_id,) in db.query(Subscription.id).filter(
+            Subscription.user_id == user_id,
+            Subscription.payment_method == PAYMENT_MANUAL,
+        ).all()
+    }
     charges = [
         PaymentCharge(
             payment_id=charge["id"],
@@ -65,6 +77,7 @@ def month_payment_charges(db: Session, user_id: str, year: int, month: int) -> l
             is_extra=False,
         )
         for charge in calendar_month["charges"]
+        if charge["id"] not in manual_ids
     ]
 
     extras = calendar_month["extras"]

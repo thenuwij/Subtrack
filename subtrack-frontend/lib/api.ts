@@ -7,6 +7,7 @@ import type {
   BillingCycle,
   DetectedSubscription,
   DuplicatePair,
+  ManualDue,
   PaymentStatus,
   Preferences,
   RecurrenceUnit,
@@ -250,6 +251,7 @@ function normalizeSubscription(value: Record<string, unknown>): Subscription {
     amount_type: value.amount_type === 'variable' ? 'variable' : 'fixed',
     spending_type: value.spending_type === 'essential' || value.spending_type === 'optional'
       ? value.spending_type : 'unspecified',
+    payment_method: value.payment_method === 'manual' ? 'manual' : 'automatic',
     is_active: status !== 'cancelled' && status !== 'ended',
   }
 }
@@ -374,6 +376,21 @@ export async function getSubscriptionForecast(
 /** Every charge dated in the current calendar month, including ones already paid. */
 export async function getCalendarMonth(token: string): Promise<CalendarMonthCharges> {
   return request('/subscriptions/month', token)
+}
+
+/** Manual payments' due dates up to a week ahead that are not marked paid yet. */
+export async function getManualDue(token: string): Promise<ManualDue[]> {
+  const rows = await request('/subscriptions/manual-due', token)
+  return Array.isArray(rows) ? rows as ManualDue[] : []
+}
+
+/** Record one due date of a manual payment as paid; deleting the transaction undoes it. */
+export async function markPaymentPaid(
+  token: string,
+  id: string,
+  data: { due_date: string; paid_on: string; amount?: number; currency?: string },
+): Promise<Transaction> {
+  return request(`/subscriptions/${id}/mark-paid`, token, { method: 'POST', body: JSON.stringify(data) })
 }
 
 /** Past payments: confirmed by an email receipt, or expected from the schedule. */

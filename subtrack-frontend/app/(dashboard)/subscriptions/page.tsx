@@ -25,6 +25,7 @@ import { Skeleton }               from '@/components/ui/skeleton'
 import { Plus, CreditCard }       from 'lucide-react'
 import { useSWRConfig } from 'swr'
 import { PaymentsTabs } from '@/components/subscriptions/PaymentsTabs'
+import { ToPayList } from '@/components/subscriptions/ToPayList'
 import { useThisMonth } from '@/lib/hooks/useThisMonth'
 import { useCurrency }            from '@/lib/context/currency'
 import { formatCurrency }         from '@/lib/utils/currency'
@@ -382,6 +383,8 @@ export default function SubscriptionsPage() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-7 px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
       <PaymentsTabs />
+
+      <ToPayList />
 
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">

@@ -10,6 +10,7 @@ export const apiKeys = {
   subscriptionChanges: (days: number) => `subscription-changes:${days}`,
   forecast: (days: number) => `forecast:${days}`,
   calendarMonth: 'calendar-month',
+  manualDue: 'manual-due',
   extras: (days: number) => `extras:${days}`,
   paid: (months: number) => `paid:${months}`,
   reminders: (horizonDays: number) => `reminders:${horizonDays}`,

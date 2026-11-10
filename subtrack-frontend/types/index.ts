@@ -4,6 +4,8 @@ export type RecurrenceUnit = 'day' | 'week' | 'month' | 'year'
 export type PaymentStatus = 'active' | 'paused' | 'cancelling' | 'cancelled' | 'ended'
 export type AmountType = 'fixed' | 'variable'
 export type SpendingType = 'unspecified' | 'essential' | 'optional'
+/** Manual payments count as money out only once a due date is marked paid. */
+export type PaymentMethod = 'automatic' | 'manual'
 
 export type Category =
   | 'housing'
@@ -61,8 +63,19 @@ export interface Subscription {
   cancellation_effective_at: string | null
   amount_type: AmountType
   spending_type: SpendingType
+  payment_method: PaymentMethod
   is_active: boolean
   created_at: string
+}
+
+/** A manual payment's due date, up to a week ahead, not yet marked paid. */
+export interface ManualDue {
+  payment_id: string
+  name: string
+  due_date: string
+  amount: number
+  currency: string
+  overdue: boolean
 }
 
 // Payload shapes for create/update calls — mirror the backend Pydantic models.
@@ -85,6 +98,7 @@ export interface SubscriptionInput {
   cancellation_effective_at?: string | null
   amount_type?: AmountType
   spending_type?: SpendingType
+  payment_method?: PaymentMethod
   is_active?: boolean
   full_amount?: number | null
   share_ratio?: number

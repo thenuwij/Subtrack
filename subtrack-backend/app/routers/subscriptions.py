@@ -1,5 +1,6 @@
 from datetime import date as date_type
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal, NamedTuple, Optional
 from uuid import UUID
 
@@ -22,6 +23,9 @@ from app.models import (
     SpendingType,
     Subscription,
     SubscriptionChange,
+    Transaction,
+    TransactionKind,
+    TransactionSource,
     UserPreference,
 )
 from app.routers.rates import conversion_for_storage
@@ -53,6 +57,10 @@ from app.services.recurrence import (
 from app.services.trials import sync_trial_reminder, utcnow
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
+
+PaymentMethod = Literal["automatic", "manual"]
+MANUAL_DUE_LOOKBACK_DAYS = 60
+MANUAL_DUE_LOOKAHEAD_DAYS = 7
 
 def log_change(db: Session, sub: Subscription, kind: ChangeKind,
                old_monthly: float | None, new_monthly: float | None,
@@ -129,6 +137,7 @@ def subscription_payload(sub: Subscription) -> dict:
         ),
         "amount_type": sub.amount_type or AmountType.fixed.value,
         "spending_type": sub.spending_type or SpendingType.unspecified.value,
+        "payment_method": sub.payment_method or "automatic",
         "is_active": status not in {PaymentStatus.cancelled.value, PaymentStatus.ended.value},
         "created_at": sub.created_at.isoformat() if sub.created_at else None,
     }
@@ -227,6 +236,7 @@ class SubscriptionCreate(BaseModel):
     cancellation_effective_at: Optional[datetime] = None
     amount_type: AmountType = AmountType.fixed
     spending_type: SpendingType = SpendingType.unspecified
+    payment_method: PaymentMethod = "automatic"
     is_active: bool = True
     # Shared bills: send the full cost and the caller's portion (e.g. 1/3).
     # `amount` is then derived and represents only what this user pays.
@@ -281,6 +291,7 @@ class SubscriptionUpdate(BaseModel):
     cancellation_effective_at: Optional[datetime] = None
     amount_type: Optional[AmountType] = None
     spending_type: Optional[SpendingType] = None
+    payment_method: Optional[PaymentMethod] = None
     is_active: Optional[bool] = None
     full_amount: Optional[float] = Field(default=None, gt=0)
     share_ratio: Optional[float] = Field(default=None, gt=0, le=1)
@@ -371,6 +382,123 @@ def get_upcoming_forecast(
     from app.agent.finance import upcoming_charges
 
     return upcoming_charges(db, user_id, days=days)
+
+@router.get("/manual-due")
+def get_manual_due(
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Due dates of manually paid payments, up to a week ahead, not yet marked paid."""
+    from datetime import time, timedelta, timezone
+
+    from app.agent.finance import upcoming_charges
+    from app.services.safe_to_spend import _user_zone
+
+    manual = {
+        str(sub.id): sub for sub in db.query(Subscription).filter(
+            Subscription.user_id == user_id,
+            Subscription.payment_method == "manual",
+        ).all()
+    }
+    if not manual:
+        return []
+    zone = _user_zone(db, user_id)
+    today = datetime.now(zone).date()
+    start = today - timedelta(days=MANUAL_DUE_LOOKBACK_DAYS)
+    end = today + timedelta(days=MANUAL_DUE_LOOKAHEAD_DAYS)
+    charges = upcoming_charges(
+        db,
+        user_id,
+        start_at=datetime.combine(start, time.min, tzinfo=zone),
+        end_at=datetime.combine(end, time.max, tzinfo=zone),
+        include_past=True,
+    )["charges"]
+    paid = {
+        (str(payment_id), due_on)
+        for payment_id, due_on in db.query(Transaction.recurring_payment_id, Transaction.paid_due_on).filter(
+            Transaction.user_id == user_id,
+            Transaction.paid_due_on.isnot(None),
+            Transaction.paid_due_on >= start,
+        ).all()
+    }
+    due = []
+    for charge in charges:
+        # Charges are naive UTC; the due date is the user's local calendar date,
+        # which is also the date mark-paid records in ``paid_due_on``.
+        due_on = (
+            datetime.fromisoformat(charge["due_at"]).replace(tzinfo=timezone.utc).astimezone(zone).date()
+        )
+        if charge["id"] not in manual or (charge["id"], due_on) in paid:
+            continue
+        due.append({
+            "payment_id": charge["id"],
+            "name": charge["name"],
+            "due_date": due_on.isoformat(),
+            "amount": charge["amount"],
+            "currency": charge["currency"],
+            "overdue": due_on < today,
+        })
+    return sorted(due, key=lambda row: (row["due_date"], row["name"]))
+
+
+class MarkPaidRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+
+    due_date: date_type
+    paid_on: date_type
+    amount: Optional[Decimal] = Field(default=None, gt=0, le=1000000, decimal_places=2)
+    currency: Optional[Literal["AUD", "USD", "GBP", "SGD", "EUR", "JPY"]] = None
+
+
+@router.post("/{sub_id}/mark-paid", status_code=201)
+def mark_paid(
+    sub_id: UUID,
+    body: MarkPaidRequest,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Record one due date of a manual payment as a linked expense Transaction."""
+    from sqlalchemy.exc import IntegrityError
+
+    from app.routers.transactions import transaction_payload
+    from app.services.transactions import apply_conversion, base_currency_for
+
+    sub = db.query(Subscription).filter(
+        Subscription.id == sub_id, Subscription.user_id == user_id,
+    ).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="Subscription not found")
+    if sub.payment_method != "manual":
+        raise HTTPException(status_code=422, detail="Only payments you pay yourself can be marked paid")
+    already = db.query(Transaction.id).filter(
+        Transaction.recurring_payment_id == sub.id,
+        Transaction.paid_due_on == body.due_date,
+    ).first()
+    if already:
+        raise HTTPException(status_code=409, detail="This due date is already marked paid")
+    row = Transaction(
+        user_id=user_id,
+        kind=TransactionKind.expense.value,
+        name=sub.name,
+        amount=body.amount if body.amount is not None else Decimal(str(sub.amount)).quantize(Decimal("0.01")),
+        currency=body.currency or sub.currency,
+        category=sub.category,
+        occurred_on=body.paid_on,
+        note=f"{sub.name} payment",
+        source=TransactionSource.manual.value,
+        recurring_payment_id=sub.id,
+        paid_due_on=body.due_date,
+    )
+    apply_conversion(db, row, base_currency_for(db, user_id))
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="This due date is already marked paid") from None
+    db.refresh(row)
+    return transaction_payload(row)
+
 
 @router.get("/month")
 def get_calendar_month(
