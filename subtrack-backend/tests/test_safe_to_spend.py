@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from unittest.mock import patch
 
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -261,6 +262,90 @@ class SafeToSpendTests(unittest.TestCase):
         put_profile(body, user_id="owner", db=self.db)
 
         self.assertGreater(self.db.get(SafeToSpendProfile, "owner").balance_as_of, old)
+
+    # Estimates: today is 3 Nov (Sydney), last payday 27 Oct, next payday 10 Nov.
+    def add_cycle_payments(self):
+        self.add_payment("Gym", 20, datetime(2026, 10, 27), cycle=BillingCycle.weekly, interval_unit="week")
+        self.add_payment("Rent", 400, datetime(2026, 12, 1))  # 1 Nov charge already rolled forward
+        self.add_payment("Streaming", 30, datetime(2026, 11, 8))
+        self.add_payment("Phone", 35, datetime(2026, 11, 10))
+
+    def test_without_a_balance_estimates_from_pay_over_the_whole_cycle(self):
+        self.add_profile(balance=None, balance_as_of=None, pay_amount=Decimal("1400.00"))
+        self.add_cycle_payments()
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        # Gym on 3 and 10 Nov, rent 1 Nov, streaming 8 Nov, phone on payday; gym on 27 Oct was last pay's.
+        self.assertEqual((result["status"], result["mode"]), ("ready", "estimate"))
+        self.assertEqual(result["committed"], 505.0)
+        self.assertEqual(result["safe_to_spend"], 845.0)
+        self.assertEqual((result["per_day"], result["per_day_days"]), (60.35, 14))
+        self.assertEqual((result["pay_cycle_start"], result["balance_date"]), ("2026-10-27", None))
+        self.assertIsNone(result["balance"])
+        self.assertIn("estimate from your usual pay", result["warnings"][0])
+
+    def test_estimate_moves_payday_bills_to_the_next_pay_when_pay_lands_first(self):
+        self.add_profile(
+            balance=None, balance_as_of=None, pay_amount=Decimal("1400.00"), payday_bills_after_pay=True,
+        )
+        self.add_cycle_payments()
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        # Gym on 27 Oct and 3 Nov now belong here; gym and phone on 10 Nov do not.
+        self.assertEqual(result["committed"], 470.0)
+
+    def test_an_outdated_balance_falls_back_to_the_pay_estimate(self):
+        self.add_profile(
+            balance_as_of=datetime(2026, 10, 20), pay_anchor_on=date(2026, 10, 27), pay_amount=Decimal("1400.00"),
+        )
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        self.assertEqual((result["status"], result["mode"]), ("ready", "estimate"))
+        self.assertEqual(result["safe_to_spend"], 1350.0)
+
+    def test_a_current_balance_wins_over_the_pay_estimate(self):
+        self.add_profile(pay_amount=Decimal("1400.00"))
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        self.assertEqual((result["mode"], result["balance"]), ("balance", 620.0))
+
+    def test_an_outdated_balance_without_pay_has_no_number(self):
+        self.add_profile(balance_as_of=datetime(2026, 10, 20), pay_anchor_on=date(2026, 10, 27))
+
+        result = safe_to_spend(self.db, "owner", now=NOW)
+
+        self.assertEqual(result["status"], "balance_outdated")
+        self.assertIsNone(result["safe_to_spend"])
+
+    def test_can_i_afford_spreads_an_estimate_over_the_whole_cycle(self):
+        self.add_profile(balance=None, balance_as_of=None, pay_amount=Decimal("1400.00"))
+
+        answer = can_i_afford(self.db, "owner", Decimal("70.00"), now=NOW)
+
+        self.assertEqual((answer["affordable"], answer["per_day_after"]), (True, 91.42))
+
+    def test_profile_needs_a_balance_or_usual_pay(self):
+        with self.assertRaises(ValidationError):
+            SafeToSpendProfileUpdate(next_payday=date(2026, 11, 10), pay_interval_unit="week", pay_interval_count=2)
+        with self.assertRaises(ValidationError):
+            SafeToSpendProfileUpdate(
+                pay_amount=Decimal("0"), next_payday=date(2026, 11, 10), pay_interval_unit="week", pay_interval_count=2,
+            )
+
+    def test_saving_without_a_balance_clears_the_balance_date(self):
+        self.add_profile()
+        body = SafeToSpendProfileUpdate(
+            pay_amount=Decimal("1400.00"), next_payday=date(2026, 11, 10), pay_interval_unit="week", pay_interval_count=2,
+        )
+
+        put_profile(body, user_id="owner", db=self.db)
+
+        profile = self.db.get(SafeToSpendProfile, "owner")
+        self.assertEqual((profile.balance, profile.balance_as_of, profile.pay_amount), (None, None, Decimal("1400.00")))
 
     def run_at_now(self, tool_name, tool_input):
         with patch(

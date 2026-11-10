@@ -17,7 +17,7 @@ export default function SavingsPage() {
   const money = (amount: number) =>
     formatCurrency(amount, data?.base_currency ?? "AUD");
   return (
-    <div className="page-shell max-w-4xl space-y-6">
+    <div className="page-shell space-y-6">
       <PaymentsTabs />
       <header>
         <p className="eyebrow mb-2">Small changes add up</p>

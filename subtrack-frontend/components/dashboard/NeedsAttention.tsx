@@ -116,7 +116,7 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, un
               <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
               {pausedWithoutResume} paused payment{pausedWithoutResume === 1 ? ' needs' : 's need'} a resume date
             </span>
-            <Link href="/subscriptions" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Payments</Link>
+            <Link href="/subscriptions" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Bills</Link>
           </li>
         ) : null}
         {unconverted > 0 ? (
@@ -125,7 +125,7 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, un
               <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
               {unconverted} charge{unconverted === 1 ? '' : 's'} can&apos;t be converted yet
             </span>
-            <Link href="/subscriptions" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Payments</Link>
+            <Link href="/subscriptions" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Bills</Link>
           </li>
         ) : null}
         {estimatedPayments > 0 ? (
@@ -134,7 +134,7 @@ export function NeedsAttention({ detections, forecast, gmail, gmailScanStale, un
               <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" aria-hidden="true" />
               {estimatedPayments} bill{estimatedPayments === 1 ? ' is' : 's are'} an estimate
             </span>
-            <Link href="/subscriptions" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Payments</Link>
+            <Link href="/subscriptions" className="shrink-0 rounded-md bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-primary/20">Bills</Link>
           </li>
         ) : null}
         {scanIsPartial ? (

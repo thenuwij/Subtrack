@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { driver, type DriveStep } from 'driver.js'
 import 'driver.js/dist/driver.css'
+import { usePathname } from 'next/navigation'
 import { useSWRConfig } from 'swr'
 import { getPreferences, updatePreferences } from '@/lib/api'
 import { apiKeys, useApi } from '@/lib/hooks/useApi'
@@ -94,7 +95,9 @@ export function OnboardingTour() {
   const { mutate } = useSWRConfig()
   const preferences = useApi<Preferences>(apiKeys.preferences, getPreferences)
   const [dismissed, setDismissed] = useState(false)
-  const welcomeOpen = preferences.data?.onboarding_completed === false && !dismissed
+  const pathname = usePathname()
+  // Setup asks for its own details; the welcome waits until Home.
+  const welcomeOpen = preferences.data?.onboarding_completed === false && !dismissed && pathname !== '/setup'
 
   const finish = useCallback(async () => {
     setDismissed(true)
