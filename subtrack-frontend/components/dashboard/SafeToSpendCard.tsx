@@ -354,6 +354,8 @@ export function SafeToSpendCard() {
                   value={`${item.is_estimate ? '≈ ' : ''}−${formatCurrency(item.amount, currency)}`}
                 />
               ))}
+              {position.set_aside ? <Row label="Set aside" value={`−${formatCurrency(position.set_aside, currency)}`} /> : null}
+              {position.spent ? <Row label="Spends you logged" value={`−${formatCurrency(position.spent, currency)}`} /> : null}
               <Row label="Buffer" value={`−${formatCurrency(position.buffer ?? 0, currency)}`} />
               {position.warnings?.map(warning => (
                 <p key={warning} className="pt-3 text-[13px] leading-5 text-muted-foreground">{warning}</p>

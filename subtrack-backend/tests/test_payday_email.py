@@ -23,6 +23,7 @@ from app.models import (  # noqa: E402
     EmailPreference,
     ReminderDelivery,
     SafeToSpendProfile,
+    SetAside,
     Subscription,
     UserPreference,
 )
@@ -132,6 +133,17 @@ class PaydayEmailTests(unittest.TestCase):
         payload = self.send.call_args.kwargs["json"]
         self.assertEqual(payload["subject"], "Payday: check what's free to spend")
         self.assertIn("Enter today's balance", payload["text"])
+
+    def test_set_asides_are_listed(self):
+        self.add_user()
+        self.db.add(SetAside(user_id="owner", kind="pot", name="Eating out", amount_per_pay=60, currency="AUD"))
+        self.db.commit()
+
+        self.sent_at(PAYDAY_MORNING)
+
+        text = self.send.call_args.kwargs["json"]["text"]
+        self.assertIn("Set aside: A$60.00 (Eating out A$60.00)", text)
+        self.assertIn("Free to spend: A$1,255.00", text)
 
     def test_a_shortfall_says_so(self):
         self.add_user(pay_amount=Decimal("60.00"))

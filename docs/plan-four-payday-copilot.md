@@ -59,6 +59,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** adding a goal or a big spend changes the Home number with the reason shown.
 
+✅ Built 10 Nov 2026 (`0034_set_asides`) as "set aside each pay": savings and spending pots, separate from the parked goals and budgets. Free = money − bills − buffer − savings − left in pots − spends the balance doesn't show. Not yet in setup or voice.
+
 ## Phase 6: Quick check and rare alerts
 
 1. Installable web app (PWA) with a "Can I afford it?" shortcut opening a one-field page.

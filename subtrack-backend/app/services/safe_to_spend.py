@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.agent.finance import CurrencyContext, upcoming_charges
 from app.models import SafeToSpendProfile, UserPreference
 from app.services.recurrence import occurrences_between, project_next_occurrence, rewind_anchor
+from app.services.set_asides import set_aside_position
 
 CENTS = Decimal("0.01")
 BALANCE_STALE_AFTER_DAYS = 3
@@ -25,6 +26,10 @@ SCOPE_NOTE_AFTER_PAY = (
 ESTIMATE_SCOPE_NOTE = (
     "Estimated from your usual pay, tracked payments and buffer for this pay "
     "cycle. Spending so far, untracked bills and one-off costs are not included."
+)
+SET_ASIDE_NOTE = (
+    " Money you set aside comes off each pay cycle in full; spending you log "
+    "from a pot uses up that pot first."
 )
 ESTIMATE_WARNING = (
     "This is an estimate from your usual pay. Add today's balance for an exact number."
@@ -131,12 +136,12 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         "scope": SCOPE_NOTE_AFTER_PAY if profile.payday_bills_after_pay else SCOPE_NOTE,
     }
 
+    cycle_start = _previous_payday(profile, next_payday, today)
     if mode == "estimate":
         if profile.pay_amount is None:
             result["status"] = "balance_outdated"
             result["warnings"].append("A payday has passed since this balance. Update your balance.")
             return result
-        cycle_start = _previous_payday(profile, next_payday, today)
         # Bills on the last payday came out of the previous pay unless pay lands first.
         start_day = cycle_start if profile.payday_bills_after_pay else cycle_start + timedelta(days=1)
         starting_amount = profile.pay_amount
@@ -162,7 +167,20 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
     start_converted, start_quality = currency.convert(float(starting_amount), profile.currency)
     buffer, _ = currency.convert(float(profile.buffer), profile.currency)
     result["base_currency"] = currency.base
-    if start_converted is None or buffer is None or forecast["unconverted_occurrence_count"]:
+    set_asides = set_aside_position(
+        db,
+        user_id,
+        base=currency.base,
+        cycle_start=cycle_start,
+        cycle_end=next_payday,
+        balance_as_of=profile.balance_as_of if mode == "balance" else None,
+    )
+    if (
+        start_converted is None
+        or buffer is None
+        or forecast["unconverted_occurrence_count"]
+        or set_asides is None
+    ):
         result["status"] = "incomplete"
         result["warnings"].append(
             "Some amounts could not be converted, so a safe amount can't be worked out right now."
@@ -173,7 +191,11 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
     committed = sum((_to_decimal(row["charge_amount_in_base"]) for row in charges), Decimal("0"))
     start_amount = _to_decimal(start_converted)
     buffer_amount = _to_decimal(buffer)
-    remaining = start_amount - committed - buffer_amount
+    reserved = set_asides["reserved"].quantize(CENTS)
+    spent = set_asides["spent"].quantize(CENTS)
+    remaining = start_amount - committed - buffer_amount - reserved - spent
+    if set_asides["set_asides"]:
+        result["scope"] += SET_ASIDE_NOTE
     safe_amount = max(remaining, Decimal("0"))
     per_day = (safe_amount / spread_days).quantize(CENTS, rounding=ROUND_DOWN)
 
@@ -201,6 +223,10 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         pay_amount=float(start_amount) if mode == "estimate" else None,
         buffer=float(buffer_amount),
         committed=float(committed),
+        set_aside=float(reserved),
+        spent=float(spent),
+        set_asides=set_asides["set_asides"],
+        spends=set_asides["spends"],
         commitments=[
             {
                 "id": row["id"],

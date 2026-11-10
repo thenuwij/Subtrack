@@ -45,6 +45,7 @@ from app.models import (
     ReminderDelivery,
     SafeToSpendProfile,
     SenderLink,
+    SetAside,
     StatementImport,
     Subscription,
     SubscriptionChange,
@@ -282,7 +283,7 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         (
             "id", "kind", "name", "amount", "currency", "base_amount", "base_currency",
             "rate_as_of", "category", "occurred_on", "note", "source", "recurring_payment_id",
-            "created_at",
+            "set_aside_id", "created_at",
         ),
         ("occurred_on", "id"),
     ),
@@ -305,6 +306,12 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
         ("occurred_on", "id"),
     ),
     ExportResource(
+        "set_asides",
+        SetAside,
+        ("id", "kind", "name", "amount_per_pay", "currency", "target_amount", "created_at", "updated_at"),
+        ("created_at", "id"),
+    ),
+    ExportResource(
         "workspace_pages",
         WorkspacePage,
         ("id", "title", "template_id", "blocks", "position", "created_at", "updated_at"),
@@ -323,6 +330,7 @@ DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("reminder_deliveries", ReminderDelivery),
     ("gmail_oauth_states", GmailOAuthState),
     ("transactions", Transaction),
+    ("set_asides", SetAside),
     ("workspace_pages", WorkspacePage),
     ("goal_contributions", GoalContribution),
     ("goals", Goal),

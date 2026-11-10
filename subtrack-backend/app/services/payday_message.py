@@ -81,6 +81,9 @@ def payday_message(db: Session, user_id: str, *, now: datetime) -> tuple[date, d
         lines.append(f"  - {item['name']}, {_short_date(item['due_at'])}: {prefix}{money(item['amount'], currency)}")
     if len(commitments) > MAX_LISTED_BILLS:
         lines.append(f"  - and {len(commitments) - MAX_LISTED_BILLS} more")
+    if position.get("set_aside"):
+        parts = ", ".join(f"{item['name']} {money(item['amount'], currency)}" for item in position["set_asides"])
+        lines.append(f"Set aside: {money(position['set_aside'], currency)} ({parts})")
     lines.append(f"Buffer: {money(position['buffer'], currency)}")
     lines.append("")
     if position["shortfall"]:

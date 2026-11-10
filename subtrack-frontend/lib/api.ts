@@ -15,6 +15,8 @@ import type {
   ReminderInput,
   SafeToSpend,
   SafeToSpendProfileInput,
+  SetAside,
+  SetAsideKind,
   Subscription,
   SubscriptionForecast,
   BudgetInput,
@@ -688,6 +690,29 @@ export async function saveSafeToSpendProfile(
     method: 'PUT',
     body: JSON.stringify(data),
   })
+}
+
+export async function createSetAside(
+  token: string,
+  data: { kind: SetAsideKind; name: string; amount_per_pay: number; target_amount?: number | null },
+): Promise<SetAside> {
+  return request('/set-asides', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function deleteSetAside(token: string, id: string): Promise<void> {
+  await request(`/set-asides/${id}`, token, { method: 'DELETE' })
+}
+
+/** Log money spent today, from a pot or from free money; returns the new position. */
+export async function logSpend(
+  token: string,
+  data: { name: string; amount: number; set_aside_id?: string | null },
+): Promise<SafeToSpend> {
+  return request('/safe-to-spend/spends', token, { method: 'POST', body: JSON.stringify(data) })
+}
+
+export async function undoSpend(token: string, id: string): Promise<SafeToSpend> {
+  return request(`/safe-to-spend/spends/${id}`, token, { method: 'DELETE' })
 }
 
 export async function updateSubscription(

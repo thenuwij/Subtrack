@@ -27,6 +27,7 @@ from app.routers import (
     rates,
     reminders,
     safe_to_spend,
+    set_asides,
     subscriptions,
     transactions,
     workspace,
@@ -84,6 +85,7 @@ app.include_router(detected.router)
 app.include_router(reminders.router)
 app.include_router(email_reminders.router)
 app.include_router(safe_to_spend.router)
+app.include_router(set_asides.router)
 app.include_router(meta.router)
 app.include_router(demo.router)
 
