@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from 'react'
 import Link from 'next/link'
-import { CheckCircle2, XCircle } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { canIAfford, type AffordAnswer } from '@/lib/api'
 import { getAccessToken } from '@/lib/auth/session'
@@ -43,6 +43,7 @@ export function AffordCheck() {
   return (
     <div className="mx-auto max-w-md space-y-6 px-4 py-16 sm:px-6">
       <form onSubmit={check} className="space-y-6">
+        <Link href="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />Home</Link>
         <h1 className="text-3xl font-semibold tracking-tight">Can I afford it?</h1>
         <div className="space-y-1.5">
           <Label htmlFor="afford-amount">How much?</Label>

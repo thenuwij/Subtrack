@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
+import { ArrowLeft } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import type { SafeToSpend } from '@/types'
@@ -71,7 +72,8 @@ export function BalanceCheck() {
   return (
     <form onSubmit={save} className="mx-auto max-w-md space-y-6 px-4 py-16 sm:px-6">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">What&apos;s in your account today?</h1>
+        <Link href="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />Home</Link>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight">What&apos;s in your account today?</h1>
         <p className="mt-2 text-muted-foreground">Your everyday account. This makes what&apos;s free to spend exact.</p>
       </div>
       <div className="space-y-1.5">
