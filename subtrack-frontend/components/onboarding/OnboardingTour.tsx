@@ -44,15 +44,15 @@ const steps: DriveStep[] = [
   {
     element: firstVisible('[data-tour="free-to-spend"]', '[data-tour="nav-dashboard"]'),
     popover: {
-      title: 'What’s yours to spend',
-      description: 'Your pay or balance, minus bills and pots before payday. The line underneath shows the working.',
+      title: 'Where your pay goes',
+      description: 'Your pay, the bills and budgets that come out of it, and what’s left. Check your balance here any time for an exact number.',
     },
   },
   {
     element: firstVisible('[data-tour="pots"]', '[data-tour="nav-dashboard"]'),
     popover: {
-      title: 'Your pots',
-      description: 'Money held back each pay, like eating out or savings. They fill up again every payday.',
+      title: 'Your budgets',
+      description: 'Money held back each pay, like eating out or savings. They reset every payday.',
     },
   },
   {

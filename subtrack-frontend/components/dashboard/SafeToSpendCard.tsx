@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import Link from 'next/link'
-import { ArrowUpRight, ChevronDown, ChevronRight, Clock, Pencil, Plus, Wallet, X } from 'lucide-react'
+import { ArrowUpRight, ChartBar, ChevronDown, ChevronRight, Clock, Pencil, Plus, Wallet, X } from 'lucide-react'
 import { toast } from 'sonner'
 import type { BillRow, PayPlan, Preferences, SafeToSpend, SafeToSpendProfileInput } from '@/types'
 import { getPreferences, getSafeToSpend, logIncome, saveSafeToSpendProfile, trackEvent, undoSpend, updatePreferences } from '@/lib/api'
@@ -17,6 +17,7 @@ import { useEditPayment } from '@/components/subscriptions/PaymentEditor'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { PayBreakdown } from '@/components/dashboard/PayBreakdown'
 
 function scheduleOf(position: SafeToSpend | undefined): PaySchedule {
   const profile = position?.profile
@@ -414,6 +415,7 @@ export function SafeToSpendCard() {
   // The free-to-spend number is a one-off answer: shown right after a check, then put away.
   const [justChecked, setJustChecked] = useState(false)
   const [showBreakdown, setShowBreakdown] = useState(false)
+  const [showPayChart, setShowPayChart] = useState(false)
   const [addingIncome, setAddingIncome] = useState(false)
   const editPayment = useEditPayment()
   const { mutate: refreshPosition } = query
@@ -533,11 +535,25 @@ export function SafeToSpendCard() {
           ) : null}
         </h2>
         <div className="flex shrink-0 items-center gap-4">
+          {position.pay_plan ? (
+            <button type="button" onClick={() => setShowPayChart(true)} className="flex items-center gap-1.5 text-sm font-medium text-primary hover:underline">
+              <ChartBar className="h-4 w-4" aria-hidden="true" />Breakdown
+            </button>
+          ) : null}
           <button type="button" onClick={() => setEditing(true)} className="text-sm font-medium text-primary hover:underline">
             Edit pay
           </button>
         </div>
       </div>
+      {position.pay_plan ? (
+        <PayBreakdown
+          open={showPayChart}
+          onOpenChange={setShowPayChart}
+          plan={position.pay_plan}
+          budgets={position.set_asides ?? []}
+          currency={currency}
+        />
+      ) : null}
 
       {position.pay_plan ? (
         <PayPlanSummary

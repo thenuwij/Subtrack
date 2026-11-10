@@ -27,7 +27,7 @@ function overBudget(cycle: PayCycle) {
   return cycle.pots.some(pot => (pot.over ?? 0) > 0)
 }
 
-/** How each pay went: pots planned against spent, savings and other spends. */
+/** How each pay went: budgets planned against spent, savings and other spends. */
 export function PayCycles() {
   const [count, setCount] = useState(6)
   const [pot, setPot] = useState('all')
@@ -51,21 +51,21 @@ export function PayCycles() {
       <div>
         <Link href="/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"><ArrowLeft className="h-4 w-4" />Home</Link>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight">Past pay cycles</h1>
-        <p className="mt-2 text-muted-foreground">How each pay went: what you planned for your pots, what you spent and what you saved.</p>
+        <p className="mt-2 text-muted-foreground">How each pay went: what you planned for your budgets, what you spent and what you saved.</p>
       </div>
 
       <div className="flex flex-wrap gap-2" aria-label="Filters">
         <select aria-label="Range" value={count} onChange={event => setCount(Number(event.target.value))} className={selectClass}>
           {RANGES.map(range => <option key={range.count} value={range.count}>{range.label}</option>)}
         </select>
-        <select aria-label="Pot" value={pot} onChange={event => setPot(event.target.value)} className={selectClass}>
-          <option value="all">All pots</option>
+        <select aria-label="Budget" value={pot} onChange={event => setPot(event.target.value)} className={selectClass}>
+          <option value="all">All budgets</option>
           {potNames.map(name => <option key={name} value={name}>{name}</option>)}
         </select>
         <select aria-label="Result" value={result} onChange={event => setResult(event.target.value as Result)} className={selectClass}>
           <option value="all">Any result</option>
-          <option value="under">Stayed within pots</option>
-          <option value="over">Went over a pot</option>
+          <option value="under">Stayed within budgets</option>
+          <option value="over">Went over a budget</option>
         </select>
       </div>
 
@@ -82,7 +82,7 @@ export function PayCycles() {
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-[17px] font-semibold">{day(cycle.start)} – {lastDay(cycle.end)}</h2>
             <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${cycle.current ? 'bg-primary/10 text-primary' : overBudget(cycle) ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'}`}>
-              {cycle.current ? 'This pay, so far' : overBudget(cycle) ? 'Went over a pot' : 'Stayed within pots'}
+              {cycle.current ? 'This pay, so far' : overBudget(cycle) ? 'Went over a budget' : 'Stayed within budgets'}
             </span>
           </div>
 
