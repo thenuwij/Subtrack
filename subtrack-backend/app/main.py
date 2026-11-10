@@ -21,6 +21,7 @@ from app.routers import (
     email_reminders,
     events,
     gmail,
+    inbound,
     meta,
     preferences,
     rates,
@@ -74,6 +75,7 @@ app.include_router(preferences.router)
 app.include_router(account.router)
 app.include_router(agent.router)
 app.include_router(gmail.router)
+app.include_router(inbound.router)
 app.include_router(detected.router)
 app.include_router(reminders.router)
 app.include_router(email_reminders.router)
@@ -271,8 +273,10 @@ def _purge_expired_demos_at_startup() -> None:
 
 def on_shutdown():
     from app.routers.gmail import shutdown_scan_executor
+    from app.routers.inbound import shutdown_inbound_executor
 
     shutdown_scan_executor()
+    shutdown_inbound_executor()
 
 
 @app.get("/")
