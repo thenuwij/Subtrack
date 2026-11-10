@@ -17,6 +17,7 @@ import type {
   SafeToSpendProfileInput,
   SetAside,
   SetAsideKind,
+  PayCycles,
   Subscription,
   SubscriptionForecast,
   TransactionInput,
@@ -672,6 +673,10 @@ export function trackEvent(name: ProductEventName): void {
     const token = await getAccessToken()
     if (token) await request('/events', token, { method: 'POST', body: JSON.stringify({ name }) })
   })().catch(() => undefined)
+}
+
+export async function getPayCycles(token: string, count: number): Promise<PayCycles> {
+  return request(`/safe-to-spend/cycles?count=${count}`, token)
 }
 
 export async function getSafeToSpend(token: string): Promise<SafeToSpend> {

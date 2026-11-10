@@ -38,11 +38,10 @@ import { useRegisterAgentPageContext } from '@/lib/agent/page-context'
 import { toast } from 'sonner'
 import { SafeToSpendCard } from '@/components/dashboard/SafeToSpendCard'
 import { OverdueNotice } from '@/components/dashboard/OverdueNotice'
+import { PaydayBanner } from '@/components/dashboard/PaydayBanner'
 import { SetAsidesCard } from '@/components/dashboard/SetAsidesCard'
 import { ComingUp } from '@/components/dashboard/ComingUp'
 import { NeedsAttention } from '@/components/dashboard/NeedsAttention'
-import { CategorySpend } from '@/components/dashboard/CategorySpend'
-import { RecentChanges } from '@/components/subscriptions/RecentChanges'
 import { GettingStarted } from '@/components/onboarding/GettingStarted'
 import { apiKeys, errorMessage, useApi } from '@/lib/hooks/useApi'
 import { getAccessToken, useIsDemo } from '@/lib/auth/session'
@@ -239,9 +238,10 @@ export default function DashboardPage() {
 
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start xl:gap-10">
           <div className="min-w-0 space-y-8">
-            <OverdueNotice />
+            <PaydayBanner />
             <SafeToSpendCard />
             <SetAsidesCard />
+            <OverdueNotice />
             <ComingUp
               forecast={forecast}
               error={forecastError}
@@ -284,10 +284,6 @@ export default function DashboardPage() {
                 </Button>
               </section>
             )}
-
-            <CategorySpend subscriptions={subscriptions} />
-
-            <RecentChanges bare />
 
             <ReminderCenter bare reminders={reminders} onDismiss={handleDismissReminder} />
             {reminderError ? (
