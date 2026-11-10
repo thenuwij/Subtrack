@@ -220,14 +220,7 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto w-full max-w-[90rem] px-5 py-8 sm:px-8 sm:py-10 lg:px-12">
       <div className="space-y-6 sm:space-y-8">
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="eyebrow mb-2">Your money, at a glance</p>
-            <h1 className="page-heading">A little more clarity.</h1>
-            <p className="page-description">Make room for life. Keep an eye on what&apos;s coming.</p>
-          </div>
-          <Button asChild variant="outline" className="bg-card"><Link href="/subscriptions">View bills <ArrowRight className="h-4 w-4" /></Link></Button>
-        </header>
+        <h1 className="sr-only">Home</h1>
 
         {loadError && (
           <div className="flex flex-col gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -236,7 +229,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_22rem] lg:items-start xl:gap-10">
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start xl:gap-10">
           <div className="min-w-0 space-y-8">
             <PaydayBanner />
             <SafeToSpendCard />
