@@ -682,6 +682,18 @@ export async function getSafeToSpend(token: string): Promise<SafeToSpend> {
   return request('/safe-to-spend', token)
 }
 
+export interface AffordAnswer extends SafeToSpend {
+  amount: number
+  affordable: boolean | null
+  left_after: number | null
+  short_by: number | null
+  per_day_after?: number
+}
+
+export async function canIAfford(token: string, amount: number): Promise<AffordAnswer> {
+  return request(`/safe-to-spend/afford?amount=${encodeURIComponent(amount.toFixed(2))}`, token)
+}
+
 export async function saveSafeToSpendProfile(
   token: string,
   data: SafeToSpendProfileInput,

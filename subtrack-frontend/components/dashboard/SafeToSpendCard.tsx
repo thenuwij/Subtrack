@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type FormEvent } from 'react'
+import Link from 'next/link'
 import { ArrowUpRight, ChevronRight, Pencil, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Preferences, SafeToSpend, SafeToSpendProfileInput } from '@/types'
@@ -328,7 +329,7 @@ export function SafeToSpendCard() {
       ) : null}
 
       {hasNumber && !editing ? (
-        <div className="mt-5 border-t border-border pt-4">
+        <div className="mt-5 flex flex-wrap items-center gap-x-6 border-t border-border pt-4">
           <button
             type="button"
             onClick={() => setShowBreakdown(true)}
@@ -337,6 +338,10 @@ export function SafeToSpendCard() {
             How this is worked out
             <ChevronRight className="h-4 w-4" aria-hidden="true" />
           </button>
+          <Link href="/afford" className="flex min-h-11 items-center gap-1 text-sm font-medium text-primary hover:underline">
+            Can I afford something?
+            <ChevronRight className="h-4 w-4" aria-hidden="true" />
+          </Link>
           <Dialog open={showBreakdown} onOpenChange={setShowBreakdown}>
             <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
               <DialogHeader>

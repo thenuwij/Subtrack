@@ -69,6 +69,8 @@ Builds [product-design.md](product-design.md). Replaces plans two and three. Eac
 
 **Done when** each alert fires once in its test case and never otherwise.
 
+✅ Built 10 Nov 2026. `/afford` page plus a web app manifest with "Can I afford it?" and "Update today's balance" shortcuts. Alerts share the payday email switch: bills won't fit (from the morning after payday) and a trial ending within 3 days, at most 2 per cycle. Price-rise alerts were dropped because every recorded price change comes from the user's own edit or approval.
+
 ## Phase 7: Measure
 
 1. Anonymous event counts (no amounts, names or payment details): setup started, setup finished, first number seen, payday message opened, balance updated, afford check.

@@ -1,6 +1,6 @@
 import os
 import unittest
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -151,6 +151,62 @@ class PaydayEmailTests(unittest.TestCase):
         self.sent_at(PAYDAY_MORNING)
 
         self.assertEqual(self.send.call_args.kwargs["json"]["subject"], "Payday: your bills are A$25.00 more than you have")
+
+
+class AlertTests(unittest.TestCase):
+    """Alerts reuse the payday fixtures; the morning after payday is 21:00 UTC on 10 Nov."""
+
+    setUp = PaydayEmailTests.setUp
+    tearDown = PaydayEmailTests.tearDown
+    add_user = PaydayEmailTests.add_user
+    sent_at = PaydayEmailTests.sent_at
+    MORNING_AFTER = datetime(2026, 11, 10, 21, 0)
+
+    def add_trial(self, name, ends):
+        self.db.add(Subscription(
+            user_id="owner", name=name, category=Category.streaming, amount=15.99, currency="AUD",
+            cycle=BillingCycle.monthly, interval_unit="month", interval_count=1,
+            next_due=ends, trial_ends_at=ends,
+        ))
+        self.db.commit()
+
+    def subjects(self):
+        return [call.kwargs["json"]["subject"] for call in self.send.call_args_list]
+
+    def test_bills_that_wont_fit_alert_once_the_morning_after_payday(self):
+        self.add_user(pay_amount=Decimal("60.00"))
+
+        self.assertEqual(self.sent_at(PAYDAY_MORNING), 1)  # the payday email only
+        self.assertEqual(self.sent_at(self.MORNING_AFTER), 1)
+        self.assertEqual(self.sent_at(self.MORNING_AFTER.replace(hour=23)), 0)
+        self.assertEqual(
+            self.subjects()[-1], "Heads up: bills before Tue 24 Nov are A$25.00 more than you have",
+        )
+
+    def test_a_trial_ending_within_three_days_alerts_once(self):
+        self.add_user()
+        self.add_trial("Stan", datetime(2026, 11, 13, 12, 0))
+
+        self.assertEqual(self.sent_at(datetime(2026, 11, 8, 21, 0)), 0)  # 9 Nov: four days out
+        self.assertEqual(self.sent_at(self.MORNING_AFTER), 1)
+        self.assertEqual(self.sent_at(self.MORNING_AFTER + timedelta(days=1)), 0)
+        self.assertEqual(self.subjects(), ["Stan: offer ends Fri 13 Nov"])
+        self.assertIn("After that it's A$15.99", self.send.call_args.kwargs["json"]["text"])
+
+    def test_no_more_than_two_alerts_per_pay_cycle(self):
+        self.add_user(pay_amount=Decimal("60.00"))
+        for name in ("Stan", "Binge", "Kayo"):
+            self.add_trial(name, datetime(2026, 11, 12, 12, 0))
+
+        self.sent_at(self.MORNING_AFTER)
+        self.sent_at(self.MORNING_AFTER + timedelta(days=1))
+
+        self.assertEqual(len(self.subjects()), 2)
+
+    def test_alerts_follow_the_payday_opt_out(self):
+        self.add_user(payday=False, pay_amount=Decimal("60.00"))
+
+        self.assertEqual(self.sent_at(self.MORNING_AFTER), 0)
 
 
 class PaydayOptInTests(unittest.TestCase):

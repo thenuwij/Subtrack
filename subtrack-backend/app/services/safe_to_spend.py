@@ -123,6 +123,7 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         "next_payday": next_payday.isoformat(),
         "days_until_payday": (next_payday - today).days,
         "balance_date": balance_day.isoformat() if balance_day else None,
+        "pay_cycle_start": None,
         "profile": {
             "balance": float(profile.balance) if profile.balance is not None else None,
             "pay_amount": float(profile.pay_amount) if profile.pay_amount is not None else None,
@@ -137,6 +138,7 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
     }
 
     cycle_start = _previous_payday(profile, next_payday, today)
+    result["pay_cycle_start"] = cycle_start.isoformat()
     if mode == "estimate":
         if profile.pay_amount is None:
             result["status"] = "balance_outdated"
@@ -148,7 +150,6 @@ def safe_to_spend(db: Session, user_id: str, *, now: datetime | None = None) -> 
         window_start = _midnight(start_day)
         spread_days = (next_payday - cycle_start).days
         result["scope"] = ESTIMATE_SCOPE_NOTE
-        result["pay_cycle_start"] = cycle_start.isoformat()
         result["warnings"].append(ESTIMATE_WARNING)
     else:
         starting_amount = profile.balance

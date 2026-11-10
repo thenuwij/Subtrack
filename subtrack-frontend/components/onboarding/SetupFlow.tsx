@@ -315,7 +315,7 @@ export function SetupFlow() {
               <span>
                 Email me on payday
                 <span className="block text-xs text-muted-foreground">
-                  The bills before your next pay and what&apos;s free to spend. Turn it off any time in Account.
+                  Bills before your next pay and what&apos;s free to spend, plus a heads-up if bills won&apos;t fit. Turn it off any time in Account.
                 </span>
               </span>
             </label>
