@@ -28,6 +28,7 @@ from app.routers.subscriptions import get_upcoming_forecast  # noqa: E402
 from app.routers.workspace import WORKSPACE_OFF, PageCreate, create_page, get_page_data  # noqa: E402
 from app.services import workspace_data  # noqa: E402
 from app.services.budgets import budget_status  # noqa: E402
+from app.services.features import ALL_FEATURES  # noqa: E402
 from app.services.transactions import month_summary  # noqa: E402
 from app.services.workspace_data import BLOCK_FAILED, resolve_page_blocks  # noqa: E402
 
@@ -44,7 +45,7 @@ class WorkspaceDataTests(unittest.TestCase):
         self.engine = create_engine("sqlite+pysqlite:///:memory:")
         Base.metadata.create_all(self.engine)
         self.db = sessionmaker(bind=self.engine)()
-        self.db.add(UserPreference(user_id="owner", base_currency="AUD", timezone="UTC"))
+        self.db.add(UserPreference(user_id="owner", base_currency="AUD", timezone="UTC", enabled_features=list(ALL_FEATURES)))
         self.db.commit()
         for target in (
             "app.routers.rates.get_cached_rate_snapshot",
@@ -318,6 +319,9 @@ class WorkspaceDataRouteTests(unittest.TestCase):
         self.engine = create_engine("sqlite+pysqlite:///:memory:")
         Base.metadata.create_all(self.engine)
         self.db = sessionmaker(bind=self.engine)()
+        for user_id in ("owner", "other"):
+            self.db.add(UserPreference(user_id=user_id, base_currency="AUD", enabled_features=list(ALL_FEATURES)))
+        self.db.commit()
 
     def tearDown(self):
         self.db.close()
@@ -346,7 +350,7 @@ class WorkspaceDataRouteTests(unittest.TestCase):
 
     def test_refuses_when_workspace_is_off(self):
         page_id = self.page_id("owner")
-        self.db.add(UserPreference(user_id="owner", base_currency="AUD", enabled_features=["spending"]))
+        self.db.get(UserPreference, "owner").enabled_features = ["spending"]
         self.db.commit()
 
         with self.assertRaises(HTTPException) as caught:

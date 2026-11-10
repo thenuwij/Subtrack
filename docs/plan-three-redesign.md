@@ -1,3 +1,5 @@
+> **Superseded on 10 Nov 2026** by [plan four](plan-four-payday-copilot.md). Kept for reference.
+
 # Plan three: one money history
 
 Every dollar appears once, in **Transactions**. Payments are scheduled bills that write a Transactions entry when charged. Other pages are views or setup.

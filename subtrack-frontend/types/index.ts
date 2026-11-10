@@ -105,6 +105,17 @@ export interface SubscriptionInput {
   share_amount?: number
 }
 
+/** A recurring bill suggested from free text, for the user to confirm. */
+export interface BillDraft {
+  name: string
+  amount: number
+  currency: Currency
+  category: Category
+  interval_unit: 'week' | 'month' | 'year'
+  interval_count: number
+  next_due: string | null
+}
+
 export interface GmailStatus {
   connected: boolean
   configured?: boolean
@@ -375,7 +386,10 @@ export interface PaymentExtrasSummary {
 export type PayIntervalUnit = 'week' | 'month'
 
 export interface SafeToSpendProfileInput {
-  balance: number
+  /** Today's balance; leave null to estimate from usual pay. */
+  balance: number | null
+  /** Usual pay after tax, used when there's no balance since the last payday. */
+  pay_amount: number | null
   currency: Currency
   next_payday: string
   pay_interval_unit: PayIntervalUnit
@@ -384,20 +398,55 @@ export interface SafeToSpendProfileInput {
   payday_bills_after_pay: boolean
 }
 
+export type SetAsideKind = 'save' | 'pot'
+
+/** Money taken off each pay: savings, or a spending pot such as eating out. */
+export interface SetAside {
+  id: string
+  kind: SetAsideKind
+  name: string
+  amount_per_pay: number
+  currency: Currency
+  target_amount: number | null
+}
+
+export interface SetAsidePosition {
+  id: string
+  kind: SetAsideKind
+  name: string
+  amount: number
+  target_amount: number | null
+  /** Pots only: spent from the pot and what's left this pay cycle. */
+  spent?: number
+  left?: number
+}
+
 export interface SafeToSpend {
   status: 'needs_setup' | 'ready' | 'balance_outdated' | 'incomplete'
+  /** "balance" uses today's balance; "estimate" uses usual pay for the whole pay cycle. */
+  mode?: 'balance' | 'estimate'
   scope: string
   safe_to_spend: number | null
   per_day?: number | null
   shortfall?: number | null
   next_payday?: string
   days_until_payday?: number
-  balance_date?: string
+  balance_date?: string | null
+  pay_cycle_start?: string
+  /** Days the per-day figure is spread over: days left, or the whole cycle for an estimate. */
+  per_day_days?: number
   base_currency?: Currency
-  balance?: number
+  balance?: number | null
+  pay_amount?: number | null
   buffer?: number
   committed?: number
   commitments?: { id: string; name: string; due_at: string; amount: number; is_estimate: boolean }[]
+  /** Total taken off for savings and what's left in spending pots this pay cycle. */
+  set_aside?: number
+  /** Logged spends this cycle that the balance doesn't already show. */
+  spent?: number
+  set_asides?: SetAsidePosition[]
+  spends?: { id: string; name: string; amount: number; occurred_on: string; set_aside_id: string | null }[]
   profile?: Omit<SafeToSpendProfileInput, 'next_payday'>
   warnings?: string[]
 }

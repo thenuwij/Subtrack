@@ -29,6 +29,8 @@ from app.models import (
     UserPreference,
 )
 from app.routers.rates import conversion_for_storage
+from app.services.bill_parse import MAX_TEXT as BILL_TEXT_MAX
+from app.services.bill_parse import BillParseError, parse_bills
 from app.services.duplicates import (
     # Re-exported so tests can patch the cache and its bounds through this
     # module. Imported for their side effect on the module namespace, not
@@ -41,6 +43,7 @@ from app.services.duplicates import (
     duplicate_suggestions,
     persist_duplicate_dismissal,
 )
+from app.services.parse_rate_limit import enforce_parse_rate_limit
 from app.services.payment_links import name_words
 from app.services.recurrence import (
     Cadence,
@@ -54,6 +57,8 @@ from app.services.recurrence import (
     project_next_occurrence,
     utc_naive,
 )
+from app.services.safe_to_spend import _user_zone
+from app.services.transactions import base_currency_for
 from app.services.trials import sync_trial_reminder, utcnow
 
 router = APIRouter(prefix="/subscriptions", tags=["subscriptions"])
@@ -327,6 +332,41 @@ class EquivalencePreview(BaseModel):
     amount: float = Field(gt=0)
     interval_unit: RecurrenceUnit
     interval_count: int = Field(ge=1, le=1200)
+
+
+class BillParseRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    text: str = Field(min_length=1, max_length=BILL_TEXT_MAX)
+
+
+@router.post("/parse")
+def parse_bill_text(
+    data: BillParseRequest,
+    user_id: str = Depends(verify_token),
+    db: Session = Depends(get_db),
+):
+    """Suggest recurring bills from free text. Nothing is saved."""
+    enforce_parse_rate_limit(user_id)
+    today = datetime.now(_user_zone(db, user_id)).date()
+    try:
+        drafts = parse_bills(data.text, today, base_currency_for(db, user_id))
+    except BillParseError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {
+        "bills": [
+            {
+                "name": draft.name,
+                "amount": float(draft.amount),
+                "currency": draft.currency,
+                "category": draft.category.value,
+                "interval_unit": draft.interval_unit,
+                "interval_count": draft.interval_count,
+                "next_due": draft.next_due.isoformat() if draft.next_due else None,
+            }
+            for draft in drafts
+        ]
+    }
 
 
 @router.post("/equivalents")
