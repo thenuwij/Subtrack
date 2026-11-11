@@ -30,8 +30,8 @@ export function GettingStarted({ gmailConnected, hasPayments, hasIncome, bare = 
       gmail: true,
       done: gmailConnected,
       label: 'Connect Gmail',
-      detail: 'Subtrack finds recurring payments in your receipts.',
-      href: '/account#inbox',
+      detail: 'Subtrack finds recurring payments in your receipts. Or forward your bills instead.',
+      href: '/account#forwarding',
     },
     {
       done: hasPayments,

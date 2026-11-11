@@ -6,6 +6,7 @@ import { getAccessToken } from '@/lib/auth/session'
 export const apiKeys = {
   detected: (status: 'pending' | 'dismissed') => `detected:${status}`,
   gmailStatus: 'gmail-status',
+  forwardingAddress: 'forwarding-address',
   subscriptions: (scope: 'current' | 'all') => `subscriptions:${scope}`,
   subscriptionChanges: (days: number) => `subscription-changes:${days}`,
   forecast: (days: number) => `forecast:${days}`,

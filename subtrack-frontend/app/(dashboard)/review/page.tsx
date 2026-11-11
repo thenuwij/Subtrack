@@ -566,6 +566,12 @@ export default function ReviewPage() {
                 >
                   Connect Gmail on the account page
                 </Link>
+                <Link
+                  href="/account#forwarding"
+                  className="mt-3 block text-sm text-primary underline underline-offset-4"
+                >
+                  Or forward your bills from Gmail instead
+                </Link>
               </div>
             </div>
           </div>
