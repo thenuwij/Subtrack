@@ -11,12 +11,15 @@ import binascii
 import hashlib
 import hmac
 import logging
+import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from xml.sax.saxutils import quoteattr
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -24,6 +27,7 @@ from app.config import settings
 from app.database import SessionLocal, get_db
 from app.gmail import mime
 from app.gmail.scanner import ReceiptCandidate
+from app.middleware.auth import verify_token
 from app.models import DetectedSubscription, InboundAddress, InboundMessage, Subscription
 
 # The scan pipeline still lives in the Gmail router; it moves to a service once
@@ -47,6 +51,15 @@ MAX_BODY_BYTES = MAX_RAW_BYTES * 4 // 3 + 64 * 1024
 MAX_CLOCK_SKEW_SECONDS = 300
 GMAIL_DOMAINS = {"gmail.com", "google.com"}
 GOOGLE_DOMAINS = {"google.com"}
+TOKEN_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
+TOKEN_LENGTH = 20
+CODE_VISIBLE_FOR = timedelta(hours=24)
+# What the Gmail filter forwards: bills and receipts, never sign-in or security mail.
+BILL_SEARCH = (
+    'subject:(receipt OR invoice OR bill OR payment OR subscription OR renewal OR statement '
+    'OR "tax invoice" OR "free trial") '
+    '-subject:(code OR password OR verify OR verification OR "sign in" OR security)'
+)
 
 # Model calls are network-bound. A small pool of its own keeps a burst of
 # forwarded mail from taking the Gmail scanner's slots.
@@ -218,3 +231,100 @@ def _process_candidate(user_id: str, candidate: ReceiptCandidate, gmail_address:
 
 def shutdown_inbound_executor() -> None:
     _executor.shutdown(wait=True, cancel_futures=True)
+
+
+class PauseRequest(BaseModel):
+    paused: bool
+
+
+def _new_token() -> str:
+    return "".join(secrets.choice(TOKEN_ALPHABET) for _ in range(TOKEN_LENGTH))
+
+
+def _get_or_create_address(db: Session, user_id: str) -> InboundAddress:
+    address = db.query(InboundAddress).filter(InboundAddress.user_id == user_id).first()
+    if address is None:
+        address = InboundAddress(user_id=user_id, token=_new_token(), status="pending")
+        db.add(address)
+        db.commit()
+    return address
+
+
+def _address_text(address: InboundAddress) -> str:
+    return f"{address.token}@{settings.inbound_email_domain}"
+
+
+def _address_view(db: Session, address: InboundAddress) -> dict:
+    received_at, count = (
+        db.query(func.max(InboundMessage.received_at), func.count(InboundMessage.id))
+        .filter(InboundMessage.user_id == address.user_id, InboundMessage.outcome == "accepted")
+        .one()
+    )
+    code_fresh = (
+        address.confirmation_received_at is not None
+        and _utcnow() - address.confirmation_received_at < CODE_VISIBLE_FOR
+    )
+    return {
+        "address": _address_text(address),
+        "status": address.status,
+        "gmail_address": address.gmail_address,
+        "confirmation_code": address.confirmation_code if address.status == "pending" and code_fresh else None,
+        "last_received_at": received_at.isoformat() if received_at else None,
+        "received_count": count,
+        "filter_query": BILL_SEARCH,
+    }
+
+
+@router.get("/address")
+def get_address(user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+    return _address_view(db, _get_or_create_address(db, user_id))
+
+
+@router.post("/address/rotate")
+def rotate_address(user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+    address = _get_or_create_address(db, user_id)
+    address.token = _new_token()
+    address.status = "pending"
+    address.gmail_address = None
+    address.confirmation_code = None
+    address.confirmation_received_at = None
+    address.rotated_at = _utcnow()
+    db.commit()
+    return _address_view(db, address)
+
+
+@router.patch("/address")
+def pause_address(
+    body: PauseRequest, user_id: str = Depends(verify_token), db: Session = Depends(get_db)
+):
+    address = _get_or_create_address(db, user_id)
+    address.status = "paused" if body.paused else ("active" if address.gmail_address else "pending")
+    db.commit()
+    return _address_view(db, address)
+
+
+@router.delete("/address", status_code=204)
+def delete_address(user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+    db.query(InboundMessage).filter(InboundMessage.user_id == user_id).delete()
+    db.query(InboundAddress).filter(InboundAddress.user_id == user_id).delete()
+    db.commit()
+    return Response(status_code=204)
+
+
+@router.get("/filter.xml")
+def gmail_filter(user_id: str = Depends(verify_token), db: Session = Depends(get_db)):
+    address = _get_or_create_address(db, user_id)
+    xml = (
+        "<?xml version='1.0' encoding='UTF-8'?>"
+        "<feed xmlns='http://www.w3.org/2005/Atom' xmlns:apps='http://schemas.google.com/apps/2006'>"
+        "<title>Pocketday bill forwarding</title>"
+        "<entry><category term='filter'></category><title>Mail Filter</title>"
+        f"<apps:property name='hasTheWord' value={quoteattr(BILL_SEARCH)}/>"
+        f"<apps:property name='forwardTo' value={quoteattr(_address_text(address))}/>"
+        "</entry></feed>"
+    )
+    return Response(
+        content=xml,
+        media_type="application/xml",
+        headers={"Content-Disposition": 'attachment; filename="pocketday-filter.xml"'},
+    )
