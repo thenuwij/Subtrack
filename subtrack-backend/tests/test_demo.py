@@ -324,6 +324,21 @@ class DemoGuardrailTests(unittest.TestCase):
             self._add_assistant_messages("real-user", 8)
             _enforce_agent_rate_limit(self.db, "real-user")
 
+    def test_real_accounts_are_capped_for_life(self):
+        with patch.object(settings, "assistant_messages_per_account", 10):
+            self._add_assistant_messages("real-user", 9)
+            _enforce_agent_rate_limit(self.db, "real-user")
+            self._add_assistant_messages("real-user", 1)
+            with self.assertRaises(HTTPException) as caught:
+                _enforce_agent_rate_limit(self.db, "real-user")
+        self.assertEqual(caught.exception.status_code, 429)
+        self.assertIn("10 assistant messages", caught.exception.detail)
+
+    def test_account_cap_of_zero_means_no_cap(self):
+        with patch.object(settings, "assistant_messages_per_account", 0):
+            self._add_assistant_messages("real-user", 50)
+            _enforce_agent_rate_limit(self.db, "real-user")
+
 
 if __name__ == "__main__":
     unittest.main()
