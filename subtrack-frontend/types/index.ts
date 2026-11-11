@@ -121,6 +121,7 @@ export interface ForwardingAddress {
   status: 'pending' | 'active' | 'paused'
   gmail_address: string | null
   confirmation_code: string | null
+  confirmation_url: string | null
   last_received_at: string | null
   received_count: number
   filter_query: string

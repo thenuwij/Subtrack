@@ -136,7 +136,11 @@ export function ForwardingSetup() {
           </div>
         </Step>
 
-        <Step n={2} title="Tell Gmail to forward to it" done={Boolean(data.gmail_address)}>
+        <Step
+          n={2}
+          title="Tell Gmail to forward to it"
+          done={Boolean(data.gmail_address) && !data.confirmation_code && !data.confirmation_url}
+        >
           <p className="text-xs text-muted-foreground">
             Open Gmail settings, choose Add a forwarding address, and paste the address above.
           </p>
@@ -153,10 +157,21 @@ export function ForwardingSetup() {
               </div>
               <CopyButton text={data.confirmation_code} what="Code" />
             </div>
+          ) : data.confirmation_url ? (
+            <div className="space-y-2 rounded-xl bg-primary/10 p-3">
+              <p className="text-xs text-muted-foreground">
+                Gmail sent a confirm link for {data.gmail_address}. Open it while signed in to that account.
+              </p>
+              <Button size="sm" asChild>
+                <a href={data.confirmation_url} target="_blank" rel="noopener noreferrer">
+                  Confirm forwarding in Gmail <ExternalLink />
+                </a>
+              </Button>
+            </div>
           ) : data.gmail_address ? (
             <p className="text-xs text-muted-foreground">Confirmed for {data.gmail_address}.</p>
           ) : (
-            <p className="text-xs text-muted-foreground">Waiting for Gmail&apos;s confirmation code. It shows up here.</p>
+            <p className="text-xs text-muted-foreground">Waiting for Gmail&apos;s confirmation. It shows up here.</p>
           )}
         </Step>
 
