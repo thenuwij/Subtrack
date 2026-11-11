@@ -1096,8 +1096,8 @@ class InboundAddress(Base):
     """A user's private forwarding address: ``<token>@<inbound domain>``.
 
     Mail is accepted only from ``gmail_address``, which is learned from Gmail's
-    forwarding confirmation. The confirmation code is kept just long enough to
-    show it on the setup page.
+    forwarding confirmation. The confirmation code or confirm link is kept just
+    long enough to show it on the setup page.
     """
 
     __tablename__ = "inbound_addresses"
@@ -1107,6 +1107,7 @@ class InboundAddress(Base):
     gmail_address = Column(String(320), nullable=True)
     status = Column(String(16), nullable=False, default="pending")  # pending | active | paused
     confirmation_code = Column(String(16), nullable=True)
+    confirmation_url = Column(String(2048), nullable=True)
     confirmation_received_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
     rotated_at = Column(DateTime, nullable=True)

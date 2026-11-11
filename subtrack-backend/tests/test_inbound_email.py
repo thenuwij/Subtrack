@@ -211,6 +211,28 @@ class InboundEmailTests(unittest.TestCase):
         self.assertIsNotNone(address.confirmation_received_at)
         self.assertEqual(address.status, "pending")
 
+    def test_link_only_forwarding_confirmation_stores_the_confirm_link(self):
+        db = self.Session()
+        db.get(InboundAddress, "owner").gmail_address = None
+        db.commit()
+        db.close()
+        confirmation = email(
+            "(Gmail Forwarding Confirmation - Receive Mail from New.Person@gmail.com",
+            "please click the link below to confirm the request:\nhttps://mail.google.com/mail/vf-%5BAbC%5D-123\n",
+            sender="Gmail Team <forwarding-noreply@google.com>",
+            auth=GOOGLE_PASS,
+            message_id="<confirm-link@google.com>",
+        )
+
+        response = self.post(confirmation, envelope_from="forwarding-noreply@google.com")
+
+        self.assertEqual(response.json(), {"outcome": "confirmation"})
+        address = self.address()
+        self.assertIsNone(address.confirmation_code)
+        self.assertEqual(address.confirmation_url, "https://mail.google.com/mail/vf-%5BAbC%5D-123")
+        self.assertEqual(address.gmail_address, "new.person@gmail.com")
+        self.assertEqual(address.status, "pending")
+
     def test_duplicate_email_is_processed_once(self):
         first = self.post(RECEIPT)
         second = self.post(RECEIPT)
@@ -224,6 +246,7 @@ class InboundEmailTests(unittest.TestCase):
     def test_receipt_is_saved_and_analysed_with_a_redacted_candidate(self):
         db = self.Session()
         db.get(InboundAddress, "owner").confirmation_code = "123456789"
+        db.get(InboundAddress, "owner").confirmation_url = "https://mail.google.com/mail/vf-x"
         db.commit()
         db.close()
 
@@ -241,6 +264,7 @@ class InboundEmailTests(unittest.TestCase):
         address = self.address()
         self.assertEqual(address.status, "active")
         self.assertIsNone(address.confirmation_code)
+        self.assertIsNone(address.confirmation_url)
 
     def test_oversized_body_is_refused_before_the_signature_check(self):
         with patch.object(inbound, "MAX_BODY_BYTES", 100):

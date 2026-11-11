@@ -82,12 +82,16 @@ class ForwardingAddressTests(unittest.TestCase):
 
     def test_rotate_changes_token_and_clears_gmail(self):
         before = self.client.get("/inbound/address").json()["address"]
-        self.edit(gmail_address="a@gmail.com", status="active", confirmation_code="123456")
+        self.edit(
+            gmail_address="a@gmail.com", status="active", confirmation_code="123456",
+            confirmation_url="https://mail.google.com/mail/vf-x",
+        )
         after = self.client.post("/inbound/address/rotate").json()
         self.assertNotEqual(before, after["address"])
         self.assertEqual(after["status"], "pending")
         self.assertIsNone(after["gmail_address"])
         self.assertIsNone(after["confirmation_code"])
+        self.assertIsNone(self.row().confirmation_url)
         self.assertIsNotNone(self.row().rotated_at)
 
     def test_pause_and_resume(self):
@@ -113,12 +117,16 @@ class ForwardingAddressTests(unittest.TestCase):
     def test_code_hidden_after_24_hours_or_when_active(self):
         self.client.get("/inbound/address")
         now = inbound._utcnow()
-        self.edit(confirmation_code="123456", confirmation_received_at=now)
-        self.assertEqual(self.client.get("/inbound/address").json()["confirmation_code"], "123456")
+        link = "https://mail.google.com/mail/vf-x"
+        self.edit(confirmation_code="123456", confirmation_url=link, confirmation_received_at=now)
+        shown = self.client.get("/inbound/address").json()
+        self.assertEqual((shown["confirmation_code"], shown["confirmation_url"]), ("123456", link))
         self.edit(confirmation_received_at=now - timedelta(hours=25))
-        self.assertIsNone(self.client.get("/inbound/address").json()["confirmation_code"])
+        expired = self.client.get("/inbound/address").json()
+        self.assertEqual((expired["confirmation_code"], expired["confirmation_url"]), (None, None))
         self.edit(confirmation_received_at=now, status="active")
-        self.assertIsNone(self.client.get("/inbound/address").json()["confirmation_code"])
+        active = self.client.get("/inbound/address").json()
+        self.assertEqual((active["confirmation_code"], active["confirmation_url"]), (None, None))
 
     def test_received_count_counts_only_accepted(self):
         self.client.get("/inbound/address")

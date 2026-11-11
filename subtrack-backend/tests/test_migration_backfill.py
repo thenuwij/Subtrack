@@ -69,7 +69,7 @@ class FlexibleCadenceMigrationTests(unittest.TestCase):
                     connection.execute(
                         "SELECT version_num FROM alembic_version"
                     ).fetchone(),
-                    ("0037_inbound_email",),
+                    ("0038_inbound_confirmation_url",),
                 )
                 message_indexes = {
                     row[1]
@@ -90,7 +90,7 @@ class FlexibleCadenceMigrationTests(unittest.TestCase):
                     connection.execute(
                         "SELECT version_num FROM alembic_version"
                     ).fetchone(),
-                    ("0037_inbound_email",),
+                    ("0038_inbound_confirmation_url",),
                 )
 
     def test_legacy_rows_backfill_and_survive_supported_downgrade(self):
