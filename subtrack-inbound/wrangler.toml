@@ -4,7 +4,7 @@ compatibility_date = "2026-11-01"
 
 [vars]
 # Replace with the deployed backend origin, no trailing slash.
-BACKEND_URL = "https://subtrack-api.twij.app"
+BACKEND_URL = "https://api.pocketday.app"
 
 # INBOUND_EMAIL_SECRET is a secret, set with:
 #   npx wrangler secret put INBOUND_EMAIL_SECRET
