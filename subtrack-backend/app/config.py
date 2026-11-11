@@ -132,6 +132,9 @@ class Settings(BaseSettings):
     # Empty disables POST /inbound/email.
     inbound_email_secret: str = ""
     inbound_email_domain: str = "pocketday.app"
+    # Comma-separated Supabase user IDs allowed to use Gmail OAuth (owner
+    # testing). Empty means nobody; everyone else uses email forwarding.
+    gmail_oauth_user_ids: str = ""
     demo_token_secret: str = ""
     demo_session_hours: int = Field(default=24, ge=1, le=72)
     demo_sessions_per_client_per_hour: int = Field(default=15, ge=1, le=100)
@@ -224,3 +227,11 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def gmail_oauth_allowed(user_id: str) -> bool:
+    """True when this user may connect or scan Gmail through Google OAuth."""
+    allowed = {
+        item.strip() for item in settings.gmail_oauth_user_ids.split(",") if item.strip()
+    }
+    return user_id in allowed

@@ -129,6 +129,8 @@ export interface ForwardingAddress {
 export interface GmailStatus {
   connected: boolean
   configured?: boolean
+  /** False for users who bring in bills by forwarding instead of Google OAuth. */
+  available?: boolean
   email_address?: string
   connected_at?: string | null
   last_scanned_at?: string | null

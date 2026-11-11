@@ -13,13 +13,14 @@ const ASSISTANT_PROMPT = 'What do my recurring payments cost each month?'
 
 interface GettingStartedProps {
   gmailConnected: boolean
+  gmailAvailable: boolean
   hasPayments: boolean
   hasIncome: boolean
   /** Drop the card surface when rendered inside another panel. */
   bare?: boolean
 }
 
-export function GettingStarted({ gmailConnected, hasPayments, hasIncome, bare = false }: GettingStartedProps) {
+export function GettingStarted({ gmailConnected, gmailAvailable, hasPayments, hasIncome, bare = false }: GettingStartedProps) {
   const [hidden, setHidden] = useStoredString(HIDDEN_KEY, '')
   const threads = useApi<AgentThread[]>(apiKeys.agentThreads, token => listAgentThreads(token))
   const askedAssistant = (threads.data ?? []).some(thread => thread.message_count > 0)
@@ -29,8 +30,10 @@ export function GettingStarted({ gmailConnected, hasPayments, hasIncome, bare = 
     {
       gmail: true,
       done: gmailConnected,
-      label: 'Connect Gmail',
-      detail: 'Subtrack finds recurring payments in your receipts. Or forward your bills instead.',
+      label: gmailAvailable ? 'Connect Gmail' : 'Forward your bills from Gmail',
+      detail: gmailAvailable
+        ? 'Subtrack finds recurring payments in your receipts. Or forward your bills instead.'
+        : 'Subtrack finds recurring payments in the bills you forward.',
       href: '/account#forwarding',
     },
     {

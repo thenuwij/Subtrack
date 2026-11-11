@@ -503,7 +503,7 @@ export default function ReviewPage() {
             <Button
               variant="outline"
               onClick={rescan}
-              disabled={scanning || rescanStarting || busy !== null}
+              disabled={scanning || rescanStarting || busy !== null || !gmail.available}
               className="shrink-0"
             >
               {scanning || rescanStarting
@@ -555,22 +555,27 @@ export default function ReviewPage() {
                 <Mail className="h-5 w-5" />
               </div>
               <div>
-                <p className="font-medium text-foreground">No inbox connected</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Connect Gmail and Subtrack will find recurring payments from receipt
-                  emails instead of you entering them by hand.
+                <p className="font-medium text-foreground">
+                  {gmail.available ? 'No inbox connected' : 'No bills forwarded yet'}
                 </p>
-                <Link
-                  href="/account"
-                  className="mt-3 inline-block text-sm text-primary underline underline-offset-4"
-                >
-                  Connect Gmail on the account page
-                </Link>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {gmail.available
+                    ? 'Connect Gmail and Subtrack will find recurring payments from receipt emails instead of you entering them by hand.'
+                    : 'Forward your bills from Gmail and Subtrack will find recurring payments from them instead of you entering them by hand.'}
+                </p>
+                {gmail.available && (
+                  <Link
+                    href="/account"
+                    className="mt-3 inline-block text-sm text-primary underline underline-offset-4"
+                  >
+                    Connect Gmail on the account page
+                  </Link>
+                )}
                 <Link
                   href="/account#forwarding"
                   className="mt-3 block text-sm text-primary underline underline-offset-4"
                 >
-                  Or forward your bills from Gmail instead
+                  {gmail.available ? 'Or forward your bills from Gmail instead' : 'Set up forwarding'}
                 </Link>
               </div>
             </div>

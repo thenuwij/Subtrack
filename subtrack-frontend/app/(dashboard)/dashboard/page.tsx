@@ -195,8 +195,8 @@ export default function DashboardPage() {
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
             <Button asChild size="lg">
-              <Link href={gmail?.connected ? '/review' : '/account#inbox'}>
-                {gmail?.connected ? 'Review what we found' : 'Connect Gmail'}
+              <Link href={gmail?.connected ? '/review' : gmail?.available ? '/account#inbox' : '/account#forwarding'}>
+                {gmail?.connected ? 'Review what we found' : gmail?.available ? 'Connect Gmail' : 'Forward your bills'}
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Link>
             </Button>
@@ -209,6 +209,7 @@ export default function DashboardPage() {
         <div className="mx-auto mt-12 max-w-md">
           <GettingStarted
             gmailConnected={Boolean(gmail?.connected)}
+            gmailAvailable={Boolean(gmail?.available)}
             hasPayments={hasPayments}
             hasIncome={monthlyIncome !== null}
           />
@@ -268,12 +269,16 @@ export default function DashboardPage() {
                   <div>
                     <p className="text-sm font-semibold text-foreground">Find the ones you&apos;ve forgotten</p>
                     <p className="mt-0.5 text-xs text-muted-foreground">
-                      Connect Gmail to spot recurring charges. Read-only, nothing added without your approval.
+                      {gmail.available
+                        ? 'Connect Gmail to spot recurring charges. Read-only, nothing added without your approval.'
+                        : 'Forward your bills from Gmail to spot recurring charges. Nothing is added without your approval.'}
                     </p>
                   </div>
                 </div>
                 <Button asChild size="sm" className="mt-3 w-full">
-                  <Link href="/account#inbox">Connect Gmail</Link>
+                  <Link href={gmail.available ? '/account#inbox' : '/account#forwarding'}>
+                    {gmail.available ? 'Connect Gmail' : 'Forward your bills'}
+                  </Link>
                 </Button>
               </section>
             )}
@@ -300,6 +305,7 @@ export default function DashboardPage() {
             <GettingStarted
               bare
               gmailConnected={Boolean(gmail?.connected)}
+            gmailAvailable={Boolean(gmail?.available)}
               hasPayments={hasPayments}
               hasIncome={monthlyIncome !== null}
             />

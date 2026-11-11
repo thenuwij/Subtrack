@@ -25,7 +25,7 @@ from google_auth_oauthlib.flow import Flow
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from app.config import settings
+from app.config import gmail_oauth_allowed, settings
 from app.database import SessionLocal, get_db
 from app.gmail.crypto import (
     TokenUndecryptable,
@@ -86,6 +86,12 @@ def gmail_is_configured() -> bool:
     except RuntimeError:
         return False
     return True
+
+
+def _require_oauth_allowed(user_id: str) -> None:
+    """Gmail OAuth is owner-only; everyone else uses email forwarding."""
+    if not gmail_oauth_allowed(user_id):
+        raise HTTPException(status_code=404, detail="Not found")
 
 
 def _client_config() -> dict:
@@ -287,9 +293,14 @@ def gmail_status(
     user_id: str = Depends(verify_token),
     db: Session = Depends(get_db),
 ):
+    available = gmail_oauth_allowed(user_id)
     account = db.query(GmailAccount).filter(GmailAccount.user_id == user_id).first()
     if not account:
-        return {"connected": False, "configured": gmail_is_configured()}
+        return {
+            "connected": False,
+            "configured": gmail_is_configured(),
+            "available": available,
+        }
 
     # A scan that died without cleaning up would otherwise report "running"
     # here for the full staleness window: the user stares at a spinner with
@@ -306,6 +317,7 @@ def gmail_status(
     return {
         "connected": True,
         "configured": gmail_is_configured(),
+        "available": available,
         "email_address": account.email_address,
         "connected_at": account.connected_at.isoformat() if account.connected_at else None,
         "last_scanned_at": account.last_scanned_at.isoformat() if account.last_scanned_at else None,
@@ -328,6 +340,7 @@ def gmail_connect(
 ):
     """Create a short-lived, user-bound PKCE flow and return Google's URL."""
     reject_demo_user(user_id, "Connecting Gmail")
+    _require_oauth_allowed(user_id)
     if not gmail_is_configured():
         raise HTTPException(
             status_code=503,
@@ -407,6 +420,7 @@ def gmail_oauth_complete(
 ):
     """Consume one-time state, exchange with PKCE, then link the mailbox."""
     reject_demo_user(user_id, "Connecting Gmail")
+    _require_oauth_allowed(user_id)
     if not gmail_is_configured():
         raise HTTPException(
             status_code=503,
@@ -1335,6 +1349,7 @@ def start_scan(
     db: Session = Depends(get_db),
 ):
     reject_demo_user(user_id, "Scanning Gmail")
+    _require_oauth_allowed(user_id)
     if not gmail_is_configured():
         raise HTTPException(
             status_code=503,
@@ -1370,6 +1385,7 @@ def update_gmail_settings(
     user_id: str = Depends(verify_token),
     db: Session = Depends(get_db),
 ):
+    _require_oauth_allowed(user_id)
     account = db.query(GmailAccount).filter(GmailAccount.user_id == user_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="No Gmail account connected")
@@ -1411,7 +1427,11 @@ def run_scheduled_scans(
     now = _utcnow()
     started = 0
     accounts = db.query(GmailAccount).filter(GmailAccount.auto_scan_enabled.is_(True)).all()
-    due_ids = [account.user_id for account in accounts if due_for_auto_scan(account, now)]
+    due_ids = [
+        account.user_id
+        for account in accounts
+        if gmail_oauth_allowed(account.user_id) and due_for_auto_scan(account, now)
+    ]
     for user_id in due_ids:
         account = db.query(GmailAccount).filter(
             GmailAccount.user_id == user_id,
