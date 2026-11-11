@@ -1,7 +1,7 @@
 import json
 import os
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import uuid4
@@ -17,6 +17,7 @@ os.environ.setdefault("SUPABASE_JWT_SECRET", "test-secret")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
 
 from app.agent.tools import READ_TOOL_DEFINITIONS, TOOL_DEFINITIONS  # noqa: E402
+from app.config import settings  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.models import AgentMessage, AgentThread  # noqa: E402
 from app.routers import agent as agent_router  # noqa: E402
@@ -206,6 +207,43 @@ class AgentFoundationTests(unittest.TestCase):
 
         # Another account's usage never consumes this user's allowance.
         _enforce_agent_rate_limit(db, "user-2")
+        db.close()
+
+    def test_assistant_runs_have_a_daily_cap_per_user(self):
+        from fastapi import HTTPException
+
+        db = self.Session()
+        thread = AgentThread(id=uuid4(), user_id="user-1", title="Busy", next_message_sequence=3)
+        db.add(thread)
+        db.flush()
+        earlier = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=2)
+        db.add_all([
+            AgentMessage(
+                id=uuid4(), thread_id=thread.id, user_id="user-1", role="assistant",
+                sequence=index + 1, content="", status="completed", created_at=earlier,
+            )
+            for index in range(3)
+        ])
+        db.commit()
+
+        with patch.object(settings, "assistant_runs_per_day", 3):
+            with self.assertRaises(HTTPException) as caught:
+                _enforce_agent_rate_limit(db, "user-1")
+            _enforce_agent_rate_limit(db, "user-2")
+        self.assertEqual(caught.exception.status_code, 429)
+        self.assertIn("today", caught.exception.detail)
+        db.close()
+
+    def test_assistant_is_paused_when_the_daily_ai_budget_is_spent(self):
+        from app.services.ai_tracing import AiBudgetExceeded
+
+        db = self.Session()
+        with (
+            patch("app.routers.agent.require_ai_budget", side_effect=AiBudgetExceeded()),
+            self.assertRaises(AiBudgetExceeded) as caught,
+        ):
+            _enforce_agent_rate_limit(db, "user-1")
+        self.assertEqual(caught.exception.status_code, 503)
         db.close()
 
     def test_history_skips_failed_placeholders_and_coalesces_roles(self):

@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from threading import BoundedSemaphore, RLock
 from uuid import UUID, uuid4
 
@@ -104,8 +105,13 @@ def _valid_model_pairs(
 def duplicate_suggestions(
     db: Session,
     user_id: str,
+    before_model_call: Callable[[], None] | None = None,
 ) -> tuple[list[Subscription], list[tuple[int, int, str]]]:
-    """Return one bounded suggestion set shared by REST and assistant reads."""
+    """Return one bounded suggestion set shared by REST and assistant reads.
+
+    before_model_call runs only when the cache misses, so a caller can rate
+    limit model calls without limiting cheap cached reads.
+    """
     from app.gmail.analyzer import find_duplicates
 
     rows = _candidate_rows(db, user_id)
@@ -120,6 +126,8 @@ def duplicate_suggestions(
         )
 
     if pairs is None:
+        if before_model_call is not None:
+            before_model_call()
         # The matcher is network-bound. Release the read transaction and its
         # connection before waiting, but retain the already-loaded detached
         # rows needed by the model and response.

@@ -1125,5 +1125,6 @@ class InboundMessage(Base):
     user_id = Column(String, nullable=False)
     message_hash = Column(String(64), nullable=False)
     # accepted | filtered (sensitive email dropped) | confirmation | rejected
+    # | limited (over the daily cap)
     outcome = Column(String(16), nullable=False)
     received_at = Column(DateTime, nullable=False, server_default=func.now())

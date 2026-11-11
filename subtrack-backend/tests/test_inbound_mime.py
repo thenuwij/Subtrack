@@ -60,3 +60,9 @@ class InboundMimeTests(unittest.TestCase):
         self.assertTrue(mime.passes_authentication(trusted, {"gmail.com"}))
         self.assertFalse(mime.passes_authentication(forged_below, {"gmail.com"}))
         self.assertFalse(mime.passes_authentication(trusted, {"google.com"}))
+
+    def test_a_replayed_gmail_dkim_signature_is_not_enough(self):
+        dkim_only = mime.parse_message(raw_email("x", "", headers=(
+            "Authentication-Results: mx.cloudflare.net; dkim=pass header.d=gmail.com; spf=fail smtp.mailfrom=evil.example",
+        )))
+        self.assertFalse(mime.passes_authentication(dkim_only, {"gmail.com"}))

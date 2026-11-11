@@ -99,10 +99,12 @@ def forwarding_confirmation(message: EmailMessage) -> tuple[str, str] | None:
 
 
 def passes_authentication(message: EmailMessage, domains: set[str]) -> bool:
-    """Cloudflare saw SPF or DKIM pass for one of ``domains``.
+    """Cloudflare saw SPF pass for an envelope sender at one of ``domains``.
 
     Only the topmost Authentication-Results header counts, and only when it is
     Cloudflare's: anything below it came with the message and can be forged.
+    DKIM is not enough: a DKIM-signed Gmail message can be replayed from any
+    server, while SPF proves Google itself delivered this copy.
     """
     results = message.get_all("Authentication-Results") or []
     if not results:
@@ -112,11 +114,9 @@ def passes_authentication(message: EmailMessage, domains: set[str]) -> bool:
     if authserv_id.strip().split(" ")[0].lower() != _TRUSTED_AUTHSERV_ID:
         return False
     for result in rest.split(";"):
-        method = re.match(r"\s*(spf|dkim)\s*=\s*(\w+)", result, re.IGNORECASE)
-        if not method or method.group(2).lower() != "pass":
+        if not re.match(r"\s*spf\s*=\s*pass\b", result, re.IGNORECASE):
             continue
-        key = r"header\.d" if method.group(1).lower() == "dkim" else r"smtp\.mailfrom"
-        found = re.search(rf"{key}\s*=\s*(\S+)", result, re.IGNORECASE)
+        found = re.search(r"smtp\.mailfrom\s*=\s*(\S+)", result, re.IGNORECASE)
         if found and found.group(1).rsplit("@", 1)[-1].lower() in domains:
             return True
     return False
