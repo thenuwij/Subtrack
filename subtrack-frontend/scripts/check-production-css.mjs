@@ -1,5 +1,6 @@
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { resolve, relative } from 'node:path'
+import { runInNewContext } from 'node:vm'
 import { fileURLToPath } from 'node:url'
 
 // Inspect only CSS actually linked by the rendered page, not old files that
@@ -24,12 +25,37 @@ export function assertSharedStyles(css) {
   }
 }
 
+function manifestPath(appDir, page) {
+  const groups = readdirSync(appDir).filter(name => name.startsWith('('))
+  return ['', ...groups]
+    .map(group => resolve(appDir, group, page, 'page_client-reference-manifest.js'))
+    .find(path => existsSync(path))
+}
+
+// Prefer the prerendered HTML; when the page is not prerendered (as on some
+// Vercel builders), fall back to the stylesheets this build's manifest links.
+function linkedStylesheets(root, page) {
+  const appDir = resolve(root, 'server/app')
+  const htmlPath = resolve(appDir, `${page}.html`)
+  if (existsSync(htmlPath)) {
+    return [...readFileSync(htmlPath, 'utf8').matchAll(/href="([^"?#]+\.css)(?:[?#][^"]*)?"/g)]
+      .map(match => match[1]).filter(url => url.startsWith('/_next/static/'))
+  }
+  const manifest = manifestPath(appDir, page)
+  if (!manifest) throw new Error(`No prerendered HTML or client manifest for ${page}`)
+  const sandbox = {}
+  sandbox.globalThis = sandbox
+  runInNewContext(readFileSync(manifest, 'utf8'), sandbox)
+  const entries = Object.values(sandbox.__RSC_MANIFEST ?? {})
+    .flatMap(entry => Object.values(entry.entryCSSFiles ?? {}).flat())
+  return [...new Set(entries.map(file => `/_next/${file.path}`))]
+    .filter(url => url.startsWith('/_next/static/') && url.endsWith('.css'))
+}
+
 export function checkProductionCss(buildDir = '.next') {
   const root = resolve(buildDir)
   for (const page of ['dashboard', 'subscriptions/save', 'assistant']) {
-    const html = readFileSync(resolve(root, 'server/app', `${page}.html`), 'utf8')
-    const assets = [...html.matchAll(/href="([^"?#]+\.css)(?:[?#][^"]*)?"/g)]
-      .map(match => match[1]).filter(url => url.startsWith('/_next/static/'))
+    const assets = linkedStylesheets(root, page)
     if (!assets.length) throw new Error(`No production stylesheets linked by ${page}`)
     const css = assets.map(url => {
       const path = resolve(root, url.slice('/_next/'.length))
