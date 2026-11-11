@@ -11,6 +11,7 @@ from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
 from email.utils import parseaddr, parsedate_to_datetime
+from typing import NamedTuple
 
 from app.gmail.redaction import redact
 from app.gmail.scanner import (
@@ -26,9 +27,17 @@ from app.gmail.scanner import (
 
 GMAIL_CONFIRMATION_SENDER = "forwarding-noreply@google.com"
 _CONFIRMATION_SUBJECT = re.compile(
-    r"\(#(\d{4,16})\)\s*Gmail Forwarding Confirmation\s*-\s*Receive Mail from\s+<?([\w.+-]+@[\w.-]+)>?",
+    r"(?:\(#(\d{4,16})\)\s*)?Gmail Forwarding Confirmation\s*-\s*Receive Mail from\s+<?([\w.+-]+@[\w.-]+)>?",
     re.IGNORECASE,
 )
+_CONFIRMATION_LINK = re.compile(r"https://mail\.google\.com/mail/vf-[^\s<>\"')]+")
+
+
+class ForwardingConfirmation(NamedTuple):
+    gmail_address: str
+    code: str | None
+    link: str | None
+
 
 # One-time codes, account security and health mail never enter the pipeline.
 _SENSITIVE = re.compile(
@@ -88,14 +97,21 @@ def is_sensitive(subject: str, body: str) -> bool:
     return bool(_SENSITIVE.search(subject) or _SENSITIVE.search(body))
 
 
-def forwarding_confirmation(message: EmailMessage) -> tuple[str, str] | None:
-    """(code, gmail address) from Gmail's forwarding confirmation, else None."""
+def forwarding_confirmation(message: EmailMessage) -> ForwardingConfirmation | None:
+    """Gmail's forwarding confirmation: the Gmail address plus a code or confirm link.
+
+    Older confirmations put the code in the subject; newer ones only carry a
+    link in the body.
+    """
     if sender_address(message) != GMAIL_CONFIRMATION_SENDER:
         return None
     match = _CONFIRMATION_SUBJECT.search(header(message, "Subject"))
     if not match:
         return None
-    return match.group(1), match.group(2).lower()
+    link = _CONFIRMATION_LINK.search(body_text(message))
+    if match.group(1) is None and link is None:
+        return None
+    return ForwardingConfirmation(match.group(2).lower(), match.group(1), link.group(0) if link else None)
 
 
 def passes_authentication(message: EmailMessage, domains: set[str]) -> bool:

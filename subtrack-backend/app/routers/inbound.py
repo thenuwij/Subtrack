@@ -191,7 +191,9 @@ def receive_email(
     candidate: ReceiptCandidate | None = None
     if confirmation is not None:
         outcome = "confirmation"
-        address.confirmation_code, address.gmail_address = confirmation
+        address.gmail_address = confirmation.gmail_address
+        address.confirmation_code = confirmation.code
+        address.confirmation_url = confirmation.link
         address.confirmation_received_at = _utcnow()
     else:
         body_text = mime.body_text(message)
@@ -204,6 +206,7 @@ def receive_email(
             candidate = mime.to_candidate(message, message_id, body_text)
             address.status = "active"
             address.confirmation_code = None
+            address.confirmation_url = None
     del message, raw
 
     user_id, gmail_address = address.user_id, address.gmail_address
@@ -282,15 +285,17 @@ def _address_view(db: Session, address: InboundAddress) -> dict:
         .filter(InboundMessage.user_id == address.user_id, InboundMessage.outcome == "accepted")
         .one()
     )
-    code_fresh = (
-        address.confirmation_received_at is not None
+    show_confirmation = (
+        address.status == "pending"
+        and address.confirmation_received_at is not None
         and _utcnow() - address.confirmation_received_at < CODE_VISIBLE_FOR
     )
     return {
         "address": _address_text(address),
         "status": address.status,
         "gmail_address": address.gmail_address,
-        "confirmation_code": address.confirmation_code if address.status == "pending" and code_fresh else None,
+        "confirmation_code": address.confirmation_code if show_confirmation else None,
+        "confirmation_url": address.confirmation_url if show_confirmation else None,
         "last_received_at": received_at.isoformat() if received_at else None,
         "received_count": count,
         "filter_query": BILL_SEARCH,
@@ -309,6 +314,7 @@ def rotate_address(user_id: str = Depends(verify_token), db: Session = Depends(g
     address.status = "pending"
     address.gmail_address = None
     address.confirmation_code = None
+    address.confirmation_url = None
     address.confirmation_received_at = None
     address.rotated_at = _utcnow()
     db.commit()

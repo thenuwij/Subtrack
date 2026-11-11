@@ -48,8 +48,24 @@ class InboundMimeTests(unittest.TestCase):
         subject = "(#123456789) Gmail Forwarding Confirmation - Receive Mail from Someone@gmail.com"
         real = mime.parse_message(raw_email(subject, "", sender="Gmail Team <forwarding-noreply@google.com>"))
         fake = mime.parse_message(raw_email(subject, "", sender="attacker@example.com"))
-        self.assertEqual(mime.forwarding_confirmation(real), ("123456789", "someone@gmail.com"))
+        self.assertEqual(mime.forwarding_confirmation(real), ("someone@gmail.com", "123456789", None))
         self.assertIsNone(mime.forwarding_confirmation(fake))
+
+    def test_forwarding_confirmation_reads_the_confirm_link_when_there_is_no_code(self):
+        subject = "(Gmail Forwarding Confirmation - Receive Mail from Someone@gmail.com"
+        body = (
+            "please click the link below to confirm the request:\n\n"
+            "https://mail.google.com/mail/vf-%5BAbC123%5D-XyZ_789\n\n"
+            "To cancel, click: https://mail.google.com/mail/uf-%5BAbC123%5D-XyZ_789\n"
+        )
+        google = "Gmail Team <forwarding-noreply@google.com>"
+        with_link = mime.parse_message(raw_email(subject, body, sender=google))
+        without_link = mime.parse_message(raw_email(subject, "no link here", sender=google))
+        self.assertEqual(
+            mime.forwarding_confirmation(with_link),
+            ("someone@gmail.com", None, "https://mail.google.com/mail/vf-%5BAbC123%5D-XyZ_789"),
+        )
+        self.assertIsNone(mime.forwarding_confirmation(without_link))
 
     def test_only_cloudflares_topmost_authentication_header_counts(self):
         trusted = mime.parse_message(raw_email("x", "", headers=(f"Authentication-Results: {CLOUDFLARE_PASS}",)))
