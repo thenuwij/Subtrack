@@ -1,7 +1,7 @@
 import { CalendarClock, Mail, MessageCircle } from 'lucide-react'
 
 const FEATURES = [
-  { icon: Mail, text: 'Finds bills and subscriptions in Gmail' },
+  { icon: Mail, text: 'Finds bills in the emails you forward' },
   { icon: CalendarClock, text: 'Counts what’s due before your next pay' },
   { icon: MessageCircle, text: 'Answers “can I afford it?” in plain words' },
 ]

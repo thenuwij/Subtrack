@@ -375,7 +375,7 @@ export default function AccountPage() {
       </section>
 
       <nav aria-label="Settings sections" className="flex flex-wrap gap-2">
-        {[['preferences', 'Preferences'], ['inbox', 'Email connection'], ['privacy', 'Your data']].map(([id, label]) => <a key={id} href={`#${id}`} className="inline-flex min-h-10 items-center rounded-full border border-border bg-card px-4 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary">{label}</a>)}
+        {[['preferences', 'Preferences'], ['forwarding', 'Forward bills'], ['privacy', 'Your data']].map(([id, label]) => <a key={id} href={`#${id}`} className="inline-flex min-h-10 items-center rounded-full border border-border bg-card px-4 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary">{label}</a>)}
       </nav>
       <div id="preferences" className="scroll-mt-20">
       <Section title="Preferences">
@@ -446,32 +446,32 @@ export default function AccountPage() {
       </Section>
       </div>
 
-      {!currentUser.isDemo && (
-        <div id="forwarding" className="scroll-mt-6 rounded-2xl bg-card shadow-sm p-6 space-y-4">
-          <h2 className="text-[17px] font-semibold text-foreground">Forward bills from Gmail</h2>
+      <div id="forwarding" className="scroll-mt-6 rounded-2xl bg-card shadow-sm p-6 space-y-4">
+        <h2 className="text-[17px] font-semibold text-foreground">Forward bills from Gmail</h2>
+        {currentUser.isDemo ? (
+          <div className="flex flex-col gap-4 rounded-xl bg-muted/50 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-medium">Not available in the demo</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                The demo uses sample findings. Create a free account to forward your own bills.
+              </p>
+            </div>
+            <Button variant="outline" onClick={handleCreateAccount} className="shrink-0">
+              Create a free account
+            </Button>
+          </div>
+        ) : (
           <ForwardingSetup />
-        </div>
-      )}
+        )}
+      </div>
 
-      {gmail && (currentUser.isDemo || gmail.connected || gmail.available) && (
+      {gmail && !currentUser.isDemo && (gmail.connected || gmail.available) && (
         <div id="inbox" className="scroll-mt-6 rounded-2xl bg-card shadow-sm p-6 space-y-4">
           <div>
             <h2 className="text-[17px] font-semibold text-foreground">Email connection</h2>
           </div>
 
-          {currentUser.isDemo ? (
-            <div className="flex flex-col gap-4 rounded-xl bg-muted/50 p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium">Not available in the demo</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  The demo uses sample findings instead of a real inbox. Create a free account to connect your own Gmail.
-                </p>
-              </div>
-              <Button variant="outline" onClick={handleCreateAccount} className="shrink-0">
-                Create a free account
-              </Button>
-            </div>
-          ) : gmail.connected ? (
+          {gmail.connected ? (
             <>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">

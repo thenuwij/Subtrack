@@ -525,11 +525,11 @@ export function SafeToSpendCard() {
 
   return (
     <section className="money-hero" data-tour="free-to-spend">
-      <div className="flex items-baseline justify-between gap-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 className="text-[17px] font-semibold text-foreground">
           This pay
           {cycleStart && position.next_payday ? (
-            <span className="ml-2 text-sm font-normal text-muted-foreground">
+            <span className="ml-2 whitespace-nowrap text-sm font-normal text-muted-foreground">
               {cycleStart} – {formatStoredDate(position.next_payday, { day: 'numeric', month: 'short' })}
             </span>
           ) : null}

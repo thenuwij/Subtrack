@@ -74,7 +74,7 @@ const steps: DriveStep[] = [
 const finalStep: DriveStep = {
   popover: {
     title: 'You are all set',
-    description: 'Start by connecting Gmail in Account, or add your first payment. You can replay this tour from Account settings.',
+    description: 'Start by adding your first payment, or forward your bills from Gmail in Account. You can replay this tour from Account settings.',
   },
 }
 
@@ -135,7 +135,7 @@ export function OnboardingTour() {
           <LogoMark className="mb-2 h-10 w-10" />
           <DialogTitle>Welcome to Pocketday</DialogTitle>
           <DialogDescription>
-            Pocketday finds your recurring payments in your Gmail receipts, shows what they really cost each month, and flags anything that changes. Want a quick look around?
+            Pocketday shows what’s yours to spend until payday, after your bills and savings. Want a quick look around?
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>

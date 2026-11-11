@@ -13,6 +13,8 @@ from app.models import (
     DetectionStatus,
     GmailReceipt,
     PaymentReminder,
+    SafeToSpendProfile,
+    SetAside,
     Subscription,
     SubscriptionChange,
     UserPreference,
@@ -20,6 +22,9 @@ from app.models import (
 
 DEMO_MONTHLY_INCOME = 6500.0
 PURGE_BATCH_SIZE = 50
+DEMO_BALANCE = 2400.0
+DEMO_PAY_AMOUNT = 3000.0
+DEMO_PAYDAY_IN = 6
 
 DEMO_PAYMENTS: tuple[dict, ...] = (
     {"name": "Rent", "category": "housing", "amount": 550, "interval_unit": "week",
@@ -128,6 +133,23 @@ def seed_demo_user(db: Session, user_id: str) -> None:
         base_currency="AUD",
         monthly_income=DEMO_MONTHLY_INCOME,
     ))
+
+    db.add(SafeToSpendProfile(
+        user_id=user_id,
+        balance=DEMO_BALANCE,
+        currency="AUD",
+        balance_as_of=now,
+        pay_amount=DEMO_PAY_AMOUNT,
+        pay_anchor_on=_calendar_day(DEMO_PAYDAY_IN).date(),
+        pay_interval_unit="week",
+        pay_interval_count=2,
+        buffer=100,
+    ))
+    db.add_all([
+        SetAside(user_id=user_id, kind="save", name="Holiday fund", amount_per_pay=150,
+                 currency="AUD", target_amount=3000),
+        SetAside(user_id=user_id, kind="pot", name="Eating out", amount_per_pay=80, currency="AUD"),
+    ])
 
     subs = {spec["name"]: _demo_subscription(db, user_id, spec) for spec in DEMO_PAYMENTS}
     broadband = subs["Aussie Broadband"]

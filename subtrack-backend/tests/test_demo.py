@@ -190,6 +190,21 @@ class DemoSessionTests(unittest.TestCase):
         self.assertIsNone(preference.onboarding_completed_at)
         self.assertEqual(preference.monthly_income, 6500)
 
+    def test_new_demo_has_a_pay_profile_and_set_asides(self):
+        from app.models import SafeToSpendProfile, SetAside
+
+        with patch.object(settings, "demo_token_secret", DEMO_SECRET):
+            result = create_demo_session(request_from("198.51.100.1"), self.db)
+            user_id = auth.verify_token(credentials(result["access_token"]))
+
+        profile = self.db.get(SafeToSpendProfile, user_id)
+        self.assertIsNotNone(profile)
+        self.assertGreater(profile.pay_anchor_on, datetime.now(timezone.utc).date())
+        kinds = {
+            row.kind for row in self.db.query(SetAside).filter(SetAside.user_id == user_id)
+        }
+        self.assertEqual(kinds, {"save", "pot"})
+
     def test_new_demo_has_payment_history_to_show(self):
         from app.services.paid_history import paid_history
 

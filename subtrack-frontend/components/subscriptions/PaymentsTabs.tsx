@@ -27,7 +27,7 @@ export function PaymentsTabs() {
             key={href}
             href={href}
             aria-current={active ? 'page' : undefined}
-            className={`flex min-h-12 items-center gap-2.5 rounded-xl px-3 py-2 transition-colors ${
+            className={`flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl px-1 py-2 text-center sm:flex-row sm:justify-start sm:gap-2.5 sm:px-3 sm:text-left transition-colors ${
               active
                 ? 'bg-gradient-to-br from-primary/25 to-primary/5 text-foreground ring-1 ring-primary/40'
                 : 'text-foreground hover:bg-muted'
