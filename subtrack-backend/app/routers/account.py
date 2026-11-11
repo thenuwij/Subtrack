@@ -34,6 +34,8 @@ from app.models import (
     GmailAccount,
     GmailOAuthState,
     GmailReceipt,
+    InboundAddress,
+    InboundMessage,
     MoneyGoal,
     MoneyRule,
     PaymentDecision,
@@ -126,6 +128,19 @@ EXPORT_RESOURCES: tuple[ExportResource, ...] = (
             "similar_reason", "status", "detected_at", "resolved_at",
         ),
         ("detected_at", "id"),
+    ),
+    # The forwarding token and confirmation code are left out like OAuth state.
+    ExportResource(
+        "forwarding_address",
+        InboundAddress,
+        ("gmail_address", "status", "confirmation_received_at", "created_at", "rotated_at"),
+        ("user_id",),
+    ),
+    ExportResource(
+        "forwarded_emails",
+        InboundMessage,
+        ("id", "message_hash", "outcome", "received_at"),
+        ("received_at", "id"),
     ),
     ExportResource(
         "preferences",
@@ -302,6 +317,8 @@ DELETE_ORDER: tuple[tuple[str, type], ...] = (
     ("email_preferences", EmailPreference),
     ("reminder_deliveries", ReminderDelivery),
     ("gmail_oauth_states", GmailOAuthState),
+    ("inbound_messages", InboundMessage),
+    ("inbound_addresses", InboundAddress),
     ("transactions", Transaction),
     ("set_asides", SetAside),
     ("transaction_links", TransactionLink),
