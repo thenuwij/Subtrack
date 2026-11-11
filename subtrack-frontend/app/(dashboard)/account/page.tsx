@@ -461,7 +461,7 @@ export default function AccountPage() {
             </Button>
           </div>
         ) : (
-          <ForwardingSetup />
+          <ForwardingSetup email={currentUser.email ?? null} />
         )}
       </div>
 
