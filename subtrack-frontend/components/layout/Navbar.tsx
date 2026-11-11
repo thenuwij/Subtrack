@@ -51,11 +51,11 @@ export default function Navbar() {
     <>
       <a href="#main-content" className="sr-only z-[100] rounded-lg bg-card px-4 py-3 focus:not-sr-only focus:fixed focus:left-4 focus:top-4">Skip to content</a>
       <header className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between border-b border-border/70 bg-background/90 px-5 backdrop-blur-xl md:hidden">
-        <Link href="/dashboard" className="flex items-center gap-2.5" aria-label="Subtrack overview"><LogoMark className="h-7 w-7" /><span className="text-[15px] font-semibold tracking-tight">Subtrack</span></Link>
+        <Link href="/dashboard" className="flex items-center gap-2.5" aria-label="Pocketday overview"><LogoMark className="h-7 w-7" /><span className="text-[15px] font-semibold tracking-tight">Pocketday</span></Link>
         <Link href="/account" aria-label="Account and settings" className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-muted"><UserAvatar name={currentUser.name} email={currentUser.email} avatarUrl={currentUser.avatarUrl} className="h-8 w-8 text-xs" /></Link>
       </header>
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-sidebar-border/60 bg-sidebar px-4 py-8 md:flex lg:w-60">
-        <Link href="/dashboard" aria-label="Subtrack overview" className="mb-12 px-3"><Logo /></Link>
+        <Link href="/dashboard" aria-label="Pocketday overview" className="mb-12 px-3"><Logo /></Link>
         <p className="eyebrow mb-3 px-3">Your money</p>
         <nav aria-label="Main" className="space-y-1.5">{navItems()}</nav>
         <div className="mt-auto space-y-5 pt-10">

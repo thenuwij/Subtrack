@@ -32,14 +32,14 @@ export function GettingStarted({ gmailConnected, gmailAvailable, hasPayments, ha
       done: gmailConnected,
       label: gmailAvailable ? 'Connect Gmail' : 'Forward your bills from Gmail',
       detail: gmailAvailable
-        ? 'Subtrack finds recurring payments in your receipts. Or forward your bills instead.'
-        : 'Subtrack finds recurring payments in the bills you forward.',
+        ? 'Pocketday finds recurring payments in your receipts. Or forward your bills instead.'
+        : 'Pocketday finds recurring payments in the bills you forward.',
       href: '/account#forwarding',
     },
     {
       done: hasPayments,
       label: 'Approve or add your first payment',
-      detail: gmailConnected ? 'Review what Subtrack found in your inbox.' : 'Or add one by hand.',
+      detail: gmailConnected ? 'Review what Pocketday found in your inbox.' : 'Or add one by hand.',
       href: gmailConnected ? '/review' : '/subscriptions',
     },
     {

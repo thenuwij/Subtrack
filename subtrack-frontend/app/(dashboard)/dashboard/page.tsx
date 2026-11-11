@@ -189,7 +189,7 @@ export default function DashboardPage() {
             Let&apos;s find what you&apos;re paying for
           </h1>
           <p className="mx-auto mt-3 max-w-lg text-base text-muted-foreground">
-            Subtrack reads the receipts already sitting in your inbox and works out
+            Pocketday reads the receipts already sitting in your inbox and works out
             which ones are recurring — so you don&apos;t have to remember them.
           </p>
 

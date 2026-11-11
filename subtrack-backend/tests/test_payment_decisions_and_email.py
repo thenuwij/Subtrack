@@ -100,7 +100,7 @@ class PaymentAndEmailTests(unittest.TestCase):
         now = datetime(2026, 11, 8, 10)
         with (
             patch("app.services.email_reminders.settings.resend_api_key", "test"),
-            patch("app.services.email_reminders.settings.reminder_email_from", "Subtrack <hello@example.com>"),
+            patch("app.services.email_reminders.settings.reminder_email_from", "Pocketday <hello@example.com>"),
         ):
             self.assertEqual(send_due(self.db, now=now, send=send)["sent"], 1)
             self.assertEqual(send_due(self.db, now=now, send=send)["sent"], 0)

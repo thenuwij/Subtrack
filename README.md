@@ -1,4 +1,6 @@
-# Subtrack
+# Pocketday
+
+Formerly Subtrack.
 
 [![Live demo](https://img.shields.io/badge/Live_demo-Explore-0A84FF?style=for-the-badge&logo=vercel&logoColor=white&labelColor=0060DF)](https://subtrack.twij.app/login)
 
@@ -9,15 +11,15 @@
 ![Claude API](https://img.shields.io/badge/Claude_API-20232A?logo=anthropic&logoColor=D97757)
 [![MIT License](https://img.shields.io/badge/License-MIT-20232A?labelColor=555)](LICENSE)
 
-Subtrack shows where your pay goes and what's actually yours to spend until payday.
+Pocketday shows where your pay goes and what's actually yours to spend until payday.
 
-It's for people paid weekly or fortnightly who don't want to track every purchase. You enter your pay and bills once, Subtrack holds back what's already spoken for, and an AI assistant can answer questions and make changes for you. No bank login.
+It's for people paid weekly or fortnightly who don't want to track every purchase. You enter your pay and bills once, Pocketday holds back what's already spoken for, and an AI assistant can answer questions and make changes for you. No bank login.
 
 ## Key Features
 
 ### Three-minute setup
 
-Tell Subtrack when you're paid and what comes out regularly, and you see where your pay goes straight away.
+Tell Pocketday when you're paid and what comes out regularly, and you see where your pay goes straight away.
 
 - Pick your pay schedule (weekly, fortnightly or monthly), next payday and usual pay after tax.
 - Tap common Australian bills, or type them in one line ("rent 400 weekly, phone 35 monthly").
@@ -34,7 +36,7 @@ Every recurring payment in one place, with what it costs this month and over a y
 
 ### Find bills in Gmail
 
-Set up a Gmail filter that forwards your bills to a private Subtrack address and Subtrack suggests recurring bills you might be missing. It never reads the rest of your mailbox.
+Set up a Gmail filter that forwards your bills to a private Pocketday address and Pocketday suggests recurring bills you might be missing. It never reads the rest of your mailbox.
 
 - Nothing is added until you approve it on the Review page.
 - Raw emails are never stored, only the merchant, amount and dates.
@@ -46,7 +48,7 @@ Hold money back before you spend it, every payday.
 
 - **Budget:** "Groceries, $150 a pay", with a bar showing what's left this pay.
 - **Saving:** "Trip, $100 a pay".
-- Your bills are already counted, so Subtrack warns you if a new budget looks like one of them.
+- Your bills are already counted, so Pocketday warns you if a new budget looks like one of them.
 - Logging a spend is optional. Take it from a budget or give it a category, and edit or undo it later.
 - Past pay cycles show how each pay went, budget by budget.
 
@@ -72,7 +74,7 @@ Two quick checks for the moments you need an exact answer.
 | Check my balance | Can I afford it? |
 | --- | --- |
 | Enter today's balance to see what's free to spend and about how much a day | Type an amount and get a yes or no, with what you'd have left until payday |
-| Shows afterwards as a dated "last checked" amount, since later spending isn't counted | Add Subtrack to your phone's home screen for a one-tap shortcut |
+| Shows afterwards as a dated "last checked" amount, since later spending isn't counted | Add Pocketday to your phone's home screen for a one-tap shortcut |
 
 ### Ways to save
 

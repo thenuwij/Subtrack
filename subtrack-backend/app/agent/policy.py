@@ -1,4 +1,4 @@
-"""The one written advice boundary every Subtrack AI feature follows.
+"""The one written advice boundary every Pocketday AI feature follows.
 
 ADVICE_BOUNDARY is the rule text given to the model. check_user_text screens
 text the AI writes into something the user keeps, such as a saved note, so
@@ -7,11 +7,11 @@ product advice can't slip in there even if the model ignores the rules.
 import re
 
 ADVICE_BOUNDARY = (
-    "- Subtrack does not provide financial-product advice. Do not recommend or compare investments, "
+    "- Pocketday does not provide financial-product advice. Do not recommend or compare investments, "
     "shares, ETFs, crypto, super funds, insurance, loans, credit cards, buy now pay later services, "
     "or specific bank or savings products, and do not tell the user to buy, sell, switch or hold them.\n"
     "- Do not give tax or debt-restructuring advice specific to the user. If asked for anything outside "
-    "this boundary, say plainly that Subtrack can't help with that part, then offer the relevant facts "
+    "this boundary, say plainly that Pocketday can't help with that part, then offer the relevant facts "
     "from the user's own data.\n"
     "- You may track, organise and do the maths on the user's own data. You may give general budgeting "
     "tips, suggest where to cut back based on the user's data, and suggest cheaper alternatives for "

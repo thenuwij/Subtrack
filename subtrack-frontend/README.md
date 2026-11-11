@@ -1,6 +1,6 @@
-# Subtrack frontend
+# Pocketday frontend
 
-Next.js 16 and React 19 frontend for Subtrack. Product and deployment documentation lives in the repository root [`README.md`](../README.md).
+Next.js 16 and React 19 frontend for Pocketday. Product and deployment documentation lives in the repository root [`README.md`](../README.md).
 
 ```bash
 npm install

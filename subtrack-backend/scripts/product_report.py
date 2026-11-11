@@ -30,7 +30,7 @@ def main() -> None:
         db.close()
 
     setup, retention, payday = s["setup"], s["retention"], s["payday_emails"]
-    print(f"Subtrack usage, last {days} days\n")
+    print(f"Pocketday usage, last {days} days\n")
     print(f"Setup: {setup['started']} started, {setup['finished']} finished ({_pct(setup['completion_rate'])})")
     print(f"  median {setup['median_minutes'] or 'n/a'} min, under 3 min: {_pct(setup['under_3_minutes_rate'])}")
     print(f"First number seen: {s['first_number_seen']}")

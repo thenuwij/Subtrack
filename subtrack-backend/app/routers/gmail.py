@@ -474,7 +474,7 @@ def gmail_oauth_complete(
             detail=(
                 "Google did not grant permission to read your email. On the "
                 "consent screen there is a tickbox for viewing your email "
-                "messages — it starts unticked, and Subtrack cannot scan "
+                "messages — it starts unticked, and Pocketday cannot scan "
                 "without it. Connect again and tick that box."
             ),
         )
@@ -483,7 +483,7 @@ def gmail_oauth_complete(
         raise HTTPException(
             status_code=422,
             detail=(
-                "Google did not return long-lived access. Remove Subtrack from "
+                "Google did not return long-lived access. Remove Pocketday from "
                 "your Google account permissions, then connect again."
             ),
         )
@@ -1189,7 +1189,7 @@ def _run_scan(user_id: str, run_id: str):
             return
         except RefreshError:
             logger.warning("Gmail refresh token rejected for %s", user_id)
-            fail("Google no longer accepts Subtrack's access to this inbox. Disconnect and connect again on the Account page.")
+            fail("Google no longer accepts Pocketday's access to this inbox. Disconnect and connect again on the Account page.")
             return
 
         _save_receipts(db, user_id, scan_result.candidates)
@@ -1523,7 +1523,7 @@ def gmail_disconnect(
             detail="Gmail could not be disconnected safely. Try again.",
         ) from exc
 
-    # The local token is already gone, which is the privacy boundary Subtrack
+    # The local token is already gone, which is the privacy boundary Pocketday
     # controls. Google revocation is best-effort and bounded so an upstream
     # outage cannot strand the user's mailbox credentials in our database.
     revocation = revoke_encrypted_refresh_token(encrypted_token)

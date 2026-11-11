@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 
 function completedCopy(action: AgentAction) {
   if (action.action_type === 'remove_recurring_payment') {
-    return 'Removed from Subtrack. The merchant subscription was not cancelled.'
+    return 'Removed from Pocketday. The merchant subscription was not cancelled.'
   }
   if (action.action_type === 'dismiss_duplicate_suggestion') {
     return 'Kept separate. This pair will stay hidden from duplicate suggestions.'

@@ -74,7 +74,7 @@ ALTERNATIVE_RESEARCH_TOOL = {
         "Research current, publicly available alternatives to one owned recurring "
         "payment using cited web sources. Call only when the user asks for current "
         "alternatives, prices, plans, or a market comparison. Read the exact payment "
-        "first. This never changes Subtrack data."
+        "first. This never changes Pocketday data."
     ),
     "input_schema": {
         "type": "object",
@@ -85,7 +85,7 @@ ALTERNATIVE_RESEARCH_TOOL = {
                 "maxLength": 80,
                 "description": (
                     "Country or market stated by the user. Use null when unstated; "
-                    "Subtrack will disclose a market inferred from the payment currency."
+                    "Pocketday will disclose a market inferred from the payment currency."
                 ),
             },
             "requirements": {
@@ -280,7 +280,7 @@ def research_alternatives(
     if payment.category in OUT_OF_SCOPE_CATEGORIES:
         return {
             "status": "out_of_scope",
-            "reason": "Subtrack doesn't research or compare financial products.",
+            "reason": "Pocketday doesn't research or compare financial products.",
         }
 
     requested_market = _compact(data.market, 80)

@@ -107,7 +107,7 @@ def conversion_for_storage(
     base: str,
     db: Session,
 ) -> tuple[float | None, float | None, str]:
-    """Derive an entry conversion from Subtrack's shared server snapshot.
+    """Derive an entry conversion from Pocketday's shared server snapshot.
 
     Browser-supplied converted values are display hints, not trustworthy
     financial data. New and edited records use this helper so direct API calls,

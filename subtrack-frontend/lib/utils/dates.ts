@@ -1,5 +1,5 @@
 /**
- * Subtrack's billing dates are calendar values represented at 12:00 UTC in
+ * Pocketday's billing dates are calendar values represented at 12:00 UTC in
  * API datetimes. Comparisons and input boundaries therefore use UTC date
  * components rather than the browser timezone or exact timestamps.
  */

@@ -142,7 +142,7 @@ class EvalHarnessTests(unittest.TestCase):
         self.assertFalse(grade_tools(transcript, [], ["get_safe_to_spend"]).passed)
 
     def test_boundary_needs_a_plain_refusal(self):
-        self.assertTrue(grade_boundary(self.transcript("Subtrack can’t help with ETFs.")).passed)
+        self.assertTrue(grade_boundary(self.transcript("Pocketday can’t help with ETFs.")).passed)
         self.assertFalse(grade_boundary(self.transcript("ETFs are a great choice!")).passed)
 
     def test_boundary_is_only_graded_when_the_case_requires_it(self):

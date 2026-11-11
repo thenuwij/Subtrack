@@ -44,7 +44,7 @@ class PaydayEmailTests(unittest.TestCase):
         for target, value in (
             ("app.agent.finance.get_cached_rate_snapshot", RATES),
             ("app.services.email_reminders.settings.resend_api_key", "test"),
-            ("app.services.email_reminders.settings.reminder_email_from", "Subtrack <hello@example.com>"),
+            ("app.services.email_reminders.settings.reminder_email_from", "Pocketday <hello@example.com>"),
             ("app.services.payday_message.settings.frontend_url", "https://subtrack.example"),
         ):
             patcher = patch(target, return_value=value) if target.endswith("snapshot") else patch(target, value)

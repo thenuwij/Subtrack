@@ -1,1 +1,1 @@
-"""Evals for the Subtrack assistant: seeded data, cases, a harness and graders."""
+"""Evals for the Pocketday assistant: seeded data, cases, a harness and graders."""

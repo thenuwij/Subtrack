@@ -1,11 +1,11 @@
 import type { MetadataRoute } from 'next'
 
-// Lets people add Subtrack to their home screen, with a long-press shortcut
+// Lets people add Pocketday to their home screen, with a long-press shortcut
 // straight to "Can I afford it?".
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Subtrack',
-    short_name: 'Subtrack',
+    name: 'Pocketday',
+    short_name: 'Pocketday',
     description: 'What’s free to spend until payday.',
     start_url: '/dashboard',
     display: 'standalone',

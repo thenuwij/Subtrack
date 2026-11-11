@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 MILLION = Decimal(1_000_000)
 # USD per million tokens. Check against Anthropic's pricing page when changing models.
 MODEL_PRICES = {
-    # Prompts over 100K tokens cost 5x more; Subtrack's prompts stay well below that.
+    # Prompts over 100K tokens cost 5x more; Pocketday's prompts stay well below that.
     "claude-haiku-5-5": {
         "input": Decimal("0.10"),
         "output": Decimal("0.50"),

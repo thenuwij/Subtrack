@@ -22,7 +22,7 @@ import {
 import { toast } from 'sonner'
 import { formatStoredDate, storedDateKey, todayUtcDateKey } from '@/lib/utils/dates'
 
-// Just the date it next goes out. Subtrack isn't tracking whether payments landed,
+// Just the date it next goes out. Pocketday isn't tracking whether payments landed,
 // so anything framed as overdue/due-soon would be claiming knowledge it doesn't have.
 function formatNextDate(dateStr: string): string {
   return formatStoredDate(dateStr, { day: 'numeric', month: 'short' })
@@ -175,7 +175,7 @@ export function SubscriptionCard({
                 {remindersAvailable ? <DropdownMenu.Item onSelect={() => onReminders(subscription)} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm outline-none focus:bg-muted"><Bell className="h-4 w-4" />Manage reminders</DropdownMenu.Item> : null}
                 {onAskAssistant && !terminal ? <DropdownMenu.Item onSelect={() => onAskAssistant(subscription)} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm outline-none focus:bg-muted"><Sparkles className="h-4 w-4" />Explore alternatives</DropdownMenu.Item> : null}
                 <DropdownMenu.Separator className="my-1 h-px bg-border" />
-                <DropdownMenu.Item onSelect={() => setConfirming(true)} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm text-destructive outline-none focus:bg-destructive/10"><Trash2 className="h-4 w-4" />Remove from Subtrack</DropdownMenu.Item>
+                <DropdownMenu.Item onSelect={() => setConfirming(true)} className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl px-3 text-sm text-destructive outline-none focus:bg-destructive/10"><Trash2 className="h-4 w-4" />Remove from Pocketday</DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Portal>
           </DropdownMenu.Root>

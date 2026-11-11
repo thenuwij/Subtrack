@@ -24,7 +24,7 @@ export function AuthPreviewBanner() {
   )
 }
 
-/** Desktop-only panel that shows what Subtrack does before someone signs in. */
+/** Desktop-only panel that shows what Pocketday does before someone signs in. */
 export function AuthPreviewPanel() {
   return (
     <aside className={`relative hidden overflow-hidden ${BRAND_GRADIENT} px-12 py-16 text-white lg:flex lg:flex-col lg:justify-center xl:px-20`}>

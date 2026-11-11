@@ -56,7 +56,7 @@ export function agentPageLabel(page: AgentPage) {
     review: 'Review queue',
     account: 'Account settings',
     assistant: 'Assistant workspace',
-    unknown: 'Subtrack',
+    unknown: 'Pocketday',
   }[page]
 }
 

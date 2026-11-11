@@ -36,7 +36,7 @@ def get_capabilities() -> dict:
     from app.routers.gmail import gmail_is_configured
 
     return {
-        "api": {"name": "Subtrack API", "version": "1"},
+        "api": {"name": "Pocketday API", "version": "1"},
         "release": release_metadata(),
         "capabilities": {
             **CAPABILITIES,

@@ -58,7 +58,7 @@ export default function ResetPasswordPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-6 py-12">
       <div className="w-full max-w-sm">
-        <Link href="/" aria-label="Subtrack home" className="inline-flex">
+        <Link href="/" aria-label="Pocketday home" className="inline-flex">
           <LogoMark className="h-10 w-10" />
         </Link>
 

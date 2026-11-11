@@ -198,7 +198,7 @@ export function SetupFlow() {
   if (step === 'intro') {
     return (
       <div className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
-        <p className="eyebrow text-primary">Welcome to Subtrack</p>
+        <p className="eyebrow text-primary">Welcome to Pocketday</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Know what&apos;s yours to spend until payday.</h1>
         <ol className="mt-8 grid gap-3 sm:grid-cols-3">
           {[
@@ -402,7 +402,7 @@ export function SetupFlow() {
             </label>
           ) : null}
           <p className="text-xs text-muted-foreground">
-            We keep a {formatCurrency(DEFAULT_BUFFER, currency)} buffer aside. You can change it later. Subtrack never connects to your bank.
+            We keep a {formatCurrency(DEFAULT_BUFFER, currency)} buffer aside. You can change it later. Pocketday never connects to your bank.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" size="lg" disabled={saving}>{saving ? 'Saving…' : 'See what I can spend'}</Button>
