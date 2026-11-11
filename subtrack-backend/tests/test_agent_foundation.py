@@ -200,8 +200,9 @@ class AgentFoundationTests(unittest.TestCase):
         ])
         db.commit()
 
-        with self.assertRaises(HTTPException) as caught:
-            _enforce_agent_rate_limit(db, "user-1")
+        with patch.object(settings, "assistant_messages_per_account", 0):
+            with self.assertRaises(HTTPException) as caught:
+                _enforce_agent_rate_limit(db, "user-1")
         self.assertEqual(caught.exception.status_code, 429)
         self.assertEqual(caught.exception.headers["Retry-After"], "60")
 

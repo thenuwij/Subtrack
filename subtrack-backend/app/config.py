@@ -150,6 +150,8 @@ class Settings(BaseSettings):
     # features return 503 until the next UTC day. 0 disables the breaker.
     ai_daily_cost_limit_usd: float = Field(default=20.0, ge=0)
     assistant_runs_per_day: int = Field(default=100, ge=1, le=10_000)
+    # Lifetime assistant replies per real account while testing. 0 means no cap.
+    assistant_messages_per_account: int = Field(default=10, ge=0, le=100_000)
 
     @model_validator(mode="after")
     def resolve_frontend_url(self) -> "Settings":

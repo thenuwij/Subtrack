@@ -606,12 +606,12 @@ def _enforce_agent_rate_limit(db: Session, user_id: str) -> None:
         AgentMessage.role == "assistant",
         AgentMessage.created_at >= _utcnow() - timedelta(minutes=1),
     ).scalar() or 0
+    total_attempts = db.query(func.count(AgentMessage.id)).filter(
+        AgentMessage.user_id == user_id,
+        AgentMessage.role == "assistant",
+    ).scalar() or 0
     if is_demo_user(user_id):
-        demo_attempts = db.query(func.count(AgentMessage.id)).filter(
-            AgentMessage.user_id == user_id,
-            AgentMessage.role == "assistant",
-        ).scalar() or 0
-        if demo_attempts >= settings.demo_agent_messages:
+        if total_attempts >= settings.demo_agent_messages:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=(
@@ -619,6 +619,14 @@ def _enforce_agent_rate_limit(db: Session, user_id: str) -> None:
                     "Create a free account to keep chatting."
                 ),
             )
+    elif 0 < settings.assistant_messages_per_account <= total_attempts:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"You've used all {settings.assistant_messages_per_account} assistant messages "
+                "for this account while Pocketday is in testing."
+            ),
+        )
     if recent_attempts >= AGENT_ATTEMPTS_PER_MINUTE:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
