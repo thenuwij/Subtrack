@@ -257,7 +257,7 @@ def verify_token(
             algorithms = ["ES256"]
         elif algorithm == DEMO_TOKEN_ALGORITHM:
             return verify_demo_token(token)
-        elif algorithm == "HS256":
+        elif algorithm == "HS256" and settings.allow_legacy_hs256:
             # Some legacy Supabase HS256 tokens include a kid. The verified
             # algorithm, rather than kid presence, decides the compatibility
             # path so those tokens continue to work without algorithm mixing.
@@ -280,6 +280,8 @@ def verify_token(
         if not isinstance(user_id, str) or not user_id or len(user_id) > 255:
             logger.error("JWT payload contained an invalid subject claim")
             raise HTTPException(status_code=401, detail="Invalid token")
+        if payload.get("is_anonymous") is True:
+            raise HTTPException(status_code=401, detail="Sign in with an account to continue")
         return user_id
     except HTTPException:
         raise

@@ -3,7 +3,8 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 from app.config import settings
 
-engine_options = {"pool_pre_ping": True}
+# hide_parameters keeps payment names, amounts and emails out of error logs.
+engine_options = {"pool_pre_ping": True, "hide_parameters": True}
 if not settings.database_url.startswith("sqlite"):
     # Keep each Render instance inside a predictable connection budget. Two
     # bounded Gmail scans still leave eight slots for interactive requests.

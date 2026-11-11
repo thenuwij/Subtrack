@@ -156,9 +156,19 @@ function readableDate(value: string) {
 
 const markdownPlugins = [remarkGfm]
 const markdownComponents = {
-  a: ({ children, ...props }: React.ComponentProps<'a'>) => (
-    <a {...props} target="_blank" rel="noreferrer">{children}</a>
-  ),
+  // Model output can be steered by prompt injection: never load images (they
+  // can leak data with no click) and only link to https: destinations.
+  img: () => null,
+  a: ({ children, href }: React.ComponentProps<'a'>) => {
+    let url: URL | null = null
+    try { url = href ? new URL(href) : null } catch { url = null }
+    if (!url || url.protocol !== 'https:') return <>{children}</>
+    return (
+      <a href={url.href} target="_blank" rel="noopener noreferrer nofollow">
+        {children} <span className="text-xs opacity-70">({url.hostname})</span>
+      </a>
+    )
+  },
 }
 
 const MessageMarkdown = memo(function MessageMarkdown({ content }: { content: string }) {

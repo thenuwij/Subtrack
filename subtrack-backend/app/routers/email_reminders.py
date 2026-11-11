@@ -52,6 +52,11 @@ def set_email_preferences(
             raise HTTPException(503, "Email delivery is not configured yet")
         # verify_token has already verified signature, audience, expiry and subject.
         claims = jwt.decode(request.headers["authorization"].split()[1], options={"verify_signature": False})
+        metadata = claims.get("user_metadata")
+        if claims.get("is_anonymous") is True or (
+            isinstance(metadata, dict) and metadata.get("email_verified") is False
+        ):
+            raise HTTPException(403, "Confirm your email address before turning on emails")
         email = claims.get("email")
         if not isinstance(email, str) or "@" not in email or any(c in email for c in "\r\n"):
             raise HTTPException(422, "Your account needs an email address")

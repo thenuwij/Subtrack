@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 from unittest.mock import patch
 from uuid import uuid4
 
+import httpx
 from fastapi import HTTPException
 from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import sessionmaker
@@ -392,6 +393,57 @@ class AccountPrivacyTests(unittest.TestCase):
             self.db.get(ExchangeRateSnapshot, "AUD").provider,
             "test-provider",
         )
+
+    def delete_with_service_key(self, delete_result):
+        with (
+            patch.object(account.settings, "supabase_service_role_key", "service-key"),
+            patch.object(account.settings, "supabase_url", "https://project.supabase.co"),
+            patch.object(
+                account,
+                "revoke_encrypted_refresh_token",
+                return_value=gmail_access.GmailRevocationStatus.revoked,
+            ),
+            patch.object(account.httpx, "delete", **delete_result) as delete_identity,
+        ):
+            response = account.delete_app_data(
+                account.DeleteAppDataRequest(confirmation="DELETE MY SUBTRACK DATA"),
+                user_id="owner",
+                db=self.db,
+            )
+        return response, delete_identity
+
+    def test_deletion_removes_the_supabase_identity_when_a_service_key_is_set(self):
+        response, delete_identity = self.delete_with_service_key(
+            {"return_value": httpx.Response(200)}
+        )
+
+        self.assertTrue(response["supabase_auth_identity_deleted"])
+        self.assertEqual(
+            delete_identity.call_args.args[0],
+            "https://project.supabase.co/auth/v1/admin/users/owner",
+        )
+        self.assertEqual(
+            delete_identity.call_args.kwargs["headers"]["Authorization"], "Bearer service-key"
+        )
+        self.assertEqual(self.db.query(Subscription).filter_by(user_id="owner").count(), 0)
+
+    def test_a_failed_identity_deletion_is_reported_truthfully(self):
+        for result in (
+            {"return_value": httpx.Response(500)},
+            {"side_effect": httpx.ConnectError("down")},
+        ):
+            with self.subTest(result=result):
+                response, _ = self.delete_with_service_key(result)
+                self.assertTrue(response["deleted"])
+                self.assertFalse(response["supabase_auth_identity_deleted"])
+
+    def test_without_a_service_key_the_identity_is_left_alone(self):
+        with (
+            patch.object(account.settings, "supabase_service_role_key", ""),
+            patch.object(account.httpx, "delete") as delete_identity,
+        ):
+            self.assertFalse(account._delete_supabase_identity("owner"))
+        delete_identity.assert_not_called()
 
     def test_gmail_disconnect_revokes_and_removes_only_owned_connection_state(self):
         with patch.object(

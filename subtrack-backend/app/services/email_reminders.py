@@ -11,6 +11,7 @@ from app.config import settings
 from app.middleware.auth import is_demo_user
 from app.models import EmailPreference, ReminderDelivery, UserPreference
 from app.services.alerts import due_alerts
+from app.services.email_text import email_safe_name
 from app.services.payday_message import payday_message
 from app.services.reminders import list_user_reminders
 
@@ -72,7 +73,7 @@ def _send_reminders(db, pref, *, now, send, result):
         message = {
             "subject": "A payment reminder from Subtrack",
             "text": (
-                f"{reminder['subscription_name']}: {kind} on {target.date()}.\n\n"
+                f"{email_safe_name(reminder['subscription_name'])}: {kind} on {target.date()}.\n\n"
                 f"Review your payment: {settings.frontend_url}/subscriptions\n"
                 f"Manage or turn off email reminders: {settings.frontend_url}/account#email-reminders"
             ),
