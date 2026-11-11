@@ -3,7 +3,7 @@
 # reports how many are still waiting, so this keeps calling until none are.
 #
 # Needs two repository secrets:
-#   SUBTRACK_API_URL  the API address, e.g. https://subtrack-api.twij.app
+#   SUBTRACK_API_URL  the API address, e.g. https://api.pocketday.app
 #   CRON_SECRET       the same value as the API's CRON_SECRET
 name: Daily Gmail scan
 

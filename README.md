@@ -2,7 +2,7 @@
 
 Formerly Subtrack.
 
-[![Live demo](https://img.shields.io/badge/Live_demo-Explore-0A84FF?style=for-the-badge&logo=vercel&logoColor=white&labelColor=0060DF)](https://subtrack.twij.app/login)
+[![Live demo](https://img.shields.io/badge/Live_demo-Explore-0A84FF?style=for-the-badge&logo=vercel&logoColor=white&labelColor=0060DF)](https://pocketday.app/login)
 
 ![Next.js](https://img.shields.io/badge/Next.js-20232A?logo=nextdotjs&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-20232A?logo=typescript&logoColor=3178C6)
@@ -110,7 +110,7 @@ On payday morning, an email shows the bills before your next pay, what's set asi
 
 ## Built With
 
-Next.js, TypeScript, FastAPI, PostgreSQL and the Claude API. Try the [live demo](https://subtrack.twij.app/login).
+Next.js, TypeScript, FastAPI, PostgreSQL and the Claude API. Try the [live demo](https://pocketday.app/login).
 
 ## Project Structure
 
